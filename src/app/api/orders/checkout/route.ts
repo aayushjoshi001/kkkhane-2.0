@@ -5,6 +5,7 @@ import { logAudit } from '@/lib/audit'
 import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
 import { findOrCreateCustomerCreditAccount, postCreditCharge, settleLoyalty } from '@/lib/customerCredit'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
+import { assertBusinessOpen } from '@/lib/auth/businessGuard'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -25,6 +26,11 @@ export async function POST(req: Request) {
         const currentUser = await getCurrentUser()
         if (!currentUser || !currentUser.restaurantId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+
+        const guard = await assertBusinessOpen(currentUser.restaurantId)
+        if (!guard.allowed) {
+            return NextResponse.json({ error: guard.error }, { status: 403 })
         }
 
         const body = await req.json().catch(() => ({}))

@@ -224,13 +224,9 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Immediately ready the next business day so the manager never has to
-    // manually open it — its opening balances carry forward from this
-    // session's closing balances, whatever time (even past midnight) the
-    // close happened at.
-    const nextSession = await autoOpenNextDayBookSession(supabase, restaurantId, session as DayBookSession, currentUser.id)
-
-    return NextResponse.json({ success: true, data: session, next_session: nextSession })
+    // Closing business day locks all entries and sets session status to closed.
+    // The business will remain closed until a Cashier, Manager, or Super Admin explicitly opens it.
+    return NextResponse.json({ success: true, data: session })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

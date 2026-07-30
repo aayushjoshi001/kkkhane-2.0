@@ -111,6 +111,40 @@ async function settleAndCloseSession(
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 /**
+ * Records how much of a checkout settlement came in as cash vs QR, on the
+ * same booking_payments table the advance already writes to (see
+ * POST /api/bookings) — so "total cash/QR received" for a stay is a single
+ * SUM query across both rows instead of parsed out of the audit log. Cash/QR
+ * figures are what the guest actually handed over (pre partner-restaurant
+ * split), matching what a front-desk read of "money received" means; the
+ * credit portion isn't cash or QR, so it only affects `amount`.
+ */
+async function recordSettlementPayment(
+    supabase: AdminClient,
+    restaurantId: string,
+    bookingId: string,
+    userId: string,
+    cash: number,
+    qr: number,
+    credit: number,
+) {
+    const amount = round2(cash + qr + credit)
+    if (amount <= 0) return
+    const method = cash > 0 && qr > 0 ? 'split' : cash > 0 ? 'cash' : qr > 0 ? 'qr_digital' : 'credit'
+    const { error } = await supabase.from('booking_payments').insert({
+        restaurant_id: restaurantId,
+        booking_id: bookingId,
+        amount,
+        payment_method: method,
+        cash_amount: round2(cash),
+        qr_amount: round2(qr),
+        note: 'Settlement',
+        created_by: userId,
+    })
+    if (error) console.error('Failed to record settlement payment:', error)
+}
+
+/**
  * Split a reservation's single settled bill back out across its rooms.
  *
  * The guest pays once, but `bookings.total_amount`/`paid_amount` are per-room
@@ -392,6 +426,11 @@ export async function POST(req: Request) {
                 if (roomErr) throw roomErr
             }
 
+            await recordSettlementPayment(
+                supabase, booking.restaurant_id, booking_id, currentUser.id,
+                Number(cash_paid) || 0, Number(qr_paid) || 0, creditAmount,
+            )
+
             return NextResponse.json({
                 success: true,
                 total: authoritativeTotal,
@@ -571,6 +610,14 @@ export async function POST(req: Request) {
         if (!resObj.success) {
             return NextResponse.json({ error: resObj.error || 'Transaction rolled back' }, { status: 400 })
         }
+
+        // cashPaid/qrPaid are what the guest actually handed over, before the
+        // hotel/restaurant partner split above — that split only decides whose
+        // books the money lands in, not how much cash vs QR was received.
+        await recordSettlementPayment(
+            supabase, booking.restaurant_id, booking_id, currentUser.id,
+            cashPaid, qrPaid, creditAmount,
+        )
 
         // Written after the settling transaction rather than inside it: the RPC
         // has already charged this figure by way of authoritativeTotal, and

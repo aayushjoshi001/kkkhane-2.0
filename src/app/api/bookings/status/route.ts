@@ -36,10 +36,15 @@ export async function POST(req: Request) {
             }, { status: 409 })
         }
 
-        // Update booking status
+        // Update booking status. checked_in_by is stamped here rather than by
+        // a trigger (unlike checked_in_at) — a DB trigger has no way to know
+        // which staff member is acting, only the app layer does.
         const { error: bookingError } = await supabase
             .from('bookings')
-            .update({ status })
+            .update({
+                status,
+                ...(status === 'checked_in' ? { checked_in_by: currentUser.id } : {}),
+            })
             .eq('id', bookingId)
             .eq('restaurant_id', currentUser.restaurantId)
 

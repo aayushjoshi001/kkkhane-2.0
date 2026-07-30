@@ -272,6 +272,7 @@ export async function POST(req: Request) {
                     adult_female: r.splitProvided ? r.female : 0,
                     children: r.children,
                     status: 'checked_in',
+                    checked_in_by: currentUser.id,
                     notes,
                     paid_amount: advanceShares[i],
                     advance_payment_method: advMethod,

@@ -35,6 +35,7 @@ interface BankEntry {
     category: string
     created_at: string
     bank_name: string | null
+    created_by_name?: string | null
     day_book_sessions?: {
         date: string
     } | null
@@ -285,6 +286,7 @@ export default function BankLedgerManager({
             category: 'opening_balance',
             isOpeningBalance: true,
             runningBalance: obAmount,
+            created_by_name: null,
             day_book_sessions: undefined
         }
 
@@ -321,6 +323,7 @@ export default function BankLedgerManager({
         { key: 'bank_out', label: 'Bank Out', align: 'right' as const },
         { key: 'type', label: 'Type' },
         { key: 'category', label: 'Category' },
+        { key: 'by', label: 'Responsible Name' },
         { key: 'running_balance', label: 'Running Balance', align: 'right' as const },
     ]
     const reportRows = activeBankEntries.map(e => ({
@@ -330,6 +333,7 @@ export default function BankLedgerManager({
         bank_out: e.type === 'bank_out' ? formatCurrency(e.amount) : '',
         type: e.type === 'bank_in' ? 'IN' : 'OUT',
         category: CATEGORY_LABELS[e.category] || e.category,
+        by: ('isOpeningBalance' in e && e.isOpeningBalance) ? '—' : (e.created_by_name || 'Unknown'),
         running_balance: formatCurrency(e.runningBalance),
     }))
     const exportFilename = `bank-ledger-${activeBankAccount?.name || 'account'}`
@@ -548,6 +552,7 @@ export default function BankLedgerManager({
                                         <th className="px-4 py-3 font-bold text-right w-28">Bank Out</th>
                                         <th className="px-4 py-3 font-bold text-center w-20">Type</th>
                                         <th className="px-4 py-3 font-bold text-center w-28">Category</th>
+                                        <th className="px-4 py-3 font-bold w-32">Responsible Name</th>
                                         <th className="px-4 py-3 font-bold text-right w-28 bg-surface-muted/50">Running Balance</th>
                                     </tr>
                                 </thead>
@@ -583,6 +588,10 @@ export default function BankLedgerManager({
                                                 }`}>
                                                     {CATEGORY_LABELS[e.category] || e.category}
                                                 </span>
+                                            </td>
+                                            {/* Responsible Name */}
+                                            <td className="px-4 py-3 font-bold text-ink">
+                                                {'isOpeningBalance' in e && e.isOpeningBalance ? '—' : (e.created_by_name || 'Unknown')}
                                             </td>
                                             {/* Running Balance */}
                                             <td className="px-4 py-3 text-right font-black bg-surface-muted/30 text-ink">

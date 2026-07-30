@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useMemo } from 'react'
 import {
     TrendingUp, TrendingDown, Plus, X, Loader2,
-    Wallet, Lock, Trash2, CalendarDays, CheckCircle2, AlertCircle,
+    Wallet, Lock, CalendarDays, CheckCircle2, AlertCircle,
     Download, Printer
 } from 'lucide-react'
 import type { BankAccount, DayBookSession, DayBookEntry, DayBookEntryCategory, ExpenseCategory, Supplier } from '@/types/database'
@@ -17,10 +17,11 @@ import { useConfirmStore } from '@/lib/stores/confirm'
 import { orderCategoriesForDisplay, findMainCategory, buildDescriptionWithName } from '@/lib/utils'
 import Select from '@/components/ui/Select'
 import { useDates } from '@/lib/contexts/CalendarContext'
+import DayBookRangeStatement from '@/components/admin/DayBookRangeStatement'
 
 interface CashBookClientProps {
     initialSession: DayBookSession | null
-    initialEntries: DayBookEntry[]
+    initialEntries: (DayBookEntry & { created_by_name: string | null })[]
     initialTotals: {
         total_cash_in: number
         total_cash_out: number
@@ -28,6 +29,10 @@ interface CashBookClientProps {
     }
     todayDate: string   // YYYY-MM-DD
     userRole: string
+    /** Stamped onto a newly-added entry client-side the instant it's created
+     *  — the API response only carries created_by (a uuid) and it's always
+     *  the acting user. */
+    currentUserName: string | null
     previousClosingBalance: number | null
     previousClosingBankBalance: number
     expenseCategories: ExpenseCategory[]
@@ -106,6 +111,7 @@ export default function CashBookClient({
     initialTotals,
     todayDate,
     userRole,
+    currentUserName,
     previousClosingBalance,
     previousClosingBankBalance,
     expenseCategories,
@@ -115,7 +121,7 @@ export default function CashBookClient({
 }: CashBookClientProps) {
     const { confirm } = useConfirmStore()
     const [session, setSession]   = useState<DayBookSession | null>(initialSession)
-    const [entries, setEntries]   = useState<DayBookEntry[]>(initialEntries)
+    const [entries, setEntries]   = useState<(DayBookEntry & { created_by_name: string | null })[]>(initialEntries)
     const [totals, setTotals]     = useState(initialTotals)
     const [isOtherBank, setIsOtherBank] = useState(false)
     const [ledgerTab, setLedgerTab] = useState<'cash_in' | 'cash_out'>('cash_in')
@@ -127,6 +133,7 @@ export default function CashBookClient({
         { key: 'type', label: 'Type' },
         { key: 'category', label: 'Category' },
         { key: 'description', label: 'Description' },
+        { key: 'by', label: 'Responsible Name' },
         { key: 'amount', label: 'Amount', align: 'right' as const },
     ]
     const reportRows = entries.map(e => ({
@@ -134,6 +141,7 @@ export default function CashBookClient({
         type: e.type === 'cash_in' ? 'IN' : 'OUT',
         category: CATEGORY_LABELS[e.category] || e.category,
         description: formatDescription(e.description) + (e.bank_name ? ` (Bank: ${e.bank_name})` : ''),
+        by: e.created_by_name || 'Unknown',
         amount: (e.type === 'cash_in' ? '+' : '-') + fmt(e.amount),
     }))
     const handleExportCsv = () => downloadCsv(`cash-book-${todayDate}`, reportColumns, reportRows)
@@ -259,7 +267,7 @@ export default function CashBookClient({
             const data = await res.json()
             if (!res.ok) throw new Error(data.error)
             
-            const newEntries = [data.data]
+            const newEntries = [{ ...data.data, created_by_name: currentUserName }]
 
             // If cash_out is a bank_deposit, automatically insert a matching bank_in entry of category 'deposit'
             if (entryModal.type === 'cash_out' && entryForm.category === 'bank_deposit') {
@@ -304,23 +312,6 @@ export default function CashBookClient({
             toast.error(errMsg)
         } finally {
             setIsSubmittingEntry(false)
-        }
-    }
-
-    // ── Delete Entry ─────────────────────────────────────────
-    const handleDeleteEntry = async (id: string) => {
-        const ok = await confirm({ title: 'Delete this entry?', message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
-        if (!ok) return
-        try {
-            const res = await fetch(`/api/day-book/entries?id=${id}`, { method: 'DELETE' })
-            if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
-            const updated = entries.filter(e => e.id !== id)
-            setEntries(updated)
-            recalc(updated, session!.opening_balance)
-            toast.success('Entry deleted')
-        } catch (e) {
-            const errMsg = e instanceof Error ? e.message : 'Failed to delete'
-            toast.error(errMsg)
         }
     }
 
@@ -461,6 +452,8 @@ export default function CashBookClient({
                     )}
                 </div>
             </div>
+
+            <DayBookRangeStatement type="cash" label="Cash" categoryLabels={CATEGORY_LABELS} categoryColors={CATEGORY_COLORS} />
 
             {/* ── Open Day Form ── */}
             {isOpeningDay && (
@@ -644,8 +637,8 @@ export default function CashBookClient({
                                                 <th className="px-6 py-3 font-bold text-ink-subtle w-24">Date &amp; Time</th>
                                                 <th className="px-6 py-3 font-bold text-ink-subtle w-32">Category</th>
                                                 <th className="px-6 py-3 font-bold text-ink-subtle">Description</th>
+                                                <th className="px-6 py-3 font-bold text-ink-subtle w-32">Responsible Name</th>
                                                 <th className="px-6 py-3 font-bold text-ink-subtle text-right w-36">Amount</th>
-                                                {session.status === 'open' && <th className="px-6 py-3 font-bold text-ink-subtle w-20 text-center">Actions</th>}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-hairline">
@@ -668,19 +661,10 @@ export default function CashBookClient({
                                                             <span className="block text-[10px] text-ink-subtle font-bold mt-0.5">Bank: {e.bank_name}</span>
                                                         )}
                                                     </td>
+                                                    <td className="px-6 py-4 font-bold text-ink">{e.created_by_name || 'Unknown'}</td>
                                                     <td className={`px-6 py-4 text-right font-extrabold text-sm ${isIn ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                         {isIn ? '+' : '-'}{fmt(e.amount)}
                                                     </td>
-                                                    {session.status === 'open' && (
-                                                        <td className="px-6 py-4 text-center">
-                                                            <button
-                                                                onClick={() => handleDeleteEntry(e.id)}
-                                                                className="p-1 text-ink-subtle hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
-                                                        </td>
-                                                    )}
                                                 </tr>
                                             ))}
                                         </tbody>

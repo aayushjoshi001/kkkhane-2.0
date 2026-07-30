@@ -10,7 +10,7 @@ import {
 import type { DayBookSession, DayBookEntry } from '@/types/database'
 import { downloadCsv, downloadExcel } from '@/lib/exportCsv'
 import { downloadPdf } from '@/lib/exportPdf'
-import { NepaliDateInput } from '@/components/ui/NepaliDateInput'
+import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { useDates } from '@/lib/contexts/CalendarContext'
 import { formatDateParts, type Calendar } from '@/lib/calendar'
 
@@ -27,9 +27,28 @@ interface DayBookTotals {
     opening_bank_balance: number
 }
 
+interface DayBookRangeTotals {
+    opening_cash_balance: number
+    opening_bank_balance: number
+    total_cash_in: number
+    total_cash_out: number
+    total_bank_in: number
+    total_bank_out: number
+    closing_cash_balance: number
+    closing_bank_balance: number
+}
+
+export interface DayBookRangeProp {
+    from: string
+    to: string
+    sessions: DayBookSession[]
+    entries: (DayBookEntry & { session_date: string; created_by_name: string | null })[]
+    totals: DayBookRangeTotals
+}
+
 interface DayBookClientProps {
     session: DayBookSession | null
-    entries: DayBookEntry[]
+    entries: (DayBookEntry & { created_by_name: string | null })[]
     totals: DayBookTotals
     todayDate: string   // YYYY-MM-DD
     /** The day on screen. Equals the session's own date, which can trail today. */
@@ -112,6 +131,306 @@ function formatDescription(desc: string): string {
 
 const isSourceCash = (type: DayBookEntry['type']) => type === 'cash_in' || type === 'cash_out'
 
+/**
+ * The multi-day counterpart to the single-session view below — one combined
+ * statement across every session in [from, to], each row carrying its own
+ * date since a range spans more than one. Kept as its own component rather
+ * than threading a `range` branch through the 400-line single-day view: the
+ * two share almost no state (no ledgerTab, no per-session "no book was kept"
+ * empty state) and forcing them into one return would risk regressing the
+ * single-day path for the sake of a feature it doesn't need.
+ */
+export function DayBookRangeView({ range }: { range: DayBookRangeProp }) {
+    const router = useRouter()
+    const [navigating, startNavigating] = useTransition()
+    const { formatDateLong, calendar } = useDates()
+
+    const goToRange = (next: { from: string | null; to: string | null }) => {
+        if (!next.from || !next.to) return
+        const url = next.from === next.to
+            ? `/admin/day-book?date=${next.from}`
+            : `/admin/day-book?from=${next.from}&to=${next.to}`
+        startNavigating(() => router.push(url))
+    }
+
+    const fromLabel = formatDateLong(`${range.from}T00:00:00`)
+    const toLabel = formatDateLong(`${range.to}T00:00:00`)
+    const { totals } = range
+
+    const netChange = (totals.total_cash_in + totals.total_bank_in) - (totals.total_cash_out + totals.total_bank_out)
+    const combinedClosing = totals.closing_cash_balance + totals.closing_bank_balance
+    const openingCombined = totals.opening_cash_balance + totals.opening_bank_balance
+    const totalMoneyIn = totals.total_cash_in + totals.total_bank_in
+    const totalMoneyOut = totals.total_cash_out + totals.total_bank_out
+
+    const reportColumns = [
+        { key: 'date', label: 'Date' },
+        { key: 'time', label: 'Time' },
+        { key: 'source', label: 'Source' },
+        { key: 'type', label: 'Type' },
+        { key: 'category', label: 'Category' },
+        { key: 'description', label: 'Description' },
+        { key: 'by', label: 'Responsible Name' },
+        { key: 'amount', label: 'Amount', align: 'right' as const },
+    ]
+
+    const entryRows = [...range.entries]
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        .map(e => ({
+            date: entryDateStr(e.session_date ? `${e.session_date}T00:00:00` : e.created_at, calendar),
+            time: timeStr(e.created_at),
+            source: isSourceCash(e.type) ? 'Cash' : 'Bank',
+            type: (e.type === 'cash_in' || e.type === 'bank_in') ? 'IN' : 'OUT',
+            category: CATEGORY_LABELS[e.category] || e.category,
+            description: formatDescription(e.description) + (e.bank_name ? ` (Bank: ${e.bank_name})` : ''),
+            by: e.created_by_name || 'Unknown',
+            amount: ((e.type === 'cash_in' || e.type === 'bank_in') ? '+' : '-') + fmt(e.amount),
+        }))
+
+    const summaryRows = [
+        {},
+        { description: 'Opening Cash', amount: fmt(totals.opening_cash_balance) },
+        { description: 'Opening Bank', amount: fmt(totals.opening_bank_balance) },
+        { description: 'Opening Balance (Cash + Bank)', amount: fmt(openingCombined) },
+        {},
+        { description: 'Cash In', amount: '+' + fmt(totals.total_cash_in) },
+        { description: 'Bank In', amount: '+' + fmt(totals.total_bank_in) },
+        { description: 'Total Money In', amount: '+' + fmt(totalMoneyIn) },
+        {},
+        { description: 'Cash Out', amount: '-' + fmt(totals.total_cash_out) },
+        { description: 'Bank Out', amount: '-' + fmt(totals.total_bank_out) },
+        { description: 'Total Money Out', amount: '-' + fmt(totalMoneyOut) },
+        {},
+        { description: 'Net Change', amount: (netChange >= 0 ? '+' : '-') + fmt(Math.abs(netChange)) },
+        { description: 'Closing Cash', amount: fmt(totals.closing_cash_balance) },
+        { description: 'Closing Bank', amount: fmt(totals.closing_bank_balance) },
+    ]
+    const closingRow = { description: 'Closing Balance (Cash + Bank)', amount: fmt(combinedClosing) }
+    const statementRows = [...entryRows, ...summaryRows]
+    const flatRows = [...statementRows, closingRow]
+    const fileName = `day-book-${range.from}-to-${range.to}`
+    const exportSubtitle = `${fromLabel} to ${toLabel}  |  Entries: ${range.entries.length}  |  In: ${fmt(totalMoneyIn)}  |  Out: ${fmt(totalMoneyOut)}`
+
+    const handleExportCsv = () => downloadCsv(fileName, reportColumns, flatRows)
+    const handleExportExcel = () => downloadExcel(fileName, reportColumns, flatRows)
+    const handleExportPdf = () => downloadPdf(
+        fileName,
+        'Day Book Statement',
+        exportSubtitle,
+        reportColumns.map(c => ({ key: c.key, label: c.label, align: c.align })),
+        statementRows,
+        closingRow,
+    )
+
+    return (
+        <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-amber-100 flex items-center justify-center shrink-0">
+                        <BookOpen className="text-amber-600" size={20} />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-black text-ink">Day Book</h1>
+                        <p className="text-xs text-ink-subtle mt-0.5 flex items-center gap-1.5">
+                            <span>{fromLabel} — {toLabel}</span>
+                            <span className="px-1.5 py-0.5 rounded-md bg-brand-50 text-brand-700 border border-brand-100 text-[10px] font-black uppercase">
+                                Statement
+                            </span>
+                            {navigating && <Loader2 size={11} className="animate-spin" />}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex gap-2 print:hidden">
+                    <button onClick={handleExportCsv} className="flex items-center gap-1.5 px-3.5 py-2 bg-surface text-ink hover:bg-surface-muted font-extrabold rounded-xl text-xs border border-hairline shadow-sm transition-colors">
+                        <Download size={14} /> CSV
+                    </button>
+                    <button onClick={handleExportExcel} className="flex items-center gap-1.5 px-3.5 py-2 bg-surface text-ink hover:bg-surface-muted font-extrabold rounded-xl text-xs border border-hairline shadow-sm transition-colors">
+                        <Download size={14} /> Excel
+                    </button>
+                    <button onClick={handleExportPdf} className="flex items-center gap-1.5 px-3.5 py-2 bg-surface text-ink hover:bg-surface-muted font-extrabold rounded-xl text-xs border border-hairline shadow-sm transition-colors">
+                        <Download size={14} /> PDF
+                    </button>
+                    <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3.5 py-2 bg-surface text-ink hover:bg-surface-muted font-extrabold rounded-xl text-xs border border-hairline shadow-sm transition-colors">
+                        <Printer size={14} /> Print
+                    </button>
+                </div>
+            </div>
+
+            {/* Range picker — responsive, BS/AD aware */}
+            <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-3 print:hidden">
+                <DateRangePicker from={range.from} to={range.to} onChange={goToRange} allowAll={false} />
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-5">
+                    <div className="flex items-center gap-2 text-xs font-bold text-ink-subtle uppercase tracking-wider">
+                        <TrendingUp size={14} className="text-emerald-500" /> Total Money In
+                    </div>
+                    <p className="text-2xl font-black text-emerald-600 mt-2">+{fmt(totalMoneyIn)}</p>
+                    <p className="text-[11px] text-ink-subtle mt-1">Cash + Bank received</p>
+                </div>
+                <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-5">
+                    <div className="flex items-center gap-2 text-xs font-bold text-ink-subtle uppercase tracking-wider">
+                        <TrendingDown size={14} className="text-rose-500" /> Total Money Out
+                    </div>
+                    <p className="text-2xl font-black text-rose-600 mt-2">-{fmt(totalMoneyOut)}</p>
+                    <p className="text-[11px] text-ink-subtle mt-1">Cash + Bank paid out</p>
+                </div>
+                <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-5">
+                    <div className="flex items-center gap-2 text-xs font-bold text-ink-subtle uppercase tracking-wider">
+                        <Wallet size={14} className="text-ink-subtle" /> Cash Balance
+                    </div>
+                    <p className="text-2xl font-black text-ink mt-2">{fmt(totals.closing_cash_balance)}</p>
+                    <p className="text-[11px] text-ink-subtle mt-1">At end of range</p>
+                </div>
+                <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-5">
+                    <div className="flex items-center gap-2 text-xs font-bold text-ink-subtle uppercase tracking-wider">
+                        <Landmark size={14} className="text-ink-subtle" /> Bank Balance
+                    </div>
+                    <p className="text-2xl font-black text-ink mt-2">{fmt(totals.closing_bank_balance)}</p>
+                    <p className="text-[11px] text-ink-subtle mt-1">At end of range</p>
+                </div>
+            </div>
+
+            <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-hairline">
+                    <h3 className="font-extrabold text-ink">Day Book Entries</h3>
+                    <p className="text-xs text-ink-subtle mt-0.5">Cash and Bank transactions from {fromLabel} to {toLabel}</p>
+                </div>
+                {range.entries.length === 0 ? (
+                    <div className="p-16 text-center text-ink-subtle text-sm">
+                        <AlertCircle size={24} className="mx-auto mb-2 opacity-50" />
+                        No entries were logged in this range.
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr className="bg-surface-muted border-b border-hairline">
+                                    <th className="px-6 py-3 font-bold text-ink-subtle w-24">Date &amp; Time</th>
+                                    <th className="px-6 py-3 font-bold text-ink-subtle w-20">Source</th>
+                                    <th className="px-6 py-3 font-bold text-ink-subtle w-32">Category</th>
+                                    <th className="px-6 py-3 font-bold text-ink-subtle">Description</th>
+                                    <th className="px-6 py-3 font-bold text-ink-subtle w-32">Responsible Name</th>
+                                    <th className="px-6 py-3 font-bold text-ink-subtle text-right w-36">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-hairline">
+                                {[...range.entries].sort((a, b) => b.created_at.localeCompare(a.created_at)).map(e => {
+                                    const cash = isSourceCash(e.type)
+                                    const isIn = e.type === 'cash_in' || e.type === 'bank_in'
+                                    return (
+                                        <tr key={e.id} className="hover:bg-surface-muted transition-colors">
+                                            <td className="px-6 py-4 text-ink-subtle font-semibold">
+                                                <div>{timeStr(e.created_at)}</div>
+                                                <div className="text-[10px] text-ink-subtle font-bold">
+                                                    {entryDateStr(e.session_date ? `${e.session_date}T00:00:00` : e.created_at, calendar)}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${cash ? 'bg-surface-muted text-ink-subtle' : 'bg-cyan-50 text-cyan-700'}`}>
+                                                    {cash ? 'Cash' : 'Bank'}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border uppercase ${CATEGORY_COLORS[e.category] || 'bg-surface-muted text-ink-subtle border-hairline'}`}>
+                                                    {CATEGORY_LABELS[e.category] || e.category}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 font-bold text-ink">
+                                                {formatDescription(e.description)}
+                                                {e.bank_name && <span className="block text-[10px] text-ink-subtle font-bold mt-0.5">Bank: {e.bank_name}</span>}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider block">{isIn ? 'Collected by' : 'Given by'}</span>
+                                                <span className="text-xs font-bold text-ink">{e.created_by_name || 'Unknown'}</span>
+                                            </td>
+                                            <td className={`px-6 py-4 text-right font-extrabold text-sm ${isIn ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                {isIn ? '+' : '-'}{fmt(e.amount)}
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-hairline">
+                    <h3 className="font-extrabold text-ink">Summary</h3>
+                    <p className="text-xs text-ink-subtle mt-0.5">Cash and Bank breakdown from {fromLabel} to {toLabel}</p>
+                </div>
+                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-ink-subtle font-semibold">Cash In</span>
+                            <span className="font-extrabold text-emerald-600">+{fmt(totals.total_cash_in)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-ink-subtle font-semibold">Bank In</span>
+                            <span className="font-extrabold text-emerald-600">+{fmt(totals.total_bank_in)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm pt-2.5 border-t border-hairline">
+                            <span className="text-ink font-extrabold">Total Money In</span>
+                            <span className="font-black text-emerald-600">+{fmt(totalMoneyIn)}</span>
+                        </div>
+                    </div>
+                    <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-ink-subtle font-semibold">Cash Out</span>
+                            <span className="font-extrabold text-rose-600">-{fmt(totals.total_cash_out)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-ink-subtle font-semibold">Bank Out</span>
+                            <span className="font-extrabold text-rose-600">-{fmt(totals.total_bank_out)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm pt-2.5 border-t border-hairline">
+                            <span className="text-ink font-extrabold">Total Money Out</span>
+                            <span className="font-black text-rose-600">-{fmt(totalMoneyOut)}</span>
+                        </div>
+                    </div>
+                </div>
+                <div className="px-5 pb-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-ink-subtle font-semibold">Opening Cash</span>
+                            <span className="font-extrabold text-ink">{fmt(totals.opening_cash_balance)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-ink-subtle font-semibold">Opening Bank</span>
+                            <span className="font-extrabold text-ink">{fmt(totals.opening_bank_balance)}</span>
+                        </div>
+                    </div>
+                    <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-ink-subtle font-semibold">Closing Cash</span>
+                            <span className="font-extrabold text-ink">{fmt(totals.closing_cash_balance)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-ink-subtle font-semibold">Closing Bank</span>
+                            <span className="font-extrabold text-ink">{fmt(totals.closing_bank_balance)}</span>
+                        </div>
+                    </div>
+                </div>
+                <div className="px-5 pb-5">
+                    <div className="rounded-xl bg-surface-muted border border-hairline p-4 flex items-center justify-between">
+                        <span className="text-sm font-extrabold text-ink">Net Change</span>
+                        <span className={`text-lg font-black ${netChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {netChange >= 0 ? '+' : '-'}{fmt(Math.abs(netChange))}
+                        </span>
+                    </div>
+                    <div className="rounded-xl bg-ink p-4 flex items-center justify-between mt-3">
+                        <span className="text-sm font-extrabold text-surface">Combined Closing Balance (Cash + Bank)</span>
+                        <span className="text-lg font-black text-surface">{fmt(combinedClosing)}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 export default function DayBookClient({ session, entries, totals, todayDate, selectedDate }: DayBookClientProps) {
     const [ledgerTab, setLedgerTab] = useState<'in' | 'out'>('in')
     const router = useRouter()
@@ -130,6 +449,15 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
         startNavigating(() => router.push(`/admin/day-book?date=${iso}`))
     }
 
+    // Picking two different ends switches the page to the aggregated range
+    // statement (DayBookRangeView, chosen server-side in page.tsx); picking
+    // the same day on both ends is equivalent to goToDate.
+    const goToRange = (next: { from: string | null; to: string | null }) => {
+        if (!next.from || !next.to) return
+        if (next.from === next.to) return goToDate(next.from)
+        startNavigating(() => router.push(`/admin/day-book?from=${next.from}&to=${next.to}`))
+    }
+
     const moneyInEntries  = entries.filter(e => e.type === 'cash_in' || e.type === 'bank_in')
     const moneyOutEntries = entries.filter(e => e.type === 'cash_out' || e.type === 'bank_out')
 
@@ -139,6 +467,7 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
         { key: 'type', label: 'Type' },
         { key: 'category', label: 'Category' },
         { key: 'description', label: 'Description' },
+        { key: 'by', label: 'Responsible Name' },
         { key: 'amount', label: 'Amount', align: 'right' as const },
     ]
 
@@ -158,6 +487,7 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
             type: (e.type === 'cash_in' || e.type === 'bank_in') ? 'IN' : 'OUT',
             category: CATEGORY_LABELS[e.category] || e.category,
             description: formatDescription(e.description) + (e.bank_name ? ` (Bank: ${e.bank_name})` : ''),
+            by: e.created_by_name || 'Unknown',
             amount: ((e.type === 'cash_in' || e.type === 'bank_in') ? '+' : '-') + fmt(e.amount),
         }))
 
@@ -259,24 +589,21 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
                 )}
             </div>
 
-            {/* Day picker — the whole page reads from whichever day is chosen here. */}
+            {/* Day picker — the whole page reads from whichever day (or range) is
+                chosen here. Prev/next still step one day at a time; picking two
+                different ends in the range fields switches to the aggregated
+                statement view instead (DayBookRangeView, chosen in page.tsx). */}
             <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-3 flex items-center gap-2 flex-wrap print:hidden">
                 <button
                     onClick={() => goToDate(shiftIsoDate(selectedDate, -1))}
                     disabled={navigating}
                     aria-label="Previous day"
-                    className="p-2 rounded-xl border border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors disabled:opacity-40"
+                    className="p-2 rounded-xl border border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors disabled:opacity-40 shrink-0"
                 >
                     <ChevronLeft size={15} />
                 </button>
-                <div className="w-56">
-                    <NepaliDateInput
-                        value={selectedDate}
-                        onChange={goToDate}
-                        disabled={navigating}
-                        aria-label="Day Book date"
-                        className="px-3 py-2 rounded-xl text-xs font-semibold"
-                    />
+                <div className="flex-1 min-w-[16rem]">
+                    <DateRangePicker from={selectedDate} to={selectedDate} onChange={goToRange} allowAll={false} />
                 </div>
                 <button
                     // Tomorrow has no book yet, and stepping into it would only ever
@@ -284,7 +611,7 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
                     onClick={() => goToDate(shiftIsoDate(selectedDate, 1))}
                     disabled={navigating || isToday || selectedDate >= todayDate}
                     aria-label="Next day"
-                    className="p-2 rounded-xl border border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors disabled:opacity-40"
+                    className="p-2 rounded-xl border border-hairline text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors disabled:opacity-40 shrink-0"
                 >
                     <ChevronRight size={15} />
                 </button>
@@ -292,7 +619,7 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
                     <button
                         onClick={() => startNavigating(() => router.push('/admin/day-book'))}
                         disabled={navigating}
-                        className="px-3 py-2 rounded-xl text-xs font-extrabold bg-surface-muted text-ink-muted hover:text-ink transition-colors disabled:opacity-40"
+                        className="px-3 py-2 rounded-xl text-xs font-extrabold bg-surface-muted text-ink-muted hover:text-ink transition-colors disabled:opacity-40 shrink-0"
                     >
                         Back to today
                     </button>
@@ -413,6 +740,7 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
                                                 <th className="px-6 py-3 font-bold text-ink-subtle w-20">Source</th>
                                                 <th className="px-6 py-3 font-bold text-ink-subtle w-32">Category</th>
                                                 <th className="px-6 py-3 font-bold text-ink-subtle">Description</th>
+                                                <th className="px-6 py-3 font-bold text-ink-subtle w-32">Responsible Name</th>
                                                 <th className="px-6 py-3 font-bold text-ink-subtle text-right w-36">Amount</th>
                                             </tr>
                                         </thead>
@@ -444,6 +772,9 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
                                                             {e.bank_name && (
                                                                 <span className="block text-[10px] text-ink-subtle font-bold mt-0.5">Bank: {e.bank_name}</span>
                                                             )}
+                                                        </td>
+                                                        <td className="px-6 py-4 font-bold text-ink">
+                                                            {e.created_by_name || 'Unknown'}
                                                         </td>
                                                         <td className={`px-6 py-4 text-right font-extrabold text-sm ${isIn ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                             {isIn ? '+' : '-'}{fmt(e.amount)}

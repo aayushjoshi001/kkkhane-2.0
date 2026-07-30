@@ -2,11 +2,11 @@
 
 import { useState, useMemo, useRef } from 'react'
 import {
-    TrendingUp, TrendingDown, Trash2, Plus, X,
+    TrendingUp, TrendingDown, Plus, X,
     Search, Loader2, ArrowRightLeft, FileText, User,
     Download, Printer
 } from 'lucide-react'
-import { createCategoryAction, deleteCategoryAction, createEntryAction, deleteEntryAction } from './actions'
+import { createCategoryAction, deleteCategoryAction, createEntryAction } from './actions'
 import { toast } from 'react-hot-toast'
 import { formatCurrency, parseExpenseDescription, orderCategoriesForDisplay, findMainCategory } from '@/lib/utils'
 import { NST_OFFSET_MS } from '@/lib/timezone'
@@ -15,6 +15,7 @@ import PrintableReport, { type PrintableReportHandle } from '@/components/admin/
 import { useDateFormatter } from '@/lib/contexts/FeatureContext'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
+import { DateRangePicker, type DateRange } from '@/components/ui/DateRangePicker'
 
 interface Category {
     id: string
@@ -39,6 +40,7 @@ interface IncomeEntry {
     category_id: string
     income_categories: Category | null
     bank_accounts: BankAccount | null
+    created_by_name?: string | null
 }
 
 interface ExpenseEntry {
@@ -50,6 +52,7 @@ interface ExpenseEntry {
     category_id: string
     expense_categories: Category | null
     bank_accounts: BankAccount | null
+    created_by_name?: string | null
 }
 interface IncomeExpensesManagerProps {
     initialIncomeCategories: Category[]
@@ -113,33 +116,17 @@ export default function IncomeExpensesManager({
     // List tab and filters
     const listTab = viewMode
     const [searchQuery, setSearchQuery] = useState('')
-    const [timeFilter, setTimeFilter] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all')
+    const [dateRange, setDateRange] = useState<DateRange>({ from: null, to: null })
     const [selectedIncomeCat, setSelectedIncomeCat] = useState<string>('all')
     const [selectedExpenseCat, setSelectedExpenseCat] = useState<string>('all')
 
     // Time-range filtered entries (aligned to Nepal Standard Time boundaries)
     const timeFilteredEntries = useMemo(() => {
-        const now = new Date()
-        const nowNst = new Date(now.getTime() + NST_OFFSET_MS)
-
-        // Reset hours for comparison boundaries in NST
-        const startOfToday = new Date(nowNst.getFullYear(), nowNst.getMonth(), nowNst.getDate())
-        
-        const currentDay = nowNst.getDay() // 0 = Sunday, 1 = Monday, etc.
-        const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay
-        const startOfWeek = new Date(nowNst.getFullYear(), nowNst.getMonth(), nowNst.getDate() + diffToMonday)
-        
-        const startOfMonth = new Date(nowNst.getFullYear(), nowNst.getMonth(), 1)
-        const startOfYear = new Date(nowNst.getFullYear(), 0, 1)
-
         const filterFn = (createdAtStr: string) => {
-            const entryDate = new Date(createdAtStr)
-            const entryDateNst = new Date(entryDate.getTime() + NST_OFFSET_MS)
-            
-            if (timeFilter === 'today') return entryDateNst >= startOfToday
-            if (timeFilter === 'week') return entryDateNst >= startOfWeek
-            if (timeFilter === 'month') return entryDateNst >= startOfMonth
-            if (timeFilter === 'year') return entryDateNst >= startOfYear
+            if (!dateRange.from && !dateRange.to) return true
+            const entryDateNst = new Date(new Date(createdAtStr).getTime() + NST_OFFSET_MS).toISOString().slice(0, 10)
+            if (dateRange.from && entryDateNst < dateRange.from) return false
+            if (dateRange.to && entryDateNst > dateRange.to) return false
             return true
         }
 
@@ -147,7 +134,7 @@ export default function IncomeExpensesManager({
             income: incomeEntries.filter(e => filterFn(e.created_at)),
             expenses: expenses.filter(e => filterFn(e.created_at))
         }
-    }, [incomeEntries, expenses, timeFilter])
+    }, [incomeEntries, expenses, dateRange])
 
     // Calculations
     const totalIncome = useMemo(() => {
@@ -331,28 +318,6 @@ export default function IncomeExpensesManager({
         }
     }
 
-    // Delete entry handler
-    const handleDeleteEntry = async (id: string, type: 'income' | 'expense') => {
-        const ok = await confirm({ title: `Are you sure you want to delete this ${type} entry?`, message: 'This action cannot be undone.', confirmText: 'Delete', isDestructive: true })
-        if (!ok) return
-
-        try {
-            const res = await deleteEntryAction(id, type)
-            if (res.error) {
-                toast.error(res.error)
-            } else {
-                if (type === 'income') {
-                    setIncomeEntries(prev => prev.filter(e => e.id !== id))
-                } else {
-                    setExpenses(prev => prev.filter(e => e.id !== id))
-                }
-                toast.success('Entry deleted')
-            }
-        } catch (err) {
-            toast.error(err instanceof Error ? err.message : 'Failed to delete entry')
-        }
-    }
-
     // Delete category handler
     const handleDeleteCategory = async (id: string) => {
         const catList = activeTab === 'income' ? incomeCategories : expenseCategories
@@ -417,6 +382,7 @@ export default function IncomeExpensesManager({
         { key: 'payment', label: 'Payment' },
         { key: 'description', label: 'Description' },
         { key: 'amount', label: 'Amount', align: 'right' as const },
+        { key: 'by', label: 'Responsible Name' },
     ]
     const expenseReportColumns = [
         { key: 'date', label: 'Date', dateStacked: true },
@@ -425,6 +391,7 @@ export default function IncomeExpensesManager({
         { key: 'payment', label: 'Payment' },
         { key: 'description', label: 'Description' },
         { key: 'amount', label: 'Amount', align: 'right' as const },
+        { key: 'by', label: 'Responsible Name' },
     ]
     const reportColumns = listTab === 'income' ? incomeReportColumns : expenseReportColumns
     const reportRows = listTab === 'income'
@@ -434,6 +401,7 @@ export default function IncomeExpensesManager({
             payment: item.bank_accounts ? item.bank_accounts.name : (/on credit|credit/i.test(item.description || '') ? 'Credit' : 'Cash'),
             description: parseExpenseDescription(item.description).text_desc,
             amount: formatCurrency(item.amount),
+            by: item.created_by_name || 'Unknown',
         }))
         : filteredExpenses.map(item => ({
             date: formatDate(item.created_at),
@@ -442,6 +410,7 @@ export default function IncomeExpensesManager({
             payment: item.bank_accounts ? item.bank_accounts.name : 'Cash',
             description: parseExpenseDescription(item.description).text_desc,
             amount: formatCurrency(item.amount),
+            by: item.created_by_name || 'Unknown',
         }))
     const handleExportCsv = () => downloadCsv(`${listTab}-log`, reportColumns, reportRows)
 
@@ -458,27 +427,7 @@ export default function IncomeExpensesManager({
                     </div>
                     
                     {/* Time Filter Controls */}
-                    <div className="flex flex-wrap gap-1.5 bg-surface-muted/40 p-1.5 border border-hairline rounded-xl">
-                        {(['all', 'today', 'week', 'month', 'year'] as const).map(f => {
-                            const labels = {
-                                all: 'All Time',
-                                today: 'Today',
-                                week: 'This Week',
-                                month: 'This Month',
-                                year: 'This Year'
-                            }
-                            return (
-                                <button
-                                    key={f}
-                                    type="button"
-                                    onClick={() => setTimeFilter(f)}
-                                    className={`px-3 py-1.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${timeFilter === f ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted'}`}
-                                >
-                                    {labels[f]}
-                                </button>
-                            )
-                        })}
-                    </div>
+                    <DateRangePicker from={dateRange.from} to={dateRange.to} onChange={setDateRange} className="w-full sm:w-auto sm:max-w-xl" />
                 </div>
             </div>
 
@@ -626,7 +575,7 @@ export default function IncomeExpensesManager({
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline w-28 font-bold">Payment</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline">Description</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle text-right border-r border-hairline w-32">Amount</th>
-                                            <th className="px-4 py-3 font-bold text-ink-subtle w-16 text-center">Actions</th>
+                                            <th className="px-4 py-3 font-bold text-ink-subtle w-32">Responsible Name</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-hairline">
@@ -661,15 +610,7 @@ export default function IncomeExpensesManager({
                                                 <td className="px-4 py-3 text-right font-black border-r border-hairline text-emerald-600 text-sm whitespace-nowrap">
                                                     {formatCurrency(item.amount)}
                                                 </td>
-                                                <td className="px-4 py-3 text-center">
-                                                    <button
-                                                        onClick={() => handleDeleteEntry(item.id, 'income')}
-                                                        className="p-1.5 hover:bg-rose-50 hover:text-rose-600 border border-transparent hover:border-rose-100 rounded-lg text-ink-subtle transition-all focus-ring"
-                                                        title="Delete entry"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                </td>
+                                                <td className="px-4 py-3 font-bold text-ink">{item.created_by_name || 'Unknown'}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -692,7 +633,7 @@ export default function IncomeExpensesManager({
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline w-28 font-bold">Payment</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle border-r border-hairline">Description</th>
                                             <th className="px-4 py-3 font-bold text-ink-subtle text-right border-r border-hairline w-32">Amount</th>
-                                            <th className="px-4 py-3 font-bold text-ink-subtle w-16 text-center">Actions</th>
+                                            <th className="px-4 py-3 font-bold text-ink-subtle w-32">Responsible Name</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-hairline">
@@ -721,15 +662,7 @@ export default function IncomeExpensesManager({
                                                 <td className="px-4 py-3 text-right font-black border-r border-hairline text-rose-600 text-sm whitespace-nowrap">
                                                     {formatCurrency(item.amount)}
                                                 </td>
-                                                <td className="px-4 py-3 text-center">
-                                                    <button
-                                                        onClick={() => handleDeleteEntry(item.id, 'expense')}
-                                                        className="p-1.5 hover:bg-rose-50 hover:text-rose-600 border border-transparent hover:border-rose-100 rounded-lg text-ink-subtle transition-all focus-ring"
-                                                        title="Delete entry"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                </td>
+                                                <td className="px-4 py-3 font-bold text-ink">{item.created_by_name || 'Unknown'}</td>
                                             </tr>
                                         ))}
                                     </tbody>

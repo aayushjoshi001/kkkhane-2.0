@@ -2,13 +2,30 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Filter, Calendar, ChevronUp, ChevronDown, ShoppingBag, Loader2, AlertTriangle, RotateCcw, X } from 'lucide-react'
+import { Filter, Calendar, ChevronUp, ChevronDown, ShoppingBag, Loader2, AlertTriangle, RotateCcw, X, LogIn, LogOut, Percent, Landmark, Banknote, QrCode, CreditCard } from 'lucide-react'
 import type { Booking, Room, BookingStatus } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
-import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { useDates } from '@/lib/contexts/CalendarContext'
 import Select from '@/components/ui/Select'
 import DateCell from '@/components/ui/DateCell'
+import { DateRangePicker, type DateRange } from '@/components/ui/DateRangePicker'
 import { getBookingCustomPrice, getItemDisplayName } from '@/lib/utils'
+
+interface BookingSummary {
+    checked_in_at: string | null
+    checked_in_by: string | null
+    checked_out_at: string | null
+    checked_out_by: string | null
+    room_discount_amount: number
+    room_discount_reason: string | null
+    food_discount_amount: number
+    service_charge_amount: number
+    cash_advance: number
+    cash_settlement: number
+    qr_advance: number
+    qr_settlement: number
+    credit_settlement: number
+}
 
 interface BookingsClientProps {
     initialBookings: Booking[]
@@ -22,6 +39,8 @@ interface BookingsClientProps {
 function BookingHistoryCard({ booking }: { booking: Booking }) {
     const [loading, setLoading] = useState(true)
     const [orderItems, setOrderItems] = useState<any[]>([])
+    const [summary, setSummary] = useState<BookingSummary | null>(null)
+    const { formatDateTime } = useDates()
 
     useEffect(() => {
         let isMounted = true
@@ -33,6 +52,7 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                     const data = await res.json()
                     if (isMounted) {
                         setOrderItems(data.items || [])
+                        setSummary(data.booking || null)
                     }
                 }
             } catch (err) {
@@ -56,19 +76,32 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
     const rawNightlyRate = getBookingCustomPrice(booking)
         || Number((booking as any).rooms?.room_types?.base_price || 0)
     const roomBill = rawNightlyRate > 0 ? rawNightlyRate * nights : Number(booking.total_amount || 0)
-    
+
     // Food & Beverage Bill sum from all linked orders (QR, Waiter, Cashier)
     const foodBill = orderItems.reduce((sum, item) => sum + (Number(item.unit_price || 0) * (item.quantity || 1)), 0)
 
+    // Subtotal is the raw room + food charge, before any discount is taken off
+    // or service charge added on top.
+    const subtotal = roomBill + foodBill
     const isCheckedOut = booking.status === 'checked_out'
-    const grandTotal = isCheckedOut ? Number(booking.total_amount || (roomBill + foodBill)) : (roomBill + foodBill)
+    // Once checked out, booking.total_amount is the authoritative figure the
+    // checkout route computed (discount subtracted, service charge + tax
+    // added). Still in house, this is only an estimate from what's known so far.
+    const totalDiscount = (summary?.room_discount_amount ?? 0) + (summary?.food_discount_amount ?? 0)
+    const grandTotal = isCheckedOut
+        ? Number(booking.total_amount || subtotal)
+        : Math.max(0, subtotal - totalDiscount + (summary?.service_charge_amount ?? 0))
     const totalPaid = Number(booking.paid_amount || 0)
     const netBalance = isCheckedOut ? 0 : Math.max(0, grandTotal - totalPaid)
+    // Advance collected beyond the running bill — Math.max above floors this
+    // to 0 in netBalance itself, so it has to be tracked separately or an
+    // overpayment silently reads identically to an exact "Fully Paid".
+    const overpaid = isCheckedOut ? 0 : Math.max(0, totalPaid - grandTotal)
 
     return (
-        <div className="p-6 bg-surface-muted/30 border-t border-b border-hairline space-y-6 animate-fade-down">
+        <div className="p-6 bg-brand-50/30 border-t-2 border-b-2 border-brand-200 space-y-6 animate-fade-down">
             {/* Unified Room & Order Detail Bill */}
-            <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden divide-y divide-hairline">
+            <div className="bg-surface rounded-2xl border-2 border-brand-200/70 shadow-lg overflow-hidden divide-y divide-hairline">
                 
                 {/* Header: Guest & Room Info */}
                 <div className="p-5 bg-surface-muted/50 flex flex-wrap items-center justify-between gap-4">
@@ -96,37 +129,157 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                 </div>
 
                 {/* Financial Summary Breakdown */}
-                <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4 bg-surface">
-                    <div className="p-3.5 rounded-xl bg-surface-muted/40 border border-hairline space-y-1">
-                        <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Room Stay Bill</span>
-                        <div className="text-base font-extrabold text-ink tabular-nums">Rs. {roomBill.toFixed(2)}</div>
-                        <span className="text-[10px] text-ink-subtle block font-semibold">{nights} night(s) {rawNightlyRate > 0 ? `@ Rs.${rawNightlyRate}/night` : ''}</span>
+                <div className="p-3.5 grid grid-cols-3 md:grid-cols-5 gap-2 bg-surface">
+                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline space-y-0.5">
+                        <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider block truncate">Room Bill</span>
+                        <div className="text-xs font-extrabold text-ink tabular-nums">Rs. {roomBill.toFixed(2)}</div>
+                        <span className="text-[9px] text-ink-subtle block font-semibold truncate">{nights}n {rawNightlyRate > 0 ? `@ Rs.${rawNightlyRate}` : ''}</span>
                     </div>
 
-                    <div className="p-3.5 rounded-xl bg-surface-muted/40 border border-hairline space-y-1">
-                        <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Food & Drink Bill</span>
-                        <div className="text-base font-extrabold text-ink tabular-nums">Rs. {foodBill.toFixed(2)}</div>
-                        <span className="text-[10px] text-ink-subtle block font-semibold">{orderItems.length} ordered dish item(s)</span>
+                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline space-y-0.5">
+                        <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider block truncate">Food & Drink</span>
+                        <div className="text-xs font-extrabold text-ink tabular-nums">Rs. {foodBill.toFixed(2)}</div>
+                        <span className="text-[9px] text-ink-subtle block font-semibold truncate">{orderItems.length} item(s)</span>
                     </div>
 
-                    <div className="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-100 space-y-1">
-                        <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
-                            {isCheckedOut ? 'Total Settled Payment' : 'Advance Payment Received'}
-                        </span>
-                        <div className="text-base font-extrabold text-emerald-700 tabular-nums">Rs. {totalPaid.toFixed(2)}</div>
-                        <span className="text-[10px] text-emerald-600 block font-semibold">
-                            {isCheckedOut ? 'Paid at Checkout' : 'Advance Deposit'}
-                        </span>
+                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline space-y-0.5">
+                        <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider block truncate">Subtotal</span>
+                        <div className="text-xs font-extrabold text-ink tabular-nums">Rs. {subtotal.toFixed(2)}</div>
+                        <span className="text-[9px] text-ink-subtle block font-semibold truncate">Room + Food</span>
                     </div>
 
-                    <div className={`p-3.5 rounded-xl border space-y-1 ${netBalance > 0 ? 'bg-rose-50/50 border-rose-100' : 'bg-emerald-50/50 border-emerald-100'}`}>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">Net Balance Due</span>
-                        <div className={`text-base font-black tabular-nums ${netBalance > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                            Rs. {netBalance.toFixed(2)}
+                    <div className="p-2 rounded-lg bg-brand-50/60 border border-brand-100 space-y-0.5">
+                        <span className="text-[9px] font-bold text-brand-700 uppercase tracking-wider block truncate">Grand Total</span>
+                        <div className="text-xs font-black text-brand-700 tabular-nums">Rs. {grandTotal.toFixed(2)}</div>
+                        <span className="text-[9px] text-brand-600 block font-semibold truncate">After disc. + charge</span>
+                    </div>
+
+                    {(() => {
+                        const creditOutstanding = summary?.credit_settlement ?? 0
+                        // "Settled" alone would read as "nothing owed" right next to
+                        // the Credit box saying the opposite — this booking is closed
+                        // either way, but a credit portion is still real, uncollected
+                        // money on the Customers Ledger, not on this booking.
+                        const stillOnCredit = isCheckedOut && creditOutstanding > 0
+                        const isOverpaid = !isCheckedOut && netBalance === 0 && overpaid > 0
+                        return (
+                            <div className={`p-2 rounded-lg border space-y-0.5 ${netBalance > 0 ? 'bg-rose-50/50 border-rose-100' : stillOnCredit ? 'bg-amber-50/50 border-amber-100' : isOverpaid ? 'bg-blue-50/50 border-blue-100' : 'bg-emerald-50/50 border-emerald-100'}`}>
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-ink-subtle block truncate">Net Due</span>
+                                <div className={`text-xs font-black tabular-nums ${netBalance > 0 ? 'text-rose-600' : stillOnCredit ? 'text-amber-700' : isOverpaid ? 'text-blue-700' : 'text-emerald-700'}`}>
+                                    Rs. {netBalance.toFixed(2)}
+                                </div>
+                                <span className="text-[9px] font-semibold block text-ink-subtle truncate">
+                                    {isCheckedOut
+                                        ? (stillOnCredit ? `Settled — Rs. ${creditOutstanding.toFixed(2)} on credit` : 'Settled')
+                                        : (netBalance > 0 ? 'Pending' : isOverpaid ? `Rs. ${overpaid.toFixed(2)} credit balance (overpaid)` : 'Fully Paid')}
+                                </span>
+                            </div>
+                        )
+                    })()}
+                </div>
+
+                {/* Check-In / Check-Out Attribution — automatic, never hand-typed.
+                    checked_in_by/at and checked_out_by(cashier_id)/at are stamped
+                    server-side the moment the status actually changes. */}
+                <div className="p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-2 bg-surface">
+                    <div className="p-2 rounded-lg bg-blue-50/50 border border-blue-100 flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                            <LogIn size={12} />
                         </div>
-                        <span className="text-[10px] font-semibold block text-ink-subtle">
-                            {isCheckedOut ? 'Fully Settled & Checked Out' : (netBalance > 0 ? 'Pending at Checkout' : 'Fully Paid')}
+                        <div className="min-w-0">
+                            <span className="text-[9px] font-bold text-blue-800 uppercase tracking-wider block">Checked In — Cashier</span>
+                            {loading ? (
+                                <div className="text-[11px] text-ink-subtle font-semibold">Loading...</div>
+                            ) : (
+                                <div className="flex items-baseline gap-1.5 truncate">
+                                    <span className="text-xs font-extrabold text-ink truncate">{summary?.checked_in_by || 'Unknown'}</span>
+                                    <span className="text-[9px] text-ink-subtle font-semibold whitespace-nowrap">
+                                        {summary?.checked_in_at ? formatDateTime(summary.checked_in_at) : 'not yet'}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-surface-muted text-ink-subtle flex items-center justify-center shrink-0">
+                            <LogOut size={12} />
+                        </div>
+                        <div className="min-w-0">
+                            <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider block">Checked Out — Cashier</span>
+                            {loading ? (
+                                <div className="text-[11px] text-ink-subtle font-semibold">Loading...</div>
+                            ) : summary?.checked_out_at ? (
+                                <div className="flex items-baseline gap-1.5 truncate">
+                                    <span className="text-xs font-extrabold text-ink truncate">{summary.checked_out_by || 'Unknown'}</span>
+                                    <span className="text-[9px] text-ink-subtle font-semibold whitespace-nowrap">{formatDateTime(summary.checked_out_at)}</span>
+                                </div>
+                            ) : (
+                                <span className="text-[11px] text-ink-subtle font-semibold">Still in house</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Payment & Charges Breakdown */}
+                <div className="p-3.5 grid grid-cols-2 md:grid-cols-5 gap-2 bg-surface">
+                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline space-y-0.5">
+                        <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider flex items-center gap-1 truncate">
+                            <Percent size={10} /> Discount — Rs. {totalDiscount.toFixed(2)}
                         </span>
+                        <div className="flex items-center justify-between text-[10px] font-bold text-ink">
+                            <span className="text-ink-subtle">Room</span>
+                            <span className="tabular-nums">Rs. {(summary?.room_discount_amount ?? 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] font-bold text-ink">
+                            <span className="text-ink-subtle">Food</span>
+                            <span className="tabular-nums">Rs. {(summary?.food_discount_amount ?? 0).toFixed(2)}</span>
+                        </div>
+                        <span className="text-[9px] text-ink-subtle block font-semibold truncate">{summary?.room_discount_reason || 'No room discount reason'}</span>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-surface-muted/40 border border-hairline space-y-0.5">
+                        <span className="text-[9px] font-bold text-ink-subtle uppercase tracking-wider flex items-center gap-1 truncate">
+                            <Landmark size={10} /> Service Charge
+                        </span>
+                        <div className="text-xs font-extrabold text-ink tabular-nums">Rs. {(summary?.service_charge_amount ?? 0).toFixed(2)}</div>
+                        <span className="text-[9px] text-ink-subtle block font-semibold truncate">Charged on stay</span>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-emerald-50/50 border border-emerald-100 space-y-0.5">
+                        <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1 truncate">
+                            <Banknote size={10} /> Cash — Rs. {((summary?.cash_advance ?? 0) + (summary?.cash_settlement ?? 0)).toFixed(2)}
+                        </span>
+                        <div className="flex items-center justify-between text-[10px] font-bold text-emerald-800">
+                            <span className="text-emerald-600">Advance</span>
+                            <span className="tabular-nums">Rs. {(summary?.cash_advance ?? 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] font-bold text-emerald-800">
+                            <span className="text-emerald-600">Checkout</span>
+                            <span className="tabular-nums">Rs. {(summary?.cash_settlement ?? 0).toFixed(2)}</span>
+                        </div>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-emerald-50/50 border border-emerald-100 space-y-0.5">
+                        <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1 truncate">
+                            <QrCode size={10} /> QR — Rs. {((summary?.qr_advance ?? 0) + (summary?.qr_settlement ?? 0)).toFixed(2)}
+                        </span>
+                        <div className="flex items-center justify-between text-[10px] font-bold text-emerald-800">
+                            <span className="text-emerald-600">Advance</span>
+                            <span className="tabular-nums">Rs. {(summary?.qr_advance ?? 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] font-bold text-emerald-800">
+                            <span className="text-emerald-600">Checkout</span>
+                            <span className="tabular-nums">Rs. {(summary?.qr_settlement ?? 0).toFixed(2)}</span>
+                        </div>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-amber-50/50 border border-amber-100 space-y-0.5">
+                        <span className="text-[9px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1 truncate">
+                            <CreditCard size={10} /> Credit
+                        </span>
+                        <div className="text-xs font-extrabold text-amber-700 tabular-nums">Rs. {(summary?.credit_settlement ?? 0).toFixed(2)}</div>
+                        <span className="text-[9px] text-amber-600 block font-semibold truncate">Put on guest&apos;s account</span>
                     </div>
                 </div>
 
@@ -190,6 +343,7 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
     const router = useRouter()
     const [bookings, setBookings] = useState<Booking[]>(initialBookings)
     const [filterStatus, setFilterStatus] = useState<string>('all')
+    const [dateRange, setDateRange] = useState<DateRange>({ from: null, to: null })
     const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null)
     const searchParams = useSearchParams()
 
@@ -213,8 +367,6 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
         setExpandedBookingId(match.id)
     }, [deepLinkedId, bookings])
 
-    const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
-
     const [prevInitialBookings, setPrevInitialBookings] = useState(initialBookings)
     if (prevInitialBookings !== initialBookings) {
         setPrevInitialBookings(initialBookings)
@@ -222,7 +374,14 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
     }
 
     const filteredBookings = bookings.filter(b => {
-        return filterStatus === 'all' || b.status === filterStatus
+        if (filterStatus !== 'all' && b.status !== filterStatus) return false
+        // A stay is "in" the range if it overlaps it at all, not just if it
+        // starts inside it — a guest who checked in before `from` and is
+        // still checked out after it slept through every one of these
+        // nights and belongs in the list.
+        if (dateRange.from && b.check_out && b.check_out.slice(0, 10) < dateRange.from) return false
+        if (dateRange.to && b.check_in && b.check_in.slice(0, 10) > dateRange.to) return false
+        return true
     })
 
     // Internal status change — used for check-in and restore
@@ -303,38 +462,39 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
     return (
         <div className="space-y-6 pb-12 animate-fade-up">
             {/* Header section */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-ink tracking-tight">Bookings & Stays History</h1>
-                    <p className="text-sm text-ink-subtle mt-1">Guest reservation record and room order history chart.</p>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                    <button className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-brand-500/10 hover:scale-[1.01]">
-                        <Plus size={16} /> New Booking
-                    </button>
-                </div>
+            <div>
+                <h1 className="text-3xl font-extrabold text-ink tracking-tight">Bookings & Stays History</h1>
+                <p className="text-sm text-ink-subtle mt-1">Guest reservation record and room order history chart.</p>
             </div>
 
             {/* Filters */}
-            <div className="bg-surface p-4 border border-hairline rounded-[var(--r-lg)] flex flex-wrap items-center justify-between gap-4 shadow-sm">
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-ink-subtle px-1">
-                        <Filter size={16} /> Filters:
+            <div className="bg-surface p-4 border border-hairline rounded-[var(--r-lg)] shadow-sm space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-ink-subtle px-1">
+                            <Filter size={16} /> Filters:
+                        </div>
+                        <Select
+                            value={filterStatus}
+                            onChange={(e) => setFilterStatus(e.target.value)}
+                            className="px-3.5 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-semibold text-ink focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 cursor-pointer transition-all"
+                        >
+                            <option value="all">All Bookings</option>
+                            <option value="pending">Pending Reservations</option>
+                            <option value="checked_in">Checked In</option>
+                            <option value="checked_out">Checked Out</option>
+                            <option value="cancelled">Cancelled</option>
+                        </Select>
                     </div>
-                    <Select
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                        className="px-3.5 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-semibold text-ink focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 cursor-pointer transition-all"
-                    >
-                        <option value="all">All Bookings</option>
-                        <option value="pending">Pending Reservations</option>
-                        <option value="checked_in">Checked In</option>
-                        <option value="checked_out">Checked Out</option>
-                        <option value="cancelled">Cancelled</option>
-                    </Select>
+                    <div className="text-xs font-semibold text-ink-subtle uppercase tracking-wider">
+                        Showing {filteredBookings.length} of {bookings.length} reservations
+                    </div>
                 </div>
-                <div className="text-xs font-semibold text-ink-subtle uppercase tracking-wider">
-                    Showing {filteredBookings.length} of {bookings.length} reservations
+                <div className="pt-3 border-t border-hairline">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-ink-subtle px-1 mb-2">
+                        <Calendar size={16} /> Stay Date Range:
+                    </div>
+                    <DateRangePicker from={dateRange.from} to={dateRange.to} onChange={setDateRange} className="max-w-xl" />
                 </div>
             </div>
 
@@ -357,25 +517,26 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
                                     <th className="px-6 py-4 border-b border-hairline">Room</th>
                                     <th className="px-6 py-4 border-b border-hairline">Dates</th>
                                     <th className="px-6 py-4 border-b border-hairline">Status</th>
-                                    {irdSyncEnabled && (
-                                        <th className="px-6 py-4 border-b border-hairline">Charges</th>
-                                    )}
                                     <th className="px-6 py-4 border-b border-hairline text-right">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-hairline text-[14px]">
+                            {/* No blanket divide-y here — the border between a row and its
+                                own expanded panel is suppressed below so the two read as one
+                                attached block instead of two separate table rows. */}
+                            <tbody className="text-[14px]">
                                 {filteredBookings.map(b => {
                                     const roomNum = b.rooms?.room_number || '—'
-                                    const total = b.total_amount || 0.00
-                                    const paid = b.paid_amount || 0.00
-                                    const balance = total - paid
                                     const isExpanded = expandedBookingId === b.id
 
                                     return (
                                         <React.Fragment key={b.id}>
-                                            <tr 
+                                            <tr
                                                 onClick={() => setExpandedBookingId(prev => prev === b.id ? null : b.id)}
-                                                className={`group hover:bg-surface-muted/60 transition-colors cursor-pointer ${isExpanded ? 'bg-surface-muted/40' : ''}`}
+                                                className={`group hover:bg-surface-muted/60 transition-colors cursor-pointer ${
+                                                    isExpanded
+                                                        ? 'bg-brand-50/60 border-l-4 border-l-brand-500'
+                                                        : 'border-b border-hairline'
+                                                }`}
                                             >
                                                 <td className="px-6 py-4">
                                                     <div className="font-bold text-ink hover:text-brand-600 transition-colors flex items-center gap-2">
@@ -399,16 +560,6 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
                                                         {b.status}
                                                     </span>
                                                 </td>
-                                                {irdSyncEnabled && (
-                                                    <td className="px-6 py-4 font-semibold tabular">
-                                                        <div className="text-ink font-black">Rs. {total}</div>
-                                                        {balance > 0 ? (
-                                                            <div className="text-xs text-rose-500 font-bold mt-0.5">Due: Rs. {balance}</div>
-                                                        ) : (
-                                                            <div className="text-xs text-emerald-600 font-bold mt-0.5">Paid</div>
-                                                        )}
-                                                    </td>
-                                                )}
                                                 <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                                                     <div className="flex items-center justify-end gap-2">
                                                         <button
@@ -460,8 +611,8 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
                                                 </td>
                                             </tr>
                                             {isExpanded && (
-                                                <tr key={`${b.id}-expanded`}>
-                                                    <td colSpan={irdSyncEnabled ? 6 : 5} className="p-0">
+                                                <tr key={`${b.id}-expanded`} className="border-l-4 border-l-brand-500">
+                                                    <td colSpan={5} className="p-0">
                                                         <BookingHistoryCard booking={b} />
                                                     </td>
                                                 </tr>

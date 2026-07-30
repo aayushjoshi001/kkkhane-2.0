@@ -64,7 +64,9 @@ export default async function AnalyticsPage() {
             .gte('created_at', d30.toISOString())
     ])
 
-    // Top suppliers by spend
+    // Top suppliers by spend — the Resources ledger (Suppliers/Stock/Vouchers)
+    // records vendor_name on every expense, but nothing in Intelligence
+    // surfaced it until now.
     const { data: recentExpenses } = await supabase
         .from('expenses')
         .select('amount, vendor_name')

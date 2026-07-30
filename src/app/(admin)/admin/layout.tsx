@@ -18,6 +18,9 @@ import CalendarToggle from '@/components/shared/CalendarToggle'
 import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
 import { getNstDateString } from '@/lib/timezone'
 
+import { BusinessSessionProvider } from '@/lib/contexts/BusinessSessionContext'
+import BusinessGuard from '@/components/shared/BusinessGuard'
+
 export default async function AdminLayout({ children }: { children: ReactNode }) {
     // requireRole() uses the React.cache-wrapped getCurrentUser — no duplicate DB call
     // when the page also calls getCurrentUser().
@@ -66,9 +69,23 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         openSession = sessionData
     }
 
+    const sessionProp = openSession ? {
+        id: openSession.id,
+        date: openSession.date,
+        status: openSession.status as 'open' | 'closed',
+        opening_balance: Number(openSession.opening_balance),
+        opening_bank_balance: Number(openSession.opening_bank_balance)
+    } : null
+
     return (
         <FeatureProvider features={features}>
         <BusinessModeProvider mode={mode}>
+        <BusinessSessionProvider
+            initialSession={sessionProp}
+            userRole={roleNameRaw}
+            todayDate={todayDate}
+            restaurantId={currentUser.restaurantId || undefined}
+        >
             <SidebarProvider>
                 <div className="h-screen bg-canvas flex overflow-hidden">
                     <SessionSync userId={currentUser.id} />
@@ -86,18 +103,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                             <SidebarToggle isSuperAdmin={isSuperAdmin} />
                             <div className="flex items-center gap-3">
                                 {!isSuperAdmin && (
-                                    <BusinessSessionControl
-                                        initialSession={openSession ? {
-                                            id: openSession.id,
-                                            date: openSession.date,
-                                            status: openSession.status as 'open' | 'closed',
-                                            opening_balance: Number(openSession.opening_balance),
-                                            opening_bank_balance: Number(openSession.opening_bank_balance)
-                                        } : null}
-                                        userRole={roleNameRaw}
-                                        todayDate={todayDate}
-                                        variant="compact"
-                                    />
+                                    <BusinessSessionControl variant="compact" />
                                 )}
                                 <CalendarToggle />
                                 <CommandHint />
@@ -114,12 +120,19 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                         <CommandPaletteMount role={roleNameRaw} theme="light" />
                         <div className="flex-1 overflow-auto p-5 md:p-8">
                             <div className="max-w-6xl mx-auto">
-                                {children}
+                                {isSuperAdmin ? (
+                                    children
+                                ) : (
+                                    <BusinessGuard>
+                                        {children}
+                                    </BusinessGuard>
+                                )}
                             </div>
                         </div>
                     </main>
                 </div>
             </SidebarProvider>
+        </BusinessSessionProvider>
         </BusinessModeProvider>
         </FeatureProvider>
     )

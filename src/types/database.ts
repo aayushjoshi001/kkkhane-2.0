@@ -1022,6 +1022,17 @@ export interface Booking {
     service_charge_override?: number | null
     /** Staff member who settled this stay at checkout; null while in house. */
     cashier_id?: string | null
+    /** When the guest actually departed (settlement time). Null while in
+     *  house, and on stays checked out before this column existed. */
+    checked_out_at?: string | null
+    /** When the guest actually checked in (room handover). Null for a still-
+     *  pending reservation, and for stays checked in before this column
+     *  existed. Auto-stamped — never set by hand. */
+    checked_in_at?: string | null
+    /** Staff member who checked the guest in — the walk-in creator or
+     *  whoever clicked Check In. Null for anything checked in before this
+     *  column existed. Auto-stamped — never set by hand. */
+    checked_in_by?: string | null
     /** When this stay's bill was closed out. Stamped by every settlement, and
      *  kept at the first one if a stay settles more than once. Null means never
      *  settled — including a room that departed early and is still riding on a
