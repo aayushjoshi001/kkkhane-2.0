@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { ArrowLeft, User, LogOut, Star, Gift, History } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/server'
+import { round2 } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,8 +106,12 @@ export default async function CustomerProfilePage(props: { params: Promise<{ res
                     .single()
 
                 if (config && config.points_per_dollar) {
-                    const totalSpend = unclaimedOrders.reduce((sum, o) => sum + Number(o.total_amount), 0)
-                    const earnedPoints = Math.floor(totalSpend * config.points_per_dollar)
+                    // Rounded to paisa before the floor. A long sum of order
+                    // totals lands just under the round figure it displays as,
+                    // and flooring reads that as one point less — 10,000 spent
+                    // at 0.1/rupee credited 999 points instead of 1,000.
+                    const totalSpend = round2(unclaimedOrders.reduce((sum, o) => sum + Number(o.total_amount), 0))
+                    const earnedPoints = Math.floor(round2(totalSpend * config.points_per_dollar))
                     
                     if (earnedPoints > 0) {
                         // Add points to profile

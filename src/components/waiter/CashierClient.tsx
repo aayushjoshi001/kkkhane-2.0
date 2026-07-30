@@ -1244,7 +1244,10 @@ export default function CashierClient({
 
             // Advance already paid at booking
             const advancePaid = advancePaidFor(booking)
-            const balanceDue = Math.max(0, total - advancePaid)
+            // round2 on the subtraction, not just on `total`: the advance comes
+            // back off the row as a double, so a rounded total minus it drifts
+            // again, and `resolvedCash` below clamps to this figure.
+            const balanceDue = Math.max(0, round2(total - advancePaid))
 
             // What was handed over vs what is actually being taken: a guest can
             // hand over a round note (change goes back) or short-pay on purpose
@@ -1558,7 +1561,7 @@ export default function CashierClient({
 
             const total = calculateGrandTotal(room, booking)
             const advancePaid = advancePaidFor(booking)
-            const balanceDue = Math.max(0, total - advancePaid)
+            const balanceDue = Math.max(0, round2(total - advancePaid))
             const matchingTable = tablesState.find(t => t.room_id === room.id)
             const sessionId = matchingTable?.activeSession?.id
 
@@ -3183,7 +3186,7 @@ export default function CashierClient({
                                     {(() => {
                                         const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
                                         const advancePaid = advancePaidFor(billingStayBooking)
-                                        const netBalance = grandTotal - advancePaid
+                                        const netBalance = round2(grandTotal - advancePaid)
                                         const balanceDue = Math.max(0, netBalance)
                                         return renderPaymentInputsAndCalculator(balanceDue)
                                     })()}
@@ -3195,7 +3198,7 @@ export default function CashierClient({
                                     {(() => {
                                         const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
                                         const advancePaid = advancePaidFor(billingStayBooking)
-                                        const netBalance = grandTotal - advancePaid
+                                        const netBalance = round2(grandTotal - advancePaid)
                                         const balanceDue = Math.max(0, netBalance)
                                         const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
                                         // Settled earlier and kept the room: what is left is to

@@ -7,7 +7,7 @@ import AdvancePaymentHistoryModal from './AdvancePaymentHistoryModal'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
-import { calculateNights, getBookingCustomPrice, lateCheckoutNights, resolveDeparture, LATE_CHECKOUT_GRACE_HOURS, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { calculateNights, getBookingCustomPrice, lateCheckoutNights, resolveDeparture, LATE_CHECKOUT_GRACE_HOURS, advanceMethodLabel, getItemDisplayName, round2 } from '@/lib/utils'
 import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { usePrinter } from '@/lib/print/usePrinter'
@@ -329,10 +329,16 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // A waive via the toggle is an override to zero as far as the API cares.
     const serviceChargeOverrideValue = !applyRoomServiceCharge ? 0 : serviceCharge.isOverridden ? serviceCharge.charged : undefined
 
-    const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount
+    // Rounded to paisa the moment it is formed, like the server's folio total
+    // (lib/folio.ts) and the cashier screen's calculateGrandTotal. Left raw, a
+    // service charge or a percentage discount leaves this at 999.9999999999999
+    // for a bill reading Rs. 1,000.00 — and `resolvedCash` below clamps what the
+    // cashier typed down to that, so a guest handing over a 1000 note settled
+    // 999.9999999999999 and the last paisa came back as a phantom credit.
+    const grandTotal = round2(effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount)
     // Advances were taken per room, so a reservation's advance is their sum.
     const advancePaid = groupBill ? groupBill.advancePaid : (Number(booking?.paid_amount) || 0)
-    const netBalance = grandTotal - advancePaid
+    const netBalance = round2(grandTotal - advancePaid)
     const balanceDue = Math.max(0, netBalance)
     const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
 

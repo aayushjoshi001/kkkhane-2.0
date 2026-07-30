@@ -63,6 +63,26 @@ export function getBookingKycNote(booking: { notes?: string | null } | null | un
  *   currency (e.g. "Rs.", "$", "₹", "€").
  * - Otherwise NPR falls back to the "Rs." prefix and other ISO codes use Intl.
  */
+/**
+ * Rounds a money amount to paisa (2 dp), the smallest unit anything here is
+ * ever billed or stored in.
+ *
+ * Every total assembled by adding and multiplying doubles drifts: a 10% service
+ * charge, a percentage discount, or a long sum of line items lands on
+ * 999.9999999999999 for a bill that reads Rs. 1,000.00. Displayed it looks
+ * right — Intl and toFixed both round it back up — so the drift stays invisible
+ * until something truncates it (Math.floor → 999) or compares it (paid < due by
+ * 1e-13, leaving a bill "unsettled" with Rs. 0.00 outstanding). Rounding at the
+ * point a total is formed keeps every later step exact.
+ *
+ * Several modules (folio.ts, invoiceSummary.ts, bookingBill.ts, CashierClient
+ * …) still carry a private copy of this; prefer this one in new code so they can
+ * converge on it.
+ */
+export function round2(n: number): number {
+    return Math.round((Number(n) || 0) * 100) / 100
+}
+
 export function formatCurrency(amount: number, currency = 'NPR', symbol?: string | null): string {
     const value = new Intl.NumberFormat('en-IN', {
         minimumFractionDigits: 2,

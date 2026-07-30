@@ -27,8 +27,14 @@ export interface VoucherSlipData {
 }
 
 function amountInWords(amount: number): string {
-    const num = Math.floor(amount)
-    if (num === 0) return 'Zero Rupees Only'
+    // Round to paisa BEFORE splitting off the rupees. Flooring the raw double
+    // spelled a cheque for Rs. 1,000.00 as "Nine Hundred Ninety Nine": a total
+    // summed out of floats lands on 999.999…, and 999.995 is printed as
+    // 1,000.00 by formatCurrency while flooring reads it as 999. The words on a
+    // cheque have to agree with the figures beside them.
+    const paisaTotal = Math.round((Number(amount) || 0) * 100)
+    const rupees = Math.floor(paisaTotal / 100)
+    const paisa = paisaTotal % 100
 
     const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
                   'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
@@ -37,14 +43,23 @@ function amountInWords(amount: number): string {
     function helper(n: number): string {
         if (n < 20) return ones[n]
         if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '')
-        if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + helper(n % 150) : '')
+        // `n % 100` — the remainder below a hundred. It read `n % 150`, which
+        // spelled 250 as "Two Hundred One Hundred" and swallowed the 50 in 150.
+        if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + helper(n % 100) : '')
         if (n < 100000) return helper(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 !== 0 ? ' ' + helper(n % 1000) : '')
         if (n < 10000000) return helper(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 !== 0 ? ' ' + helper(n % 100000) : '')
         return helper(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 !== 0 ? ' ' + helper(n % 10000000) : '')
     }
 
     // Quick and safe Nepalese conversion helper
-    return helper(num) + ' Rupees Only'
+    if (rupees === 0 && paisa === 0) return 'Zero Rupees Only'
+
+    const rupeeWords = rupees > 0 ? `${helper(rupees)} Rupees` : ''
+    // Paisa spelled out too rather than dropped — "Rupees Only" under a figure
+    // reading 1,250.50 is a cheque for the wrong amount.
+    const paisaWords = paisa > 0 ? `${helper(paisa)} Paisa` : ''
+
+    return [rupeeWords, paisaWords].filter(Boolean).join(' and ') + ' Only'
 }
 
 // Printable Voucher Slip — thermal receipt width (80mm), same

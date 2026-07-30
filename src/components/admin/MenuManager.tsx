@@ -122,8 +122,21 @@ export default function MenuManager({
     const [itemFormData, setItemFormData] = useState<Partial<MenuItem>>({
         name: '', description: '', price: 0, is_available: true, category_id: '', image_url: ''
     })
+    // What the user has actually typed into the two decimal fields, kept beside
+    // the parsed numbers. Rendering the number straight back made a decimal
+    // price impossible to enter: "1000." parses to 1000, the input re-rendered
+    // as "1000", the dot vanished under the cursor and the next keystroke landed
+    // as another integer digit — so "1000.50" ended up as 100050 and "0.50" as
+    // 50. The number stays the source of truth for saving; this is only the text.
+    const [priceDraft, setPriceDraft] = useState('')
+    const [costDraft, setCostDraft] = useState('')
     const [hasVariations, setHasVariations] = useState(false)
-    const [itemVariations, setItemVariations] = useState<{ id?: string; name: string; price: number; is_available: boolean; image_url?: string | null }[]>([])
+    // `priceText` is the same typed-text-vs-parsed-number split as priceDraft
+    // above, per row: without it a variation priced 249.99 could not be typed
+    // (the dot was swallowed and it became 24999). Absent means "render the
+    // number" — right for a freshly loaded row and for the Half twin, whose
+    // price is derived rather than typed.
+    const [itemVariations, setItemVariations] = useState<{ id?: string; name: string; price: number; is_available: boolean; image_url?: string | null; priceText?: string }[]>([])
     const [variationUploadIdx, setVariationUploadIdx] = useState<number | null>(null)
     // Half Plate for a plain (no custom variations) item: a Full/Half pair is
     // synthesized behind the scenes at save time, without exposing the
@@ -290,15 +303,18 @@ export default function MenuManager({
             if (simplePair) {
                 const full = variations.find(v => v.name.trim() === 'Full')!
                 setItemFormData({ ...item, price: full.price })
+                setPriceDraft(full.price != null ? String(full.price) : '')
                 setHasVariations(false)
                 setItemVariations([])
                 setSimpleHalfPlateOn(true)
             } else {
                 setItemFormData({ ...item })
+                setPriceDraft(item.price != null ? String(item.price) : '')
                 setHasVariations(variations.length > 0)
                 setItemVariations(variations)
                 setSimpleHalfPlateOn(false)
             }
+            setCostDraft(item.estimated_cost_price != null ? String(item.estimated_cost_price) : '')
             const res = await getItemRecipeAction(item.id)
             if (res.data) {
                 setRecipe(res.data.map(r => {
@@ -322,6 +338,8 @@ export default function MenuManager({
                 name: '', description: '', price: 0, is_available: true,
                 category_id: categories[0]?.id || '', image_url: ''
             })
+            setPriceDraft('')
+            setCostDraft('')
             setHasVariations(false)
             setItemVariations([])
             setRecipe([])
@@ -926,8 +944,13 @@ export default function MenuManager({
                                             type="text"
                                             inputMode="decimal"
                                             disabled={hasVariations}
-                                            value={hasVariations ? 'Variations' : (itemFormData.price ?? '')}
-                                            onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setItemFormData({ ...itemFormData, price: v === '' ? undefined : Number(v) }) }}
+                                            value={hasVariations ? 'Variations' : priceDraft}
+                                            onChange={e => {
+                                                const v = e.target.value
+                                                if (!/^\d*\.?\d*$/.test(v)) return
+                                                setPriceDraft(v)
+                                                setItemFormData({ ...itemFormData, price: v === '' ? undefined : Number(v) })
+                                            }}
                                             placeholder={hasVariations ? 'Set in variations' : 'e.g. 12.99'}
                                             className="w-full pl-10 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all disabled:bg-surface-muted disabled:text-ink-subtle disabled:opacity-70 tabular-nums"
                                         />
@@ -1137,7 +1160,7 @@ export default function MenuManager({
                                                             <input
                                                                 type="text"
                                                                 inputMode="decimal"
-                                                                value={v.price === 0 ? '' : v.price}
+                                                                value={v.priceText ?? (v.price === 0 ? '' : String(v.price))}
                                                                 onChange={e => {
                                                                     const val = e.target.value
                                                                     if (/^\d*\.?\d*$/.test(val)) {
@@ -1145,9 +1168,11 @@ export default function MenuManager({
                                                                         setItemVariations(prev => {
                                                                             const next = [...prev]
                                                                             const name = next[idx].name
-                                                                            next[idx] = { ...next[idx], price: newPrice }
+                                                                            next[idx] = { ...next[idx], price: newPrice, priceText: val }
                                                                             const tIdx = next.findIndex((vv, i) => i !== idx && vv.name === halfTwinName(name))
-                                                                            if (tIdx !== -1) next[tIdx] = { ...next[tIdx], price: round2(newPrice / 2) }
+                                                                            // The twin's half price is derived, so it goes
+                                                                            // back to rendering from the number.
+                                                                            if (tIdx !== -1) next[tIdx] = { ...next[tIdx], price: round2(newPrice / 2), priceText: undefined }
                                                                             return next
                                                                         })
                                                                     }
@@ -1337,10 +1362,12 @@ export default function MenuManager({
                                             <input
                                                 type="text"
                                                 inputMode="decimal"
-                                                value={itemFormData.estimated_cost_price ?? ''}
+                                                value={costDraft}
                                                 onChange={e => {
                                                     const val = e.target.value
-                                                    if (/^\d*\.?\d*$/.test(val)) setItemFormData({ ...itemFormData, estimated_cost_price: val === '' ? null : Number(val) })
+                                                    if (!/^\d*\.?\d*$/.test(val)) return
+                                                    setCostDraft(val)
+                                                    setItemFormData({ ...itemFormData, estimated_cost_price: val === '' ? null : Number(val) })
                                                 }}
                                                 placeholder="e.g. 45.00"
                                                 className="w-full sm:w-40 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 text-xs p-2.5 border bg-surface text-ink transition-all tabular-nums"
