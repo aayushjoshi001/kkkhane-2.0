@@ -2,8 +2,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getNstDateString } from '@/lib/timezone'
-import { autoOpenNextDayBookSession } from '@/lib/ledger'
-import type { DayBookSession } from '@/types/database'
+import { computeCarriedOverOpeningBalances } from '@/lib/ledger'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/day-book/session  — Open today's day book session
@@ -13,10 +12,13 @@ export async function POST(request: Request) {
     const restaurantId = currentUser.restaurantId
 
     const body = await request.json().catch(() => ({}))
-    // first_time_opening_balance is only used when there is no prior session at all
+    // Only ever used for the restaurant's first-ever day, when there is no
+    // closed session to carry a balance over from. Every later day takes the
+    // previous day's closing balances, whatever is sent here — the till staff
+    // are not asked for an amount, so a typo cannot break the chain.
     const firstTimeOpeningBalance: number = Number(body.opening_balance ?? 0)
     const firstTimeOpeningBankBalance: number = Number(body.opening_bank_balance ?? 0)
-    
+
     // Accept client local date if provided to handle timezones robustly
     const today = body.date ?? getNstDateString() // 'YYYY-MM-DD'
 
@@ -56,50 +58,14 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, data: existing })
     }
 
-    // ── 2. Calculate opening balance from yesterday's closing balance ────────
-    const { data: lastSession } = await supabase
-        .from('day_book_sessions')
-        .select('id, opening_balance, opening_bank_balance')
-        .eq('restaurant_id', restaurantId)
-        .eq('status', 'closed')
-        .lt('date', today)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+    // ── 2. Opening balances = the previous day's closing balances ────────────
+    // Carried over server-side rather than posted from the screen that opens
+    // the day: the cash and bank books have to join up across the close, and
+    // the only figure that does that is the one the closed day ended on.
+    const carried = await computeCarriedOverOpeningBalances(supabase, restaurantId, today)
 
-    let openingBalance = firstTimeOpeningBalance
-    let openingBankBalance = firstTimeOpeningBankBalance
-
-    if (lastSession) {
-        const { data: totals } = await supabase
-            .from('day_book_entries')
-            .select('type, amount')
-            .eq('session_id', lastSession.id)
-
-        // Cash calculations
-        const cashIn  = (totals ?? [])
-            .filter((e) => e.type === 'cash_in')
-            .reduce((sum, e) => sum + Number(e.amount), 0)
-
-        const cashOut = (totals ?? [])
-            .filter((e) => e.type === 'cash_out')
-            .reduce((sum, e) => sum + Number(e.amount), 0)
-
-        openingBalance = Number(lastSession.opening_balance) + cashIn - cashOut
-        if (openingBalance < 0) openingBalance = 0
-
-        // Bank calculations
-        const bankIn  = (totals ?? [])
-            .filter((e) => e.type === 'bank_in')
-            .reduce((sum, e) => sum + Number(e.amount), 0)
-
-        const bankOut = (totals ?? [])
-            .filter((e) => e.type === 'bank_out')
-            .reduce((sum, e) => sum + Number(e.amount), 0)
-
-        openingBankBalance = Number(lastSession.opening_bank_balance ?? 0) + bankIn - bankOut
-        if (openingBankBalance < 0) openingBankBalance = 0
-    }
+    const openingBalance = carried?.openingBalance ?? firstTimeOpeningBalance
+    const openingBankBalance = carried?.openingBankBalance ?? firstTimeOpeningBankBalance
 
     // ── 3. Create the new session ────────────────────────────────────────────
     const { data: session, error } = await supabase

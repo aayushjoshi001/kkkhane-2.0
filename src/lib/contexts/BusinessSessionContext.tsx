@@ -32,7 +32,9 @@ interface BusinessSessionContextType {
     /** True while BusinessGuard's full-screen lock prompt is on top. */
     guardActive: boolean
     setGuardActive: (active: boolean) => void
-    openBusiness: (date?: string, openingBalance?: number, openingBankBalance?: number) => Promise<boolean>
+    /** Opens the day. Takes no balances: the server carries the previous day's
+     *  closing cash and bank balances over as the opening ones. */
+    openBusiness: (date?: string) => Promise<boolean>
     /** Closes today's day, or the one whose id is passed — a stale day is not
      *  `session`, so the reminder has to name it. */
     closeBusiness: (sessionId?: string) => Promise<boolean>
@@ -134,11 +136,7 @@ export function BusinessSessionProvider({
         }
     }, [restaurantId, refreshSession])
 
-    const openBusiness = async (
-        date = todayDate,
-        openingBalance = 0,
-        openingBankBalance = 0
-    ): Promise<boolean> => {
+    const openBusiness = async (date = todayDate): Promise<boolean> => {
         if (!canManage) {
             toast.error('Only managers, cashiers, and admins can open the business day')
             return false
@@ -149,11 +147,8 @@ export function BusinessSessionProvider({
             const res = await fetch('/api/day-book/session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    date,
-                    opening_balance: openingBalance,
-                    opening_bank_balance: openingBankBalance,
-                }),
+                // No balances: the route derives them from the last closed day.
+                body: JSON.stringify({ date }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || 'Failed to open business day')

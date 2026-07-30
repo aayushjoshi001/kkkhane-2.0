@@ -15,8 +15,6 @@ export default function BusinessGuard({ children }: BusinessGuardProps) {
     const router = useRouter()
     const { isClosed, canManage, userRole, todayDate, openBusiness, refreshSession, loading, setGuardActive } = useBusinessSession()
 
-    const [openingCash, setOpeningCash] = useState<string>('0')
-    const [openingBank, setOpeningBank] = useState<string>('0')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -35,9 +33,9 @@ export default function BusinessGuard({ children }: BusinessGuardProps) {
     async function handleOpen(e: React.FormEvent) {
         e.preventDefault()
         setIsSubmitting(true)
-        const cashVal = parseFloat(openingCash) || 0
-        const bankVal = parseFloat(openingBank) || 0
-        await openBusiness(todayDate, cashVal, bankVal)
+        // No amounts to collect: the opening cash and bank balances are the
+        // closing balances of the last closed day, carried over server-side.
+        await openBusiness(todayDate)
         setIsSubmitting(false)
     }
 
@@ -94,32 +92,10 @@ export default function BusinessGuard({ children }: BusinessGuardProps) {
                                 <span>Open Business Day ({todayDate || 'Today'})</span>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-ink-muted">Opening Cash (Rs.)</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        step="any"
-                                        value={openingCash}
-                                        onChange={(e) => setOpeningCash(e.target.value)}
-                                        className="w-full px-3.5 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-semibold text-ink tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
-                                        placeholder="0.00"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-ink-muted">Opening Bank (Rs.)</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        step="any"
-                                        value={openingBank}
-                                        onChange={(e) => setOpeningBank(e.target.value)}
-                                        className="w-full px-3.5 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-semibold text-ink tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
-                                        placeholder="0.00"
-                                    />
-                                </div>
-                            </div>
+                            <p className="text-xs text-ink-muted font-medium leading-relaxed">
+                                Opening cash and bank balances carry over from the last day that was closed — there is
+                                nothing to enter.
+                            </p>
 
                             <button
                                 type="submit"

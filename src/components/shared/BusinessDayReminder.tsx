@@ -122,8 +122,6 @@ export default function BusinessDayReminder() {
     const { confirm } = useConfirmStore()
 
     const now = useSyncExternalStore(subscribeClock, readClock, readServerClock)
-    const [openingCash, setOpeningCash] = useState('0')
-    const [openingBank, setOpeningBank] = useState('0')
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     // A stale day is the more urgent of the two — it is actively mis-filing
@@ -152,7 +150,7 @@ export default function BusinessDayReminder() {
 
     async function handleOpen() {
         setIsSubmitting(true)
-        const ok = await openBusiness(todayDate, parseFloat(openingCash) || 0, parseFloat(openingBank) || 0)
+        const ok = await openBusiness(todayDate)
         setIsSubmitting(false)
         if (ok) {
             clearSnooze(key)
@@ -249,40 +247,9 @@ export default function BusinessDayReminder() {
                             </h2>
                             <p className="text-xs text-ink-muted font-semibold leading-relaxed">
                                 Registers, orders and bookings stay locked for every panel until the day is opened.
-                                Yesterday&apos;s closing balances carry forward on their own — the amounts below only
-                                adjust them.
+                                The opening cash and bank balances are the closing balances of the last day that was
+                                closed — nothing to enter.
                             </p>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                            <label className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">
-                                Opening Cash (Rs.)
-                            </label>
-                            <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={openingCash}
-                                onChange={e => setOpeningCash(e.target.value)}
-                                placeholder="0.00"
-                                className="w-full px-3.5 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">
-                                Opening Bank (Rs.)
-                            </label>
-                            <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={openingBank}
-                                onChange={e => setOpeningBank(e.target.value)}
-                                placeholder="0.00"
-                                className="w-full px-3.5 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
-                            />
                         </div>
                     </div>
 
