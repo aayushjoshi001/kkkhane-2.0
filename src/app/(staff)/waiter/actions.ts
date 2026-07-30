@@ -346,13 +346,12 @@ export async function linkSessionToBooking(sessionId: string, bookingId: string,
     const adminSupabase = await createAdminClient()
     const now = new Date().toISOString()
 
-    // 1. Update session: set booking_id AND close session so table is freed
+    // 1. Update session: set booking_id and keep status active so orders can be placed
     const { data: session, error } = await adminSupabase
         .from('sessions')
         .update({
             booking_id: bookingId,
-            status: 'closed',
-            closed_at: now,
+            status: 'active',
         })
         .eq('id', sessionId)
         .select('table_id')
@@ -439,7 +438,9 @@ export async function getStaffMenu(restaurantId: string) {
 export async function placeStaffOrder(
     sessionId: string,
     items: any[],
-    customerNote?: string
+    customerNote?: string,
+    /** Sold across the counter — skip the station queue and the ticket. */
+    noKot = false,
 ) {
     const adminSupabase = await createAdminClient()
 
@@ -451,7 +452,6 @@ export async function placeStaffOrder(
     let query = adminSupabase
         .from('sessions')
         .select('id, restaurant_id, status, table_id, booking_id')
-        .eq('status', 'active')
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)
     if (isUuid) {
@@ -465,6 +465,15 @@ export async function placeStaffOrder(
     if (sessionError || !session) {
         console.error('[placeStaffOrder] Session lookup failed:', sessionError, sessionId)
         return { error: 'Table session is invalid or closed.' }
+    }
+
+    // Ensure session status is active so place_order RPC succeeds
+    if (session.status !== 'active') {
+        await adminSupabase
+            .from('sessions')
+            .update({ status: 'active', closed_at: null })
+            .eq('id', session.id)
+        session.status = 'active'
     }
 
     // Split items into regular and outside items
@@ -491,15 +500,29 @@ export async function placeStaffOrder(
     })
 
     try {
-        // Place the order
-        const { data, error } = await adminSupabase.rpc('place_order', {
-            p_session_id: session.id,
-            p_items: payload,
-            p_customer_note: customerNote || null,
-            p_promo_code: null,
-            p_loyalty_member_id: null,
-            p_client_request_id: null,
-        })
+        // Place the order.
+        //
+        // A counter sale goes through place_counter_order, which wraps the same
+        // RPC and marks the lines served-and-printed inside the SAME
+        // transaction. That matters: realtime publishes at commit, so a station
+        // board sees the order the instant place_order returns and starts its
+        // print timer — stamping the lines in a second round-trip here would
+        // lose that race often enough to print tickets for cigarettes.
+        const { data, error } = noKot
+            ? await adminSupabase.rpc('place_counter_order', {
+                p_session_id: session.id,
+                p_items: payload,
+                p_customer_note: customerNote || null,
+                p_client_request_id: null,
+            })
+            : await adminSupabase.rpc('place_order', {
+                p_session_id: session.id,
+                p_items: payload,
+                p_customer_note: customerNote || null,
+                p_promo_code: null,
+                p_loyalty_member_id: null,
+                p_client_request_id: null,
+            })
 
         if (error) {
             console.error('[placeStaffOrder] RPC Error:', error)
@@ -527,8 +550,6 @@ export async function placeStaffOrder(
                         status: 'pending'
                     })
             }
-            // Recalculate totals
-            await recalculateAndUpdateOrderTotals(adminSupabase, result.order_id, session.restaurant_id)
         }
 
         // If this session is for a hotel room, bind the order to the active booking
@@ -538,16 +559,37 @@ export async function placeStaffOrder(
 
         const updateFields: any = {
             status: 'confirmed',
-            needs_confirmation: false
+            needs_confirmation: false,
+            // Who took the order. The column has existed since the baseline and
+            // was never written, so "which waiter sold what" had no data behind
+            // it; recorded here it is a fact rather than the guess the history
+            // backfill had to settle for (see waiter_id_inferred).
+            waiter_id: currentUser.id,
+            waiter_id_inferred: false,
         }
         if (roomContext?.bookingId) {
             updateFields.booking_id = roomContext.bookingId
+        }
+        if (noKot) {
+            // place_counter_order already closed this out; repeated here only so
+            // this blanket update cannot walk the order back to 'confirmed' and
+            // drop it onto a station board after the fact.
+            updateFields.status = 'delivered'
+            updateFields.no_kot = true
         }
 
         await adminSupabase
             .from('orders')
             .update(updateFields)
             .eq('id', result.order_id)
+
+        // Always recalculate totals after all items and the booking_id are set.
+        // This stamps service_charge_amount on every order — both general dine-in
+        // SC (serviceChargeEnabled) and room SC (roomServiceChargeEnabled) — so
+        // the receipt and CashierClient always show the correct breakdown.
+        // Called here (after booking_id is written) so recalculate reads the
+        // correct booking context to decide which SC rule applies.
+        await recalculateAndUpdateOrderTotals(adminSupabase, result.order_id, session.restaurant_id)
 
         // Automatically close the table session if linked to a room bill (either on session or table-linked)
         const bookingIdToLink = session.booking_id || roomContext?.bookingId
@@ -588,7 +630,9 @@ export async function placeStaffOrder(
 export async function placeRoomOrderDirect(
     bookingId: string,
     items: any[],
-    customerNote?: string
+    customerNote?: string,
+    /** Sold across the counter — skip the station queue and the ticket. */
+    noKot = false,
 ) {
     const supabase = await createServerClient()
     const adminSupabase = await createAdminClient()
@@ -609,18 +653,22 @@ export async function placeRoomOrderDirect(
     const restaurantId = currentUser?.restaurantId || booking.restaurant_id
     if (!restaurantId) return { error: 'Unauthorized' }
 
-    // 2. Create pending order row
+    // 2. Create pending order row with needs_confirmation: true and status: 'pending'
+    // so Realtime does not broadcast an unconfirmed/empty order to kitchen/cashier.
     const { data: orderRow, error: orderInsertError } = await adminSupabase
         .from('orders')
         .insert({
             restaurant_id: restaurantId,
             booking_id: bookingId,
             customer_note: customerNote || null,
-            status: 'confirmed',
-            needs_confirmation: false,
+            status: 'pending',
+            needs_confirmation: true,
             payment_status: 'unpaid',
             order_type: 'takeout',
             placed_at: new Date().toISOString(),
+            // A room order is placed by whoever is at the desk; recorded so it
+            // counts towards their day like any other order they took.
+            waiter_id: currentUser?.id ?? null,
             subtotal_amount: 0,
             total_amount: 0
         })
@@ -634,13 +682,15 @@ export async function placeRoomOrderDirect(
 
     const orderId = orderRow.id
     let subtotal = 0
+    let foodSubtotal = 0
 
-    // 3. Insert order items
+    // 3. Insert order items with needs_confirmation: true
     for (const item of items) {
         let unitPrice = 0
         let menuItemId = item.menuItemId
         let specialRequest = item.specialRequest || null
         let variationId = null
+        let itemStation = 'kitchen'
 
         if (item.isOutsideFood) {
             const outsideFoodId = await getOrCreateOutsideFoodItem(adminSupabase, restaurantId)
@@ -650,13 +700,14 @@ export async function placeRoomOrderDirect(
         } else {
             const { data: menuItem } = await adminSupabase
                 .from('menu_items')
-                .select('id, price, is_available')
+                .select('id, price, is_available, station')
                 .eq('id', item.menuItemId)
                 .single()
 
             if (!menuItem?.id || menuItem.is_available === false) continue
             menuItemId = menuItem.id
             unitPrice = Number(menuItem.price ?? 0)
+            itemStation = menuItem.station || 'kitchen'
 
             if (item.variationId) {
                 const { data: variation } = await adminSupabase
@@ -680,7 +731,15 @@ export async function placeRoomOrderDirect(
                 quantity: item.quantity,
                 unit_price: unitPrice,
                 special_request: specialRequest,
-                status: 'pending'
+                // A counter sale is born finished and unprintable. Stamping
+                // kot_printed_at on the insert itself is what makes it
+                // impossible to print rather than merely unlikely:
+                // claim_order_items_for_printing only ever claims lines where
+                // it is NULL, so no station can take these however the board
+                // races to them.
+                status: noKot ? 'served' : 'pending',
+                kot_printed_at: noKot ? new Date().toISOString() : null,
+                needs_confirmation: true
             })
             .select('id')
             .single()
@@ -715,6 +774,9 @@ export async function placeRoomOrderDirect(
         }
 
         subtotal += itemTotal
+        if (itemStation === 'kitchen') {
+            foodSubtotal += itemTotal
+        }
     }
 
     // 4. Calculate Taxes and Service Charge
@@ -731,17 +793,25 @@ export async function placeRoomOrderDirect(
     const roomScRooms = Array.isArray(featuresV2?.roomServiceChargeRooms) ? featuresV2.roomServiceChargeRooms : []
     const isRoomScApplicable = roomScEnabled && booking.room_id && roomScRooms.includes(booking.room_id)
 
-    // Direct room orders have a 10% service charge on all items, if enabled for this room
-    const serviceCharge = isRoomScApplicable ? (Math.round(subtotal * 0.10 * 100) / 100) : 0
+    // Direct room orders have a 10% service charge on food items only, if enabled for this room
+    const serviceCharge = isRoomScApplicable ? (Math.round(foodSubtotal * 0.10 * 100) / 100) : 0
 
     const tax = Math.round((subtotal + serviceCharge) * (taxRate / 100) * 100) / 100
     const total = Math.max(0, subtotal + serviceCharge + tax)
 
-    // Update totals on order with database schema fallback
+    // 5. Unmark needs_confirmation on order_items now that all items and modifiers are written
+    await adminSupabase
+        .from('order_items')
+        .update({ needs_confirmation: false })
+        .eq('order_id', orderId)
+
+    // 6. Update order status to 'confirmed' and needs_confirmation: false along with totals
     try {
         const { error: updateError } = await adminSupabase
             .from('orders')
             .update({
+                status: 'confirmed',
+                needs_confirmation: false,
                 subtotal_amount: subtotal,
                 service_charge_amount: serviceCharge,
                 tax_amount: tax,
@@ -754,6 +824,8 @@ export async function placeRoomOrderDirect(
                 await adminSupabase
                     .from('orders')
                     .update({
+                        status: 'confirmed',
+                        needs_confirmation: false,
                         subtotal_amount: subtotal,
                         tax_amount: tax,
                         total_amount: total
@@ -768,6 +840,8 @@ export async function placeRoomOrderDirect(
         await adminSupabase
             .from('orders')
             .update({
+                status: 'confirmed',
+                needs_confirmation: false,
                 subtotal_amount: subtotal,
                 tax_amount: tax,
                 total_amount: total
@@ -780,6 +854,17 @@ export async function placeRoomOrderDirect(
         adminSupabase.rpc('apply_pricing_rules_to_order', { p_order_id: orderId }),
         adminSupabase.rpc('deduct_ingredients_for_order',  { p_order_id: orderId }),
     ])
+
+    // Handed over at the counter: finished on placement. The lines were already
+    // written served and stamped unprintable at insert, so no ticket was ever
+    // possible; this closes the order itself, and has to run after the totals
+    // writes above because every one of them sets status back to 'confirmed'.
+    if (noKot) {
+        await adminSupabase
+            .from('orders')
+            .update({ status: 'delivered', no_kot: true })
+            .eq('id', orderId)
+    }
 
     revalidatePath('/cashier')
     return { success: true, orderId }
@@ -876,10 +961,11 @@ export async function recalculateAndUpdateOrderTotals(
         const isRoomScApplicable = roomScEnabled && orderRoomId && roomScRooms.includes(orderRoomId)
 
         if (!orderData.session_id) {
-            // Direct room order: 10% service charge on all items (if enabled for room)
+            // Direct room order: 10% service charge on food items only (if enabled for room)
             if (isRoomScApplicable) {
-                const netSubtotal = Math.max(0, subtotal - discountAmount)
-                serviceCharge = Math.round(netSubtotal * 0.10 * 100) / 100
+                const foodRatio = subtotal > 0 ? (foodSubtotal / subtotal) : 0
+                const discountedFoodSubtotal = Math.max(0, foodSubtotal - (discountAmount * foodRatio))
+                serviceCharge = Math.round(discountedFoodSubtotal * 0.10 * 100) / 100
             } else {
                 serviceCharge = 0
             }
@@ -901,17 +987,15 @@ export async function recalculateAndUpdateOrderTotals(
                     serviceCharge = 0
                 }
             } else {
-                // Dine-in order linked to room: standard service charge from settings
-                serviceCharge = scEnabled 
-                    ? Math.round((subtotal - discountAmount) * (scRate / 100) * 100) / 100 
-                    : 0
+                // Dine-in order merely linked/billed to a room stay: not a room
+                // order, so no service charge — matches folio.ts's live recompute.
+                serviceCharge = 0
             }
         }
     } else {
-        // Standard order: service charge from settings
-        serviceCharge = scEnabled 
-            ? Math.round((subtotal - discountAmount) * (scRate / 100) * 100) / 100 
-            : 0
+        // Standard dine-in / takeout order (no booking_id): no service charge.
+        // SC applies only to in-room food orders (booking_id is set above).
+        serviceCharge = 0
     }
 
     const tax = Math.round((subtotal - discountAmount + serviceCharge) * (taxRate / 100) * 100) / 100

@@ -88,7 +88,11 @@ export default function QuickOrderModal({
     const [mounted, setMounted] = useState(false)
     const [loading, setLoading] = useState(true)
     const [submitting, setSubmitting] = useState(false)
-    
+    // Goods handed straight over the counter — cigarettes, a bottle off the
+    // shelf. Nobody has to make them, so they must not queue to a station or
+    // print a ticket; the order is written finished. Billing is unaffected.
+    const [noKot, setNoKot] = useState(false)
+
     const [categories, setCategories] = useState<Category[]>([])
     const [menuItems, setMenuItems] = useState<any[]>([])
     
@@ -416,9 +420,9 @@ export default function QuickOrderModal({
                 })
 
                 if (bookingId) {
-                    res = await placeRoomOrderDirect(bookingId, cartWithPacking, customerNote)
+                    res = await placeRoomOrderDirect(bookingId, cartWithPacking, customerNote, noKot)
                 } else if (selectedSession) {
-                    res = await placeStaffOrder(selectedSession.token, cartWithPacking, customerNote)
+                    res = await placeStaffOrder(selectedSession.token, cartWithPacking, customerNote, noKot)
                 } else {
                     res = { error: 'No active table session or room stay selected.' }
                 }
@@ -437,6 +441,7 @@ export default function QuickOrderModal({
                 })
                 setCart([])
                 setCustomerNote('')
+                setNoKot(false)
                 setTakeoutCustomerName('')
                 setTakeoutCustomerPhone('')
                 setDeliveryAddress('')
@@ -982,6 +987,38 @@ export default function QuickOrderModal({
                                             <span className="text-h3 font-black text-ink">Rs. {cartTotal}</span>
                                         </div>
                                     </div>
+
+                                    {/* Counter sales — cigarettes, a bottle off the
+                                        shelf. Nothing to make, so nothing to queue or
+                                        print. Not offered on takeaway/delivery, which
+                                        always go through the kitchen. */}
+                                    {!isManualTakeoutDelivery && (
+                                        <button
+                                            type="button"
+                                            aria-pressed={noKot}
+                                            onClick={() => setNoKot(v => !v)}
+                                            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
+                                                noKot
+                                                    ? 'border-amber-400 bg-amber-50'
+                                                    : 'border-hairline bg-surface hover:border-amber-300'
+                                            }`}
+                                        >
+                                            <span className={`w-8 h-5 rounded-full shrink-0 relative transition-colors ${noKot ? 'bg-amber-500' : 'bg-ink-subtle/30'}`}>
+                                                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${noKot ? 'left-3.5' : 'left-0.5'}`} />
+                                            </span>
+                                            <span className="min-w-0">
+                                                <span className={`block text-[11px] font-black ${noKot ? 'text-amber-800' : 'text-ink'}`}>
+                                                    No KOT — handed over at the counter
+                                                </span>
+                                                <span className="block text-[10px] font-semibold text-ink-subtle">
+                                                    {noKot
+                                                        ? 'Skips the kitchen/bar queue and the ticket. Still on the bill.'
+                                                        : 'For cigarettes, shelf drinks — nothing to cook.'}
+                                                </span>
+                                            </span>
+                                        </button>
+                                    )}
+
                                     <Button
                                         block
                                         variant="primary"
@@ -990,7 +1027,7 @@ export default function QuickOrderModal({
                                         onClick={() => setShowConfirmDialog(true)}
                                         className="py-3 font-bold"
                                     >
-                                        Place Order &amp; Print
+                                        {noKot && !isManualTakeoutDelivery ? 'Place Order (No KOT)' : 'Place Order & Print'}
                                     </Button>
                                 </div>
                             )}
@@ -1166,7 +1203,11 @@ export default function QuickOrderModal({
                     <p className="text-[10px] text-ink-subtle mt-0.5">
                         {isManualTakeoutDelivery
                             ? `Sends to kitchen and creates manual ${orderType === 'delivery' ? 'Delivery' : 'Takeaway'} order.`
-                            : `Sends to the kitchen and adds to ${bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`} (${orderType === 'takeout' ? 'Packing' : 'Dine In'}).`
+                            : noKot
+                                // Says the opposite of the usual line, so nobody
+                                // confirms expecting a ticket that will never print.
+                                ? `Handed over at the counter — no ticket, nothing sent to the kitchen or bar. Adds to ${bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`}.`
+                                : `Sends to the kitchen and adds to ${bookingId ? 'the room bill' : `Table ${selectedSession?.label ?? ''}`} (${orderType === 'takeout' ? 'Packing' : 'Dine In'}).`
                         }
                     </p>
                 </div>

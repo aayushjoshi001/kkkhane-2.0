@@ -9,6 +9,7 @@ import { cookies } from 'next/headers'
 import { CalendarProvider } from '@/lib/contexts/CalendarContext'
 import { CALENDAR_COOKIE, parseCalendar } from '@/lib/calendar'
 import PwaInstallPrompt from '@/components/shared/PwaInstallPrompt'
+import NumberInputWheelGuard from '@/components/shared/NumberInputWheelGuard'
 import Script from 'next/script'
 import './globals.css'
 
@@ -189,6 +190,8 @@ export default async function RootLayout({
           </div>
         </SerwistProvider>
         <PwaInstallPrompt />
+        {/* Keeps a stray scroll from stepping a focused amount field up or down */}
+        <NumberInputWheelGuard />
         {/* Global Overlays */}
         <Toaster
           position="top-center"

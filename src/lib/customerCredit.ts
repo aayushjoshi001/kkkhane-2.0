@@ -243,3 +243,65 @@ export async function postLoyaltyRedeem(
         return { success: false, error: err instanceof Error ? err.message : 'Failed to redeem points' }
     }
 }
+
+/**
+ * Move a settlement's loyalty points onto the guest's CRM record.
+ *
+ * Points live on customer_credit_accounts.loyalty_points, so a guest with no
+ * such row has nowhere to accrue. Every checkout used to look that row up
+ * read-only and skip the award when it found nothing — and nothing creates one
+ * except taking credit or a manager adding it by hand, so a guest who simply
+ * paid cash earned nothing, forever. On production that was every guest: 41
+ * stays, nine accounts, not one with a single point. The balance the front
+ * desk is shown for a returning guest was therefore always blank.
+ *
+ * So the account is found-or-created here, on the same terms the credit path
+ * already uses (phone, then name, then a linked partner tenant) — which also
+ * means a guest who later takes credit lands on the row that already holds
+ * their points rather than a second one beside it.
+ *
+ * Only when there is something to record: a settlement too small to round up
+ * to a point, and with none being redeemed, must not leave a CRM row behind
+ * for a walk-in who will never be looked up again.
+ *
+ * Never throws. A checkout that has already taken the guest's money must not
+ * fail at the till over a loyalty write; the settlement is the receipt, this
+ * is bookkeeping alongside it.
+ */
+export async function settleLoyalty(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    userId: string | null,
+    input: {
+        name?: string
+        phone?: string
+        earnPoints: number
+        redeemPoints: number
+        earnDescription: string
+        redeemDescription: string
+    }
+): Promise<void> {
+    // Without a phone there is no stable identity to accrue against — the next
+    // visit would have no way to find these points again.
+    if (!input.phone?.trim()) return
+
+    const earn = Math.max(0, Math.round(input.earnPoints) || 0)
+    const redeem = Math.max(0, Math.round(input.redeemPoints) || 0)
+    if (earn <= 0 && redeem <= 0) return
+
+    const account = await findOrCreateCustomerCreditAccount(supabase, restaurantId, userId, {
+        name: input.name,
+        phone: input.phone,
+    })
+    if ('error' in account) {
+        console.error('Failed to resolve loyalty account:', account.error)
+        return
+    }
+
+    if (earn > 0) {
+        await postLoyaltyEarn(supabase, restaurantId, account.id, earn, input.earnDescription)
+    }
+    if (redeem > 0) {
+        await postLoyaltyRedeem(supabase, restaurantId, account.id, redeem, input.redeemDescription)
+    }
+}

@@ -38,6 +38,6 @@ CREATE POLICY "Allow super admin full control on system_advertisements" ON publi
 INSERT INTO public.system_advertisements (badge, title, description, cta, link)
 VALUES
     ('NEW INTEGRATION', 'Supercharge Room Bookings with Booking.com Sync', 'Connect your hotel rooms directory directly to online travel agents for automatic real-time rate updates and zero overbookings.', 'Connect Channels', '/admin/settings'),
-    ('HARDWARE CORNER', 'Compatible 80mm Direct Thermal Kitchen Printer', 'Need fast, smudge-proof KOT ticket printouts? Get the pre-configured high-speed USB/Ethernet printer for your cashier counter.', 'Order Printer', 'https://github.com/aayushjoshi001/kkkhane-'),
+    ('HARDWARE CORNER', 'Auto-Print KOTs to Your Thermal Printer', 'Point your 80mm LAN printer at the cashier counter and KOT tickets print the moment an order is confirmed. No manual reprints.', 'Set Up Printer', '/admin/printers'),
     ('SRMS PLATINUM', 'Auto-Backup Data to Google Drive & Dropbox', 'Never worry about server outages or laptop loss. Keep encrypted hourly database backups synced automatically to your own cloud storage.', 'Enable Backups', '/admin/profile')
 ON CONFLICT DO NOTHING;

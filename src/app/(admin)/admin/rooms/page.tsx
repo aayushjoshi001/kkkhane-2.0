@@ -12,7 +12,15 @@ export default async function RoomsPage() {
     const { restaurantId } = currentUser
 
     const adminSupabase = await createAdminClient()
-    
+
+    // Printed on the bill the room-billing modal issues, so an admin-settled
+    // receipt names its operator the same way a Cashier POS one does.
+    const { data: currentUserRow } = await adminSupabase
+        .from('users')
+        .select('full_name')
+        .eq('id', currentUser.id)
+        .maybeSingle()
+
     // Fetch rooms, room types, tables, sessions and active orders with safety
     let rooms: Room[] = []
     let roomTypes: RoomType[] = []
@@ -78,7 +86,7 @@ export default async function RoomsPage() {
                 .select(`
                     id, status, total_amount, placed_at, session_id, order_type, customer_name, customer_phone, delivery_address, payment_status,
                     sessions ( id, tables ( label ) ),
-                    order_items ( id, quantity, status, unit_price, menu_items ( name ) )
+                    order_items ( id, quantity, status, unit_price, station, menu_items ( name, station ) )
                 `)
                 .in('restaurant_id', targetRestaurantIds)
                 // Every unpaid, non-cancelled order still owed on this room's bill -
@@ -115,6 +123,7 @@ export default async function RoomsPage() {
             restaurantId={restaurantId} 
             restaurantSlug={restaurantSlug}
             restaurantName={restaurantName}
+            userName={currentUserRow?.full_name || ''}
             tables={tablesMapped}
             activeOrders={activeOrders}
         />

@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
-import { computeFolioTotal } from '@/lib/folio'
-import { findOrCreateCustomerCreditAccount, postCreditCharge, postLoyaltyEarn, postLoyaltyRedeem } from '@/lib/customerCredit'
+import { computeFolioForStays } from '@/lib/folio'
+import { findOrCreateCustomerCreditAccount, postCreditCharge, settleLoyalty } from '@/lib/customerCredit'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
@@ -24,6 +24,7 @@ type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
 async function settleOrdersMatching(
     supabase: AdminClient,
     restaurantId: string,
+    userId: string,
     match: { session_id: string } | { booking_id: string },
 ) {
     // Fetch partner restaurant if linked
@@ -71,9 +72,12 @@ async function settleOrdersMatching(
         .update({ status: 'delivered' })
         .in('id', orderIds)
 
+    // cashier_id rides with paid_at, and so inherits its guard: an order the
+    // guest settled mid-stay keeps the cashier who took that money rather than
+    // being reattributed to whoever ran the checkout.
     await supabase
         .from('orders')
-        .update({ payment_status: 'paid', paid_at: now })
+        .update({ payment_status: 'paid', paid_at: now, cashier_id: userId })
         .in('id', orderIds)
         .neq('payment_status', 'paid')
 }
@@ -84,6 +88,7 @@ async function settleOrdersMatching(
 async function settleAndCloseSession(
     supabase: AdminClient,
     restaurantId: string,
+    userId: string,
     sessionId: string,
 ) {
     const { data: session } = await supabase
@@ -95,7 +100,7 @@ async function settleAndCloseSession(
 
     if (!session) return
 
-    await settleOrdersMatching(supabase, restaurantId, { session_id: sessionId })
+    await settleOrdersMatching(supabase, restaurantId, userId, { session_id: sessionId })
     await supabase
         .from('sessions')
         .update({ status: 'closed', closed_at: new Date().toISOString() })
@@ -104,6 +109,55 @@ async function settleAndCloseSession(
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
+
+/**
+ * Split a reservation's single settled bill back out across its rooms.
+ *
+ * The guest pays once, but `bookings.total_amount`/`paid_amount` are per-room
+ * columns that revenue-by-room reporting reads. Dumping the whole bill on one
+ * room would make that room look enormously profitable and the others free, so
+ * each room takes a share proportional to its own stay cost — the one figure
+ * that is genuinely attributable to it.
+ *
+ * Rounding remainders go to the first room so the parts always sum back to the
+ * exact total charged; the extra-hour charge rides there too, for the same
+ * reason. Rooms with no rate on file fall back to an even split.
+ */
+function allocateAcrossRooms(
+    members: Array<{ id: string; room_id: string }>,
+    folio: { rooms: Array<{ bookingId: string; stayCost: number }> },
+    totals: {
+        authoritativeTotal: number
+        newPaidAmount: number
+        discountAmount: number
+        extraHourCharge: number
+    },
+) {
+    const stayCostFor = new Map(folio.rooms.map(r => [r.bookingId, r.stayCost]))
+    const weights = members.map(m => stayCostFor.get(m.id) ?? 0)
+    const weightTotal = weights.reduce((s, w) => s + w, 0)
+    const share = (i: number) => (weightTotal > 0 ? weights[i] / weightTotal : 1 / members.length)
+
+    const rows = members.map((m, i) => ({
+        booking_id: m.id,
+        room_id: m.room_id,
+        total_amount: round2(totals.authoritativeTotal * share(i)),
+        paid_amount: round2(totals.newPaidAmount * share(i)),
+        discount_amount: round2(totals.discountAmount * share(i)),
+        extra_hour_charge: 0,
+    }))
+
+    const fix = (key: 'total_amount' | 'paid_amount' | 'discount_amount', target: number) => {
+        const allocated = rows.reduce((s, r) => s + r[key], 0)
+        rows[0][key] = round2(rows[0][key] + (target - allocated))
+    }
+    fix('total_amount', totals.authoritativeTotal)
+    fix('paid_amount', totals.newPaidAmount)
+    fix('discount_amount', totals.discountAmount)
+    rows[0].extra_hour_charge = totals.extraHourCharge
+
+    return rows
+}
 
 export async function POST(req: Request) {
     try {
@@ -116,18 +170,37 @@ export async function POST(req: Request) {
         const {
             booking_id, room_id, total_amount, cash_paid, qr_paid, qr_code_id, session_id,
             discount_amount, discount_reason, credit_amount, customer_name, customer_phone,
-            redeemed_points, extra_hour_charge,
+            redeemed_points, extra_hour_charge, service_charge_override,
+            close_stay,
         } = body
 
         if (!booking_id || !room_id) {
             return NextResponse.json({ error: 'Missing booking_id or room_id' }, { status: 400 })
         }
 
+        // Guests settle before they leave — the card is here now, the group is
+        // splitting up, they're going before the desk is staffed — and the room
+        // is still theirs until morning. False takes every peso exactly as a
+        // checkout does and then stops: the stay stays open, the room stays
+        // occupied, the QR session stays orderable. Absent means true, so every
+        // caller that predates this behaves exactly as it did.
+        const closeStay = close_stay !== false
+
         // The client-declared total is kept only for reconciliation in the audit
         // trail — it is never what we charge (see computeFolioTotal).
         const clientTotal = Number(total_amount)
         if (total_amount != null && (!Number.isFinite(clientTotal) || clientTotal < 0)) {
             return NextResponse.json({ error: 'total_amount must be a number >= 0' }, { status: 400 })
+        }
+
+        // Unlike total_amount, this one IS charged: the cashier can replace the
+        // service charge the folio rules work out. Absent/null keeps it on auto,
+        // 0 waives it — so the empty-string case has to be excluded explicitly
+        // rather than leaning on Number('') being 0.
+        const hasServiceChargeOverride = service_charge_override !== undefined && service_charge_override !== null && service_charge_override !== ''
+        const serviceChargeOverride = hasServiceChargeOverride ? round2(Number(service_charge_override)) : null
+        if (serviceChargeOverride !== null && (!Number.isFinite(serviceChargeOverride) || serviceChargeOverride < 0)) {
+            return NextResponse.json({ error: 'service_charge_override must be a non-negative number' }, { status: 400 })
         }
 
         // A stay can be settled cash + QR + credit in any combination — the
@@ -175,7 +248,7 @@ export async function POST(req: Request) {
         // with the advance already collected and to recompute its folio.
         const { data: booking, error: fetchError } = await supabase
             .from('bookings')
-            .select('id, paid_amount, status, check_in, check_out, room_id, guest_name, guest_phone, guest_email, restaurant_id')
+            .select('id, paid_amount, status, check_in, check_out, checked_out_at, bill_settled_at, room_id, group_id, guest_name, guest_phone, guest_email, restaurant_id')
             .eq('id', booking_id)
             .in('restaurant_id', targetRestaurantIds)
             .maybeSingle()
@@ -185,18 +258,62 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
         }
 
-        // 0a. Authoritative, server-computed folio total — computed before the
+        // 0a. Resolve every room being settled. A multi-room reservation checks
+        // out as one unit — the guest pays a single combined bill — so checking
+        // out any one of its rooms settles them all. A normal stay is just a
+        // group of one and follows the identical path below.
+        type Member = {
+            id: string
+            room_id: string
+            check_in: string
+            check_out: string
+            checked_out_at: string | null
+            status: string | null
+            paid_amount: number | null
+        }
+        let members: Member[] = [{
+            id: booking.id,
+            room_id: booking.room_id || room_id,
+            check_in: booking.check_in,
+            check_out: booking.check_out,
+            checked_out_at: booking.checked_out_at ?? null,
+            status: booking.status ?? null,
+            paid_amount: booking.paid_amount,
+        }]
+
+        if (booking.group_id) {
+            const { data: groupRows } = await supabase
+                .from('bookings')
+                .select('id, room_id, check_in, check_out, checked_out_at, status, paid_amount')
+                .eq('group_id', booking.group_id)
+                .neq('status', 'cancelled')
+                .order('created_at', { ascending: true })
+            if (groupRows && groupRows.length > 0) {
+                members = groupRows as Member[]
+            }
+        }
+        const isGroup = members.length > 1
+
+        // 0b. Authoritative, server-computed folio total — computed before the
         // atomic claim below so an invalid discount can be rejected without
         // ever flipping the booking to checked_out (that claim can't be
         // cleanly undone once made).
-        const folio = await computeFolioTotal(supabase, {
+        const folio = await computeFolioForStays(supabase, {
             restaurantId: booking.restaurant_id,
-            bookingId: booking_id,
-            roomId: booking.room_id || room_id,
-            checkIn: booking.check_in,
-            checkOut: booking.check_out,
+            stays: members.map(m => ({
+                bookingId: m.id,
+                roomId: m.room_id,
+                checkIn: m.check_in,
+                checkOut: m.check_out,
+                // Still in house at this point, so the folio bills the overstay
+                // up to now — which is the moment the RPC below stamps as the
+                // departure, keeping the charge and the record consistent.
+                checkedOutAt: m.checked_out_at,
+                status: m.status,
+            })),
             sessionId: session_id || null,
             discountAmount,
+            serviceChargeOverride,
         })
         const extraHourCharge = Number(extra_hour_charge) || 0
         if (extraHourCharge < 0) {
@@ -212,34 +329,86 @@ export async function POST(req: Request) {
         const features = await getRestaurantFeatures(booking.restaurant_id)
         const isInvoiceEnabled = !!features?.generateInvoiceEnabled
 
+        const memberIds = members.map(m => m.id)
+        // Only the rooms this reservation is still in. A room that departed
+        // early (see /api/bookings/checkout-room) was handed to housekeeping
+        // then and may well have a different guest in it by now — sending it to
+        // 'dirty' again would evict a stranger from the board.
+        const memberRoomIds = members
+            .filter(m => m.status !== 'checked_out')
+            .map(m => m.room_id)
+
         if (!isInvoiceEnabled) {
-            // 1. Settle the session orders (if session_id is provided)
+            // 1. Settle the session orders (if session_id is provided). On an
+            // early settlement the orders are marked paid but the session is
+            // left open — the guest still has the room, and closing their QR
+            // session would take away ordering for the rest of the stay.
             if (session_id) {
-                await settleAndCloseSession(supabase, booking.restaurant_id, session_id)
+                if (closeStay) {
+                    await settleAndCloseSession(supabase, booking.restaurant_id, currentUser.id, session_id)
+                } else {
+                    await settleOrdersMatching(supabase, booking.restaurant_id, currentUser.id, { session_id })
+                }
             }
 
-            // 2. Mark the booking as checked out
+            // 2. Mark the booking(s) as checked out — every room of a group
+            // reservation, since they settled on one bill. An early settlement
+            // records the money and the cashier but leaves the stay open.
+            const now = new Date().toISOString()
             const { error: bookingErr } = await supabase
                 .from('bookings')
-                .update({ status: 'checked_out', payment_status: 'paid' })
-                .eq('id', booking_id)
+                .update({
+                    payment_status: 'paid',
+                    cashier_id: currentUser.id,
+                    // Remembered so a later recompute of this folio doesn't
+                    // rebuild the service charge from the rules and quote a
+                    // figure the guest was never charged.
+                    service_charge_override: serviceChargeOverride,
+                    ...(closeStay
+                        ? {
+                            status: 'checked_out',
+                            // Freezes the overstay: without it the folio would
+                            // read the clock on every later recompute and a
+                            // settled bill would keep growing.
+                            checked_out_at: now,
+                        }
+                        : {
+                            // Deliberately not frozen — the guest is still in
+                            // the room, so further nights and orders are real
+                            // charges and belong on this same folio.
+                            bill_settled_at: booking.bill_settled_at ?? now,
+                        }),
+                })
+                .in('id', memberIds)
             if (bookingErr) throw bookingErr
 
-            // 3. Mark the room as dirty (vacant)
-            const { error: roomErr } = await supabase
-                .from('rooms')
-                .update({ status: 'dirty' })
-                .eq('id', room_id)
-            if (roomErr) throw roomErr
+            // 3. Mark the room(s) as dirty (vacant) — only once the guest has
+            // actually vacated.
+            if (closeStay) {
+                const { error: roomErr } = await supabase
+                    .from('rooms')
+                    .update({ status: 'dirty' })
+                    .in('id', memberRoomIds)
+                if (roomErr) throw roomErr
+            }
 
-            return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio })
+            return NextResponse.json({
+                success: true,
+                total: authoritativeTotal,
+                breakdown: folio,
+                closed: closeStay,
+            })
         }
 
         const clientMismatch = Number.isFinite(clientTotal)
             ? round2(Math.abs(clientTotal - authoritativeTotal))
             : null
 
-        const newPaidAmount = (Number(booking.paid_amount) || 0) + settledNow
+        // Advances were collected per room (the creation route spreads a group's
+        // single advance across its rooms), so the already-paid figure for the
+        // bill is the sum over every room on it.
+        const priorPaid = members.reduce((s, m) => s + (Number(m.paid_amount) || 0), 0)
+        const newPaidAmount = priorPaid + settledNow
         const paymentStatus =
             authoritativeTotal > 0 && newPaidAmount >= authoritativeTotal ? 'paid'
                 : newPaidAmount > 0 ? 'partial'
@@ -254,14 +423,19 @@ export async function POST(req: Request) {
 
         const partnerRestaurantId = restaurant?.linked_restaurant_id
         
-        // 2. Fetch room details
-        const { data: roomContext } = await supabase
-            .from('rooms')
-            .select('room_number')
-            .eq('id', room_id)
-            .single()
-
-        const roomNumber = roomContext?.room_number || 'Unknown'
+        // 2. Fetch room details. The folio already resolved a number for every
+        // room on the bill, so the ledger description names all of them
+        // ("101, 102, 205") rather than just the room that was clicked.
+        const roomLabel = folio.rooms.map(r => r.roomNumber).filter(Boolean).join(', ')
+        let roomNumber = roomLabel
+        if (!roomNumber) {
+            const { data: roomContext } = await supabase
+                .from('rooms')
+                .select('room_number')
+                .eq('id', room_id)
+                .maybeSingle()
+            roomNumber = roomContext?.room_number || 'Unknown'
+        }
         const guestName = booking.guest_name || 'Guest'
 
         // 3. Resolve cash, qr, and credit splits
@@ -276,8 +450,11 @@ export async function POST(req: Request) {
         let restQr = 0
         let restCredit = 0
 
-        if (partnerRestaurantId && folio.ordersTotal > 0 && settledNow > 0) {
-            const restaurantAlloc = Math.min(folio.ordersTotal, settledNow)
+        // Charged, not auto: a waived service charge shrinks the partner
+        // restaurant's share of what was collected, and a raised one grows it,
+        // rather than the hotel silently absorbing the difference.
+        if (partnerRestaurantId && folio.ordersTotalCharged > 0 && settledNow > 0) {
+            const restaurantAlloc = Math.min(folio.ordersTotalCharged, settledNow)
             const restaurantRatio = restaurantAlloc / settledNow
 
             restCash = round2(cashPaid * restaurantRatio)
@@ -332,11 +509,12 @@ export async function POST(req: Request) {
             }
         }
 
-        // 5. Invoke transaction-locked database RPC to settle checkout atomically
-        const { data: rpcRes, error: rpcErr } = await supabase.rpc('settle_booking_checkout_v2', {
-            p_booking_id: booking_id,
+        // 5. Invoke transaction-locked database RPC to settle checkout atomically.
+        // A group reservation goes through the group RPC so all of its rooms
+        // close in one transaction and the payment posts to the day book once,
+        // instead of once per room.
+        const sharedRpcArgs = {
             p_restaurant_id: booking.restaurant_id,
-            p_room_id: room_id,
             p_session_id: session_id || null,
             p_hotel_cash: hotelCash,
             p_hotel_qr: hotelQr,
@@ -347,19 +525,42 @@ export async function POST(req: Request) {
             p_discount_amount: discountAmount,
             p_discount_reason: discountReason || '',
             p_hotel_credit_account_id: creditAccountId,
-            p_room_number: roomNumber,
             p_guest_name: guestName,
             p_user_id: currentUser.id,
             p_partner_restaurant_id: partnerRestaurantId || null,
-            p_settled_now: settledNow,
-            p_new_paid_amount: newPaidAmount,
             p_payment_status: paymentStatus,
             p_authoritative_total: authoritativeTotal,
-            p_orders_total: folio.ordersTotal,
+            // Drives the B2B payable to the partner restaurant and the
+            // commission taken off it, so it tracks the charged figure for the
+            // same reason the direct-mode split above does.
+            p_orders_total: folio.ordersTotalCharged,
             p_ledger_split_mode: restaurant?.ledger_split_mode || 'direct',
             p_commission_rate: Number(restaurant?.billing_commission_rate) || 0.00,
-            p_extra_hour_charge: extraHourCharge
-        })
+            p_extra_hour_charge: extraHourCharge,
+            // The money posts identically either way; this decides only whether
+            // the stay, its session and its room are closed behind it.
+            p_close_stay: closeStay,
+        }
+
+        const { data: rpcRes, error: rpcErr } = isGroup
+            ? await supabase.rpc('settle_booking_group_checkout', {
+                ...sharedRpcArgs,
+                p_room_label: roomNumber,
+                p_bookings: allocateAcrossRooms(members, folio, {
+                    authoritativeTotal,
+                    newPaidAmount,
+                    discountAmount,
+                    extraHourCharge,
+                }),
+            })
+            : await supabase.rpc('settle_booking_checkout_v2', {
+                ...sharedRpcArgs,
+                p_booking_id: booking_id,
+                p_room_id: room_id,
+                p_room_number: roomNumber,
+                p_settled_now: settledNow,
+                p_new_paid_amount: newPaidAmount,
+            })
 
         if (rpcErr) {
             console.error('RPC Checkout Transaction Error:', rpcErr)
@@ -369,6 +570,20 @@ export async function POST(req: Request) {
         const resObj = rpcRes as unknown as { success: boolean; error?: string }
         if (!resObj.success) {
             return NextResponse.json({ error: resObj.error || 'Transaction rolled back' }, { status: 400 })
+        }
+
+        // Written after the settling transaction rather than inside it: the RPC
+        // has already charged this figure by way of authoritativeTotal, and
+        // storing it is only so a later recompute of the folio reproduces the
+        // same number. A failure here leaves the bill correctly settled and the
+        // stored charge stale, which is why it is not allowed to fail the
+        // checkout — the audit log records the override either way.
+        if (serviceChargeOverride !== null) {
+            const { error: scErr } = await supabase
+                .from('bookings')
+                .update({ service_charge_override: serviceChargeOverride })
+                .in('id', memberIds)
+            if (scErr) console.error('Failed to store service charge override:', scErr)
         }
 
         // Trigger IRD CBMS Synchronization
@@ -393,12 +608,20 @@ export async function POST(req: Request) {
         void logAudit({
             restaurantId: booking.restaurant_id,
             userId: currentUser.id,
-            action: 'booking_checked_out',
+            action: closeStay ? 'booking_checked_out' : 'booking_bill_settled',
             entityType: 'booking',
             entityId: booking_id,
             newValue: {
                 total_amount: authoritativeTotal,
                 folio,
+                // False means the guest paid and kept the room — the stay is
+                // still open and will be closed by /api/bookings/close-stay.
+                closed_stay: closeStay,
+                service_charge_overridden: serviceChargeOverride !== null,
+                group_id: booking.group_id || null,
+                // Every booking closed by this settlement — one for a normal
+                // stay, all of them for a multi-room reservation.
+                settled_booking_ids: memberIds,
                 client_total: Number.isFinite(clientTotal) ? clientTotal : null,
                 client_mismatch: clientMismatch,
                 paid_amount: newPaidAmount,
@@ -413,30 +636,19 @@ export async function POST(req: Request) {
             },
         })
 
-        // Handle loyalty points (5% earn on Cash/QR payments)
-        const rPoints = Number(redeemed_points) || 0
-        const phone = customer_phone ? customer_phone.trim() : (booking.guest_phone ? booking.guest_phone.trim() : '')
-        const name = customer_name ? customer_name.trim() : (booking.guest_name ? booking.guest_name.trim() : 'Guest')
-        if (phone && (cashPaid > 0 || qrPaid > 0 || rPoints > 0)) {
-            const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
-            const { data: account } = await supabase
-                .from('customer_credit_accounts')
-                .select('id')
-                .eq('restaurant_id', booking.restaurant_id)
-                .eq('customer_phone', phone)
-                .maybeSingle()
+        // Handle loyalty points (5% earn on Cash/QR payments). settleLoyalty
+        // creates the guest's CRM record if this is their first visit — read
+        // only, a cash-paying guest never had one and so never earned anything.
+        await settleLoyalty(supabase, booking.restaurant_id, currentUser.id, {
+            name: customer_name ? customer_name.trim() : (booking.guest_name ? booking.guest_name.trim() : 'Guest'),
+            phone: customer_phone ? customer_phone.trim() : (booking.guest_phone ? booking.guest_phone.trim() : ''),
+            earnPoints: Math.round((cashPaid + qrPaid) * 0.05),
+            redeemPoints: Number(redeemed_points) || 0,
+            earnDescription: `Earned from Room ${roomNumber} stay`,
+            redeemDescription: `Redeemed on Room ${roomNumber} stay`,
+        })
 
-            if (account) {
-                if (pointsToEarn > 0) {
-                    await postLoyaltyEarn(supabase, booking.restaurant_id, account.id, pointsToEarn, `Earned from Room ${roomNumber} stay`)
-                }
-                if (rPoints > 0) {
-                    await postLoyaltyRedeem(supabase, booking.restaurant_id, account.id, rPoints, `Redeemed on Room ${roomNumber} stay`)
-                }
-            }
-        }
-
-        return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio })
+        return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio, closed: closeStay })
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Server error'
         return NextResponse.json({ error: message }, { status: 500 })

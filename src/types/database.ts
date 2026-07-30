@@ -287,6 +287,10 @@ export interface Order {
     // Mode 2 (waiter confirmation): true while a placed order is waiting for a
     // waiter to confirm the customer is seated; the kitchen hides these until then.
     needs_confirmation?: boolean
+    /** Sold straight over the counter — cigarettes, a bottle off the shelf — so
+     *  no station ticket printed and no station ever queued it. Its lines are
+     *  written already served. Billing and stock are unaffected. */
+    no_kot?: boolean
     cancellation_reason?: string | null
     placed_at: string
     confirmed_at: string | null
@@ -296,6 +300,8 @@ export interface Order {
     seat_id: string | null
     claimed_by: string | null
     claimed_at: string | null
+    /** Staff member who settled this order at checkout; null until it's paid. */
+    cashier_id?: string | null
     // Joined fields
     order_items?: OrderItem[]
     sessions?: Session
@@ -1010,6 +1016,24 @@ export interface Booking {
     discount_applied_by: string | null
     discount_applied_at: string | null
     extra_hour_charge?: number
+    /** Service charge the cashier set at checkout, replacing what the folio
+     *  rules produce. Null means no override — recompute from the rules; 0
+     *  means the charge was deliberately waived. */
+    service_charge_override?: number | null
+    /** Staff member who settled this stay at checkout; null while in house. */
+    cashier_id?: string | null
+    /** When this stay's bill was closed out. Stamped by every settlement, and
+     *  kept at the first one if a stay settles more than once. Null means never
+     *  settled — including a room that departed early and is still riding on a
+     *  shared bill. "Paid but still in the room" is this set while `status` is
+     *  not yet `checked_out`. */
+    bill_settled_at?: string | null
+    /** Guest asked for a parking space. Any fee is a `room_charges` row of type
+     *  'parking', never an amount stored here. */
+    parking_required?: boolean
+    /** Vehicle registration taken at the desk. Can be set even when
+     *  `parking_required` is false — a guest with a car but no reserved space. */
+    parking_vehicle_no?: string | null
     rooms?: Room | null
 }
 
@@ -1033,6 +1057,20 @@ export interface BookingRoomStay {
     created_at: string
     rooms?: Room | null
 }
+
+export interface BookingPayment {
+    id: string
+    restaurant_id: string
+    booking_id: string
+    amount: number
+    payment_method: string
+    cash_amount?: number
+    qr_amount?: number
+    note: string | null
+    created_at: string
+    created_by?: string | null
+}
+
 
 // ─── Day Book ───────────────────────────────────────────────
 export type DayBookSessionStatus = 'open' | 'closed'

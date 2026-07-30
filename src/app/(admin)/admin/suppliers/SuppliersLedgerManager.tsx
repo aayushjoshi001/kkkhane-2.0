@@ -3,11 +3,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import {
     Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, DollarSign, Truck, Tag,
-    Download, Printer, Banknote
+    Download, Printer, Banknote, ShieldAlert, Receipt
 } from 'lucide-react'
-import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction, approveChequeBillAction, rejectChequeBillAction, getSupplierSettlementsAction } from './actions'
+import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createSupplierBillAction, approveChequeBillAction, rejectChequeBillAction, getSupplierSettlementsAction, saveSupplierOpeningBalanceAction } from './actions'
 import { createCategoryAction } from '../income-expenses/actions'
 import { toast } from 'react-hot-toast'
+import Modal from '@/components/ui/Modal'
 import { formatCurrency, parseExpenseDescription, type SupplierBillDetails } from '@/lib/utils'
 import { downloadCsv } from '@/lib/exportCsv'
 import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
@@ -86,6 +87,7 @@ export default function SuppliersLedgerManager({
     const [ledgerSupplier, setLedgerSupplier] = useState<Supplier | null>(null)
     const [settlements, setSettlements] = useState<any[]>([])
     const [loadingSettlements, setLoadingSettlements] = useState(false)
+    const [selectedSupplierBillDetails, setSelectedSupplierBillDetails] = useState<any | null>(null)
 
     const loadSettlements = async (supplier: Supplier) => {
         const sNameLower = supplier.name.toLowerCase().trim()
@@ -161,6 +163,64 @@ export default function SuppliersLedgerManager({
     // Pay modal — one action per supplier, settling however many outstanding
     // bills the amount covers (oldest first), via a real Payment Voucher.
     const [payModalOpen, setPayModalOpen] = useState(false)
+
+    // Opening balance modal state
+    const [obModalOpen, setObModalOpen] = useState(false)
+    const [obAmount, setObAmount] = useState('')
+    const [obReason, setObReason] = useState('')
+    const [isObEdit, setIsObEdit] = useState(false)
+    const [submittingOb, setSubmittingOb] = useState(false)
+
+    const handleOpenAddSupplierOb = () => {
+        setObAmount('')
+        setObReason('')
+        setIsObEdit(false)
+        setObModalOpen(true)
+    }
+
+    const handleOpenEditSupplierOb = (currentAmt: number) => {
+        setObAmount(String(currentAmt))
+        setObReason('')
+        setIsObEdit(true)
+        setObModalOpen(true)
+    }
+
+    const handleSaveSupplierOb = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!ledgerSupplier) return
+        const amt = parseFloat(obAmount)
+        if (isNaN(amt) || amt < 0) { toast.error('Opening balance amount must be non-negative'); return }
+        if (isObEdit && !obReason.trim()) {
+            toast.error('Reason for editing opening balance is required')
+            return
+        }
+
+        setSubmittingOb(true)
+        try {
+            const res = await saveSupplierOpeningBalanceAction({
+                supplier_id: ledgerSupplier.id,
+                supplier_name: ledgerSupplier.name,
+                amount: amt,
+                reason: obReason.trim(),
+                is_edit: isObEdit,
+            })
+            if (res.error) {
+                toast.error(res.error)
+            } else if (res.data) {
+                const newOrUpdated = res.data as Expense
+                setExpensesList(prev => {
+                    const filtered = prev.filter(e => e.id !== newOrUpdated.id)
+                    return [newOrUpdated, ...filtered]
+                })
+                setObModalOpen(false)
+                toast.success(isObEdit ? 'Opening balance updated' : 'Opening balance added')
+            }
+        } catch (err) {
+            toast.error('Failed to save opening balance')
+        } finally {
+            setSubmittingOb(false)
+        }
+    }
 
     // Open add modal
     const openAddModal = () => {
@@ -581,11 +641,15 @@ export default function SuppliersLedgerManager({
             })
         })
 
-        // 4. Sort chronologically by date ascending to calculate running balance correctly
-        statementRows.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        // 4. Pin Opening Balance at Row #1 (Very Top), sort all other transactions chronologically
+        const obRows = statementRows.filter(r => (r.parsed?.text_desc || r.description || '').toLowerCase().includes('opening balance'))
+        const otherRows = statementRows.filter(r => !(r.parsed?.text_desc || r.description || '').toLowerCase().includes('opening balance'))
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
+        const orderedRows = [...obRows, ...otherRows]
 
         let cumulativeBalance = 0
-        const mapped = statementRows.map(row => {
+        const mapped = orderedRows.map(row => {
             const netChange = row.totalAmt - row.paidAmt
             cumulativeBalance += netChange
 
@@ -595,8 +659,7 @@ export default function SuppliersLedgerManager({
             }
         })
 
-        // 5. Return descending (newest first) for UI rendering
-        return mapped.reverse()
+        return mapped
     }, [ledgerSupplier, expensesList, settlements])
 
     const totalPurchased = useMemo(() => {
@@ -608,8 +671,12 @@ export default function SuppliersLedgerManager({
     }, [supplierLedgerEntries])
 
     const totalOwed = useMemo(() => {
-        // Outstanding amount is the final running balance (first item in reversed array)
-        return supplierLedgerEntries[0]?.runningBalance ?? 0
+        // Outstanding amount is the final running balance (last item in array)
+        return supplierLedgerEntries[supplierLedgerEntries.length - 1]?.runningBalance ?? 0
+    }, [supplierLedgerEntries])
+
+    const existingObEntry = useMemo(() => {
+        return supplierLedgerEntries.find(e => (e.parsed?.text_desc || e.description || '').toLowerCase().includes('opening balance'))
     }, [supplierLedgerEntries])
 
     const printRef = useRef<PrintableReportHandle>(null)
@@ -624,20 +691,23 @@ export default function SuppliersLedgerManager({
         { key: 'payment_type', label: 'Payment Type' },
         { key: 'running_balance', label: 'Running Balance', align: 'right' as const },
     ]
-    const reportRows = supplierLedgerEntries.map(e => ({
-        date: formatDate(e.created_at),
-        description: e.parsed.text_desc || e.description,
-        quantity: e.parsed.quantity !== null ? e.parsed.quantity : '',
-        rate: e.parsed.rate !== null ? formatCurrency(e.parsed.rate) : '',
-        unit: e.parsed.unit || '',
-        amount: formatCurrency(e.totalAmt),
-        paid_amount: formatCurrency(e.paidAmt),
-        payment_type: e.paidAmt === 0
-            ? 'UNPAID'
-            : `${e.owed > 0 ? 'Partial - ' : ''}${paymentTypeLabel(e.parsed, e.bank_accounts?.name)}` +
-              (e.parsed.payment_type === 'cash_qr' ? ` (Cash: ${formatCurrency(e.parsed.cash_portion ?? 0)}, QR: ${formatCurrency(e.parsed.qr_portion ?? 0)})` : ''),
-        running_balance: formatCurrency(e.runningBalance),
-    }))
+    const reportRows = supplierLedgerEntries.map(e => {
+        const isOb = (e.parsed.text_desc || e.description || '').toLowerCase().includes('opening balance')
+        return {
+            date: formatDate(e.created_at),
+            description: e.parsed.text_desc || e.description,
+            quantity: !isOb && e.parsed.quantity !== null && e.parsed.quantity !== undefined ? e.parsed.quantity : '',
+            rate: !isOb && e.parsed.rate !== null && e.parsed.rate !== undefined ? formatCurrency(e.parsed.rate) : '',
+            unit: !isOb ? (e.parsed.unit || '') : '',
+            amount: formatCurrency(e.totalAmt),
+            paid_amount: formatCurrency(e.paidAmt),
+            payment_type: e.paidAmt === 0
+                ? 'UNPAID'
+                : `${e.owed > 0 ? 'Partial - ' : ''}${paymentTypeLabel(e.parsed, e.bank_accounts?.name)}` +
+                  (e.parsed.payment_type === 'cash_qr' ? ` (Cash: ${formatCurrency(e.parsed.cash_portion ?? 0)}, QR: ${formatCurrency(e.parsed.qr_portion ?? 0)})` : ''),
+            running_balance: formatCurrency(e.runningBalance),
+        }
+    })
     const handleExportCsv = () => downloadCsv(`supplier-statement-${ledgerSupplier?.name || 'supplier'}`, reportColumns, reportRows)
 
     return (
@@ -833,11 +903,11 @@ export default function SuppliersLedgerManager({
                 <div className="fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-surface rounded-2xl border border-hairline shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
                         {/* Statement Header */}
-                        <div className="px-6 py-4 border-b border-hairline bg-surface-muted/50 flex items-center justify-between">
-                            <div>
-                                <span className="text-[9px] font-black uppercase text-brand-600 tracking-wider">Supplier Account Statement</span>
-                                <h2 className="text-xl font-extrabold text-ink mt-0.5">{ledgerSupplier.name}</h2>
-                                <p className="text-xs text-ink-subtle mt-1">
+                        <div className="px-6 py-4 border-b border-hairline bg-surface-muted/50 flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0 pr-2">
+                                <span className="text-[9px] font-black uppercase text-brand-600 tracking-wider block">Supplier Account Statement</span>
+                                <h2 className="text-lg sm:text-xl font-extrabold text-ink mt-0.5 truncate">{ledgerSupplier.name}</h2>
+                                <p className="text-xs text-ink-subtle mt-0.5 truncate">
                                     {(() => {
                                         try {
                                             const p = JSON.parse(ledgerSupplier.contact_person || '{}')
@@ -848,22 +918,38 @@ export default function SuppliersLedgerManager({
                                     })()}
                                 </p>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-2 shrink-0">
                                 {supplierLedgerEntries.length > 0 && (
-                                    <>
+                                    <div className="flex items-center gap-1.5 shrink-0">
                                         <button
                                             onClick={handleExportCsv}
-                                            className="flex items-center gap-1.5 px-3 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all"
+                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
                                         >
-                                            <Download size={14} /> Export
+                                            <Download size={13} /> Export
                                         </button>
                                         <button
                                             onClick={() => printRef.current?.print()}
-                                            className="flex items-center gap-1.5 px-3 py-2 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-xs border border-hairline transition-all"
+                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-surface hover:bg-surface-muted text-ink font-bold rounded-xl text-[11px] border border-hairline transition-all whitespace-nowrap"
                                         >
-                                            <Printer size={14} /> Print
+                                            <Printer size={13} /> Print
                                         </button>
-                                    </>
+                                    </div>
+                                )}
+                                {existingObEntry ? (
+                                    <button
+                                        onClick={() => handleOpenEditSupplierOb(existingObEntry.totalAmt)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold border border-amber-200 rounded-xl text-[11px] transition-all whitespace-nowrap"
+                                        title="Edit Opening Balance (requires reason)"
+                                    >
+                                        <Edit2 size={13} /> Edit Opening Balance ({formatCurrency(existingObEntry.totalAmt)})
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={handleOpenAddSupplierOb}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold border border-emerald-200 rounded-xl text-[11px] transition-all whitespace-nowrap"
+                                    >
+                                        <Plus size={13} /> Add Opening Balance
+                                    </button>
                                 )}
                                 <button
                                     onClick={() => {
@@ -871,16 +957,16 @@ export default function SuppliersLedgerManager({
                                         setSelectedIngredientId('')
                                         setBillModalOpen(true)
                                     }}
-                                    className="flex items-center gap-1.5 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs shadow-sm transition-colors"
+                                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-[11px] shadow-sm transition-colors whitespace-nowrap"
                                 >
-                                    <Plus size={14} /> Record Bill / Purchase
+                                    <Plus size={13} /> Record Bill / Purchase
                                 </button>
                                 {totalOwed > 0 && (
                                     <button
                                         onClick={() => setPayModalOpen(true)}
-                                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs shadow-sm transition-colors"
+                                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-[11px] shadow-sm transition-colors whitespace-nowrap"
                                     >
-                                        <Banknote size={14} /> Pay
+                                        <Banknote size={13} /> Pay
                                     </button>
                                 )}
                                 <button
@@ -947,20 +1033,37 @@ export default function SuppliersLedgerManager({
                                                         <DateCell value={e.created_at} />
                                                     </td>
                                                     {/* Description */}
-                                                    <td className="px-4 py-3 font-bold text-ink">
-                                                        {e.parsed.text_desc || e.description}
+                                                    <td className="px-4 py-3 font-bold text-ink max-w-xs sm:max-w-sm md:max-w-md break-words whitespace-normal">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedSupplierBillDetails(e)}
+                                                            className="text-left font-bold text-brand-600 hover:text-brand-700 hover:underline inline-flex items-start gap-1.5 leading-snug break-words max-w-full focus:outline-none transition-colors"
+                                                            title="Click to view itemized inventory, kg/rate, and bill details"
+                                                        >
+                                                            <Receipt size={13} className="shrink-0 text-brand-500 mt-0.5" />
+                                                            <span className="break-words">{e.parsed.text_desc || e.description}</span>
+                                                        </button>
                                                     </td>
                                                     {/* Product Quantity */}
                                                     <td className="px-4 py-3 text-center font-bold text-ink">
-                                                        {e.parsed.quantity !== null ? e.parsed.quantity : '-'}
+                                                        {(() => {
+                                                            const isOb = (e.parsed.text_desc || e.description || '').toLowerCase().includes('opening balance')
+                                                            return !isOb && e.parsed.quantity !== null && e.parsed.quantity !== undefined ? e.parsed.quantity : '-'
+                                                        })()}
                                                     </td>
                                                     {/* Rate */}
                                                     <td className="px-4 py-3 text-right font-semibold text-ink-subtle">
-                                                        {e.parsed.rate !== null ? formatCurrency(e.parsed.rate) : '-'}
+                                                        {(() => {
+                                                            const isOb = (e.parsed.text_desc || e.description || '').toLowerCase().includes('opening balance')
+                                                            return !isOb && e.parsed.rate !== null && e.parsed.rate !== undefined ? formatCurrency(e.parsed.rate) : '-'
+                                                        })()}
                                                     </td>
                                                     {/* Unit */}
                                                     <td className="px-4 py-3 text-center text-ink-subtle uppercase font-black text-[10px]">
-                                                        {e.parsed.unit || '-'}
+                                                        {(() => {
+                                                            const isOb = (e.parsed.text_desc || e.description || '').toLowerCase().includes('opening balance')
+                                                            return !isOb && e.parsed.unit ? e.parsed.unit : '-'
+                                                        })()}
                                                     </td>
                                                     {/* Amount */}
                                                     <td className="px-4 py-3 text-right font-black text-ink">
@@ -1369,6 +1472,232 @@ export default function SuppliersLedgerManager({
                     bankAccounts={bankAccounts}
                     onSettled={handlePaySettled}
                 />
+            )}
+
+            {/* ── SUPPLIER OPENING BALANCE MODAL ── */}
+            {obModalOpen && ledgerSupplier && (
+                <Modal open onClose={() => setObModalOpen(false)} size="md" ariaLabel={isObEdit ? "Edit Opening Balance" : "Add Opening Balance"} className="bg-surface overflow-hidden">
+                    <div className="p-5 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
+                        <div>
+                            <h3 className="font-extrabold text-ink text-sm flex items-center gap-2">
+                                {isObEdit ? <Edit2 size={16} className="text-amber-500" /> : <Plus size={16} className="text-emerald-500" />}
+                                {isObEdit ? `Edit Opening Balance for ${ledgerSupplier.name}` : `Add Opening Balance for ${ledgerSupplier.name}`}
+                            </h3>
+                            <p className="text-[10px] text-ink-subtle mt-0.5">
+                                {isObEdit ? 'A reason is required before editing an existing opening balance.' : 'Set the initial purchase / opening balance owed to this supplier.'}
+                            </p>
+                        </div>
+                        <button 
+                            onClick={() => setObModalOpen(false)}
+                            className="p-1.5 hover:bg-surface-muted rounded-xl text-ink-subtle hover:text-ink-subtle transition-colors"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                    
+                    <form onSubmit={handleSaveSupplierOb} className="p-5 space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Opening Balance Amount (Rs.) *</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={obAmount}
+                                onChange={e => setObAmount(e.target.value)}
+                                required
+                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-sm"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">
+                                {isObEdit ? 'Reason for Editing *' : 'Note / Reference (Optional)'}
+                            </label>
+                            <textarea
+                                placeholder={isObEdit ? 'State the reason for modifying the opening balance...' : 'e.g. Opening balance from previous supplier ledger'}
+                                value={obReason}
+                                onChange={e => setObReason(e.target.value)}
+                                required={isObEdit}
+                                rows={3}
+                                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-semibold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-sm"
+                            />
+                            {isObEdit && (
+                                <p className="text-[10px] text-amber-600 font-semibold flex items-center gap-1 mt-1">
+                                    <ShieldAlert size={12} /> This reason will be permanently recorded in the Manager Activities Log.
+                                </p>
+                            )}
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={submittingOb}
+                            className={`w-full mt-2 py-3 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-colors shadow-md flex items-center justify-center gap-2 focus-ring disabled:opacity-50 ${
+                                isObEdit ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/15' : 'bg-brand-500 hover:bg-brand-600 shadow-brand-500/15'
+                            }`}
+                        >
+                            {submittingOb ? <Loader2 size={16} className="animate-spin" /> : isObEdit ? <Edit2 size={16} /> : <Plus size={16} />}
+                            {isObEdit ? 'Save Changes with Reason' : 'Save Opening Balance'}
+                        </button>
+                    </form>
+                </Modal>
+            )}
+
+            {/* ── FAIR SUPPLIER BILL & INVENTORY BREAKDOWN MODAL ── */}
+            {selectedSupplierBillDetails && (
+                <Modal
+                    open
+                    onClose={() => setSelectedSupplierBillDetails(null)}
+                    size="lg"
+                    ariaLabel="Supplier Bill & Inventory Purchase Details"
+                    className="bg-surface overflow-hidden"
+                >
+                    <div className="p-6 border-b border-hairline bg-surface-muted/50 flex items-center justify-between">
+                        <div className="flex items-center gap-3 min-w-0 pr-2">
+                            <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center shrink-0">
+                                <Receipt size={20} className="text-brand-500" />
+                            </div>
+                            <div className="min-w-0">
+                                <span className="text-[10px] font-black uppercase text-brand-600 tracking-wider block">Fair Supplier Bill & Inventory Breakdown</span>
+                                <h3 className="text-lg font-extrabold text-ink truncate">
+                                    {selectedSupplierBillDetails.parsed.text_desc || selectedSupplierBillDetails.description}
+                                </h3>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setSelectedSupplierBillDetails(null)}
+                            className="p-1.5 hover:bg-surface-muted rounded-xl text-ink-subtle hover:text-ink transition-colors shrink-0"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="p-6 max-h-[75vh] overflow-y-auto space-y-6">
+                        {(() => {
+                            const row = selectedSupplierBillDetails
+                            const parsed = row.parsed || {}
+                            const isOb = (parsed.text_desc || row.description || '').toLowerCase().includes('opening balance')
+
+                            // Extract item lines
+                            const items: Array<{ name: string; quantity: number | null; unit: string; rate: number | null; total: number }> = []
+                            
+                            if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+                                parsed.items.forEach((it: any) => {
+                                    items.push({
+                                        name: it.name || 'Inventory Item',
+                                        quantity: it.quantity ? Number(it.quantity) : null,
+                                        unit: it.unit || 'unit',
+                                        rate: it.rate ? Number(it.rate) : null,
+                                        total: (it.quantity && it.rate) ? Number(it.quantity) * Number(it.rate) : (it.total ? Number(it.total) : row.totalAmt)
+                                    })
+                                })
+                            } else {
+                                items.push({
+                                    name: parsed.text_desc || row.description || 'Inventory Bill Purchase',
+                                    quantity: isOb ? null : (parsed.quantity ?? null),
+                                    unit: isOb ? '' : (parsed.unit || 'unit'),
+                                    rate: isOb ? null : (parsed.rate ?? null),
+                                    total: row.totalAmt
+                                })
+                            }
+
+                            return (
+                                <div className="space-y-5">
+                                    {/* Stat Cards */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                        <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                            <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Entry Type</span>
+                                            <span className="text-xs font-extrabold text-ink uppercase block mt-1 truncate">
+                                                {row.isPaymentRow ? 'Payment Voucher' : isOb ? 'Opening Balance' : 'Bill / Purchase'}
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                            <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Bill Date</span>
+                                            <div className="mt-1 min-w-0 overflow-hidden">
+                                                <DateCell value={row.created_at} className="text-xs font-bold leading-tight block text-ink overflow-hidden" />
+                                            </div>
+                                        </div>
+
+                                        <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                            <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Paid Amount</span>
+                                            <span className="text-xs font-extrabold text-emerald-600 block mt-1 truncate">
+                                                {formatCurrency(row.paidAmt)}
+                                            </span>
+                                        </div>
+
+                                        <div className="p-3 bg-surface-muted/50 border border-hairline rounded-xl min-w-0 overflow-hidden flex flex-col justify-between">
+                                            <span className="text-[9px] font-black uppercase text-ink-subtle block tracking-wider truncate">Bill Total Amount</span>
+                                            <span className="text-xs font-black text-brand-600 block mt-1 truncate">
+                                                {formatCurrency(row.totalAmt)}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Itemized Inventory & Stock Purchase Table */}
+                                    <div className="border border-hairline rounded-xl overflow-hidden">
+                                        <div className="px-4 py-2.5 bg-surface-muted border-b border-hairline flex items-center justify-between">
+                                            <span className="text-xs font-extrabold text-ink flex items-center gap-1.5">
+                                                <Tag size={14} className="text-brand-500" /> Itemized Inventory & Stock Purchase Breakdown
+                                            </span>
+                                            <span className="text-[10px] font-bold text-ink-subtle">
+                                                {items.length} Item(s)
+                                            </span>
+                                        </div>
+                                        <table className="w-full text-left text-xs">
+                                            <thead>
+                                                <tr className="bg-surface-muted/30 border-b border-hairline text-ink-subtle font-bold">
+                                                    <th className="px-4 py-2">Inventory Item Description</th>
+                                                    <th className="px-4 py-2 text-center w-24">Qty / Kg</th>
+                                                    <th className="px-4 py-2 text-center w-20">Unit</th>
+                                                    <th className="px-4 py-2 text-right w-24">Rate (Rs.)</th>
+                                                    <th className="px-4 py-2 text-right w-28">Total Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-hairline">
+                                                {items.map((it, idx) => (
+                                                    <tr key={idx} className="hover:bg-surface-muted/30">
+                                                        <td className="px-4 py-2.5 font-semibold text-ink break-words max-w-xs">
+                                                            {it.name}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-center font-bold text-ink">
+                                                            {it.quantity !== null && it.quantity !== undefined ? it.quantity : '—'}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-center font-black uppercase text-[10px] text-ink-subtle">
+                                                            {it.unit || '—'}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-right font-medium text-ink-subtle">
+                                                            {it.rate !== null && it.rate !== undefined ? formatCurrency(it.rate) : '—'}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-right font-extrabold text-ink">
+                                                            {formatCurrency(it.total)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Payment & Supplier Owed Summary Card */}
+                                    <div className="p-4 bg-surface-muted/40 border border-hairline rounded-xl flex items-center justify-between text-xs">
+                                        <div>
+                                            <span className="text-[10px] font-bold text-ink-subtle uppercase block">Payment Mode & Account</span>
+                                            <span className="font-extrabold text-ink uppercase mt-0.5 block">
+                                                {parsed.payment_type || 'Cash'} {row.bank_accounts?.name ? `(${row.bank_accounts.name})` : ''}
+                                            </span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-[10px] font-bold text-ink-subtle uppercase block">Supplier Owed Balance</span>
+                                            <span className="font-black text-rose-600 text-sm block">
+                                                {formatCurrency(row.owed)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )
+                        })()}
+                    </div>
+                </Modal>
             )}
 
             {ledgerSupplier && (

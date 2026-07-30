@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { validateInput, CreateTenantSchema } from '@/lib/validation'
 import { ORDER_STATUS_TO_TAKEOUT, type OrderStatus } from '@/lib/takeout'
-import { TIER_LIMITS, FINANCE_TIERS, type Tier } from '@/lib/tiers'
+import { TIER_LIMITS, applyTierModuleDefaults, MODULE_KEYS, type Tier } from '@/lib/tiers'
 import { provisionRestaurant } from '@/lib/provisioning'
 
 export interface CreateTenantInput {
@@ -117,30 +117,47 @@ export async function updateSubscriptionTier(
 
     if (error) return { error: error.message }
 
-    // Downgrade protection: the accounting module ships with Premium and above
-    // (see the published plans in lib/pricing.ts), so dropping below that
-    // disables financeEnabled.
-    if (!FINANCE_TIERS.includes(tier)) {
-        const { data: settingsRow } = await supabase
-            .from('settings')
-            .select('features_v2')
-            .eq('restaurant_id', restaurantId)
-            .maybeSingle()
+    // Apply the new plan's module entitlements to the stored flags.
+    //
+    // This previously only ran on a downgrade, and only for financeEnabled — so
+    // moving a restaurant UP a plan changed its caps and nothing else. The
+    // modules the customer had just paid for stayed absent from features_v2,
+    // the server read absent as "off", and there was no way in the app to turn
+    // them on. "Set to the package but the features still don't work" was
+    // exactly this.
+    //
+    // applyTierModuleDefaults grants what the plan includes (respecting a flag
+    // the tenant has deliberately switched off) and revokes what it does not,
+    // which keeps the old downgrade protection.
+    const { data: settingsRow } = await supabase
+        .from('settings')
+        .select('features_v2')
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle()
 
-        const features = settingsRow?.features_v2 || {}
-        if (features.financeEnabled) {
-            const merged = { ...features, financeEnabled: false }
+    if (settingsRow) {
+        const current = (settingsRow.features_v2 || {}) as Record<string, unknown>
+        const merged = applyTierModuleDefaults(current, tier)
+
+        const changed = MODULE_KEYS.some(key => current[key] !== merged[key])
+        if (changed) {
             await supabase
                 .from('settings')
                 .update({ features_v2: merged })
                 .eq('restaurant_id', restaurantId)
-            
+
             // Invalidate Redis cache dynamically to avoid top-level module resolution issues
             try {
                 const { invalidateCache } = await import('@/lib/redis')
                 await invalidateCache(`features:${restaurantId}`)
             } catch (err) {
-                console.error('Failed to invalidate feature cache during downgrade:', err)
+                console.error('Failed to invalidate feature cache after tier change:', err)
+            }
+            try {
+                const { revalidateTag } = await import('next/cache')
+                revalidateTag(`features-${restaurantId}`, 'max')
+            } catch (err) {
+                console.error('Failed to revalidate feature tag after tier change:', err)
             }
         }
     }
@@ -872,10 +889,10 @@ export async function getSystemAdvertisementsAction() {
                 {
                     id: '2',
                     badge: 'HARDWARE CORNER',
-                    title: 'Compatible 80mm Direct Thermal Kitchen Printer',
-                    description: 'Need fast, smudge-proof KOT ticket printouts? Get the pre-configured high-speed USB/Ethernet printer for your cashier counter.',
-                    cta: 'Order Printer',
-                    link: 'https://github.com/aayushjoshi001/kkkhane-'
+                    title: 'Auto-Print KOTs to Your Thermal Printer',
+                    description: 'Point your 80mm LAN printer at the cashier counter and KOT tickets print the moment an order is confirmed. No manual reprints.',
+                    cta: 'Set Up Printer',
+                    link: '/admin/printers'
                 },
                 {
                     id: '3',

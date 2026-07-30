@@ -1,10 +1,14 @@
 // Builds the ESC/POS byte stream for a settled table/room invoice — the
-// thermal-print equivalent of the receipt markup in CashierClient.tsx's
-// invoice modal. Kept in sync with that JSX; if the on-screen receipt layout
-// changes, mirror the change here too.
+// thermal-print equivalent of the receipt markup in InvoiceReceipt.tsx.
+//
+// The money block at the foot is no longer duplicated between the two: both
+// render whatever summariseInvoice() returns, so paper and screen cannot
+// disagree about what the guest owes. Only the item table above it is written
+// twice, and that carries no arithmetic.
 
 import { EscPosBuilder, LINE_WIDTH, wrapTextToByteWidth } from '../escpos'
 import { advanceMethodLabel, formatInvoiceAddress } from '@/lib/utils'
+import { summariseInvoice } from '@/lib/invoiceSummary'
 import type { AdvancePaymentMethod } from '@/types/database'
 import { appendBrandFooter } from './brandFooter'
 import { DEFAULT_CALENDAR, formatDateTime, type Calendar } from '@/lib/calendar'
@@ -22,6 +26,13 @@ export interface InvoiceManualCharge {
     amount: number
 }
 
+/** One room on a bill covering several of them. */
+export interface InvoiceRoomLine {
+    roomNumber: string
+    nights: number
+    stayCost: number
+}
+
 export interface ActiveInvoice {
     type: 'room' | 'table' | 'takeout' | 'delivery'
     id: string
@@ -31,18 +42,34 @@ export interface ActiveInvoice {
     roomType?: string
     guestName: string
     guestPhone?: string | null
+    /**
+     * Staff member settling this bill, printed so two cashiers working the same
+     * counter produce distinguishable receipts — the paper counterpart of the
+     * cashier_id now stamped on the order/booking row. Omitted rather than
+     * printed blank when the name isn't known.
+     */
+    cashierName?: string | null
     nights: number
     basePrice: number
     stayCost: number
+    subtotal?: number
+    serviceCharge?: number
+    service_charge_amount?: number
+    taxAmount?: number
+    tax_amount?: number
+    /**
+     * Set only for a multi-room reservation, which settles on one bill: the
+     * per-room split of `stayCost`, printed as a line each so the guest sees
+     * what every room cost. Absent for a normal stay, which prints the single
+     * "Room Stay" line it always did.
+     */
+    roomLines?: InvoiceRoomLine[]
     qrOrders: InvoiceLineItem[]
     qrOrdersTotal: number
     linkedOrders?: InvoiceLineItem[]
     linkedOrdersTotal?: number
     manualCharges: InvoiceManualCharge[]
     manualChargesTotal: number
-    subtotal?: number
-    serviceCharge?: number
-    taxAmount?: number
     total: number
     advancePaid?: number
     advanceMethod?: AdvancePaymentMethod | null
@@ -97,6 +124,7 @@ export function buildInvoiceTicket(
     if (invoice.guestPhone) b.line(`PHONE: ${invoice.guestPhone}`)
     b.line(`REF: ${invoice.label.toUpperCase()}`)
     if (invoice.roomType) b.line(`TYPE: ${invoice.roomType}`)
+    if (invoice.cashierName?.trim()) b.line(`CASHIER: ${invoice.cashierName.trim()}`)
     b.divider()
 
     b.bold(true)
@@ -109,12 +137,30 @@ export function buildInvoiceTicket(
     b.bold(false)
 
     if (invoice.type === 'room' && invoice.stayCost > 0) {
-        b.wrappedColumns([
-            { text: `Room Stay (${invoice.nights}n)`, width: COL.desc },
-            { text: String(invoice.nights), width: COL.qty, align: 'center' },
-            { text: num(invoice.basePrice), width: COL.rate, align: 'right' },
-            { text: num(invoice.stayCost), width: COL.amt, align: 'right' },
-        ])
+        // Several rooms on one reservation itemize per room; a normal stay
+        // prints the single line it always has.
+        const stayLines = invoice.roomLines?.length
+            ? invoice.roomLines.map(r => ({
+                desc: `Room ${r.roomNumber} (${r.nights}n)`,
+                nights: r.nights,
+                rate: r.nights > 0 ? r.stayCost / r.nights : r.stayCost,
+                amount: r.stayCost,
+            }))
+            : [{
+                desc: `Room Stay (${invoice.nights}n)`,
+                nights: invoice.nights,
+                rate: invoice.basePrice,
+                amount: invoice.stayCost,
+            }]
+
+        for (const line of stayLines) {
+            b.wrappedColumns([
+                { text: line.desc, width: COL.desc },
+                { text: String(line.nights), width: COL.qty, align: 'center' },
+                { text: num(line.rate), width: COL.rate, align: 'right' },
+                { text: num(line.amount), width: COL.amt, align: 'right' },
+            ])
+        }
     }
 
     for (const charge of invoice.manualCharges) {
@@ -148,44 +194,37 @@ export function buildInvoiceTicket(
     }
 
     b.divider()
-    const itemsSubtotal = (invoice.type === 'room' ? (invoice.stayCost || 0) : 0) +
-        (invoice.manualChargesTotal || 0) +
-        (invoice.qrOrdersTotal || 0) +
-        (invoice.linkedOrdersTotal || 0)
-    const subtotalVal = invoice.subtotal ?? itemsSubtotal
+
+    // Subtotal → extra hour → service charge → discount → tax → TOTAL, then the
+    // advance comes off, and the figure the guest actually hands over closes the
+    // bill. See summariseInvoice for why the tendered cash is not subtracted
+    // here: it is reported below as the method of payment instead.
+    const summary = summariseInvoice(invoice)
+
+    for (const line of summary.lines) {
+        b.columns([
+            { text: line.label, width: LINE_WIDTH - 14 },
+            { text: `${line.sign}${money(line.amount)}`, width: 14, align: 'right' },
+        ])
+    }
 
     b.bold(true)
-    b.columns([{ text: 'SUB TOTAL', width: LINE_WIDTH - 14 }, { text: money(subtotalVal), width: 14, align: 'right' }])
+    b.columns([{ text: 'TOTAL', width: LINE_WIDTH - 14 }, { text: money(summary.total), width: 14, align: 'right' }])
     b.bold(false)
 
-    if (invoice.extraHourCharge && invoice.extraHourCharge > 0) {
-        b.columns([{ text: 'EXTRA HOUR CHARGE', width: LINE_WIDTH - 14 }, { text: `+${money(invoice.extraHourCharge)}`, width: 14, align: 'right' }])
-    }
-    if (invoice.serviceCharge && invoice.serviceCharge > 0) {
-        b.columns([{ text: 'SERVICE CHARGE', width: LINE_WIDTH - 14 }, { text: `+${money(invoice.serviceCharge)}`, width: 14, align: 'right' }])
-    }
-    if (invoice.taxAmount && invoice.taxAmount > 0) {
-        b.columns([{ text: 'TAX / VAT', width: LINE_WIDTH - 14 }, { text: `+${money(invoice.taxAmount)}`, width: 14, align: 'right' }])
-    }
-    if (invoice.discountAmount && invoice.discountAmount > 0) {
-        b.columns([{ text: 'DISCOUNT', width: LINE_WIDTH - 14 }, { text: `-${money(invoice.discountAmount)}`, width: 14, align: 'right' }])
-    }
-    b.divider()
-    b.size({ doubleWidth: true, doubleHeight: true }).bold(true)
-    b.line(`GRAND TOTAL: ${money(invoice.total)}`)
-    b.size({}).bold(false)
-
-    if (invoice.advancePaid && invoice.advancePaid > 0) {
-        const label = `Advance (${advanceMethodLabel(invoice.advanceMethod)})`
-        b.columns([{ text: label, width: LINE_WIDTH - 14 }, { text: `-${money(invoice.advancePaid)}`, width: 14, align: 'right' }])
+    if (summary.advancePaid > 0) {
+        const label = `LESS ADVANCE (${advanceMethodLabel(invoice.advanceMethod)})`
+        b.columns([
+            { text: label, width: LINE_WIDTH - 14 },
+            { text: `-${money(summary.advancePaid)}`, width: 14, align: 'right' },
+        ])
     }
 
+    // The closing figure, and the last money on the bill — nothing but how it
+    // was paid follows it.
     b.divider()
     b.size({ doubleHeight: true }).bold(true)
-    const totalReceived = (invoice.cashPaid ?? 0) + (invoice.qrPaid ?? 0) + (invoice.advancePaid ?? 0)
-    const effectiveDue = Math.max(0, invoice.total - totalReceived)
-    const dueLabel = (invoice.advancePaid && invoice.advancePaid > 0) || totalReceived > 0 || (invoice.creditPaid && invoice.creditPaid > 0) ? 'BALANCE DUE' : 'TOTAL DUE'
-    b.line(`${dueLabel}: ${money(effectiveDue)}`)
+    b.line(`${summary.finalLabel}: ${money(summary.finalAmount)}`)
     b.size({}).bold(false)
 
     if (invoice.paymentMethod) {
@@ -202,11 +241,6 @@ export function buildInvoiceTicket(
             if (invoice.changeReturned && invoice.changeReturned > 0.01) {
                 b.line(`  Change Return: ${money(invoice.changeReturned)}`)
             }
-            if (invoice.creditPaid && invoice.creditPaid > 0.01) {
-                b.bold(true)
-                b.line(`  Remaining Credit: ${money(invoice.creditPaid)}`)
-                b.bold(false)
-            }
         }
         if (invoice.paymentMethod === 'both') {
             b.line(`  Cash: ${money(invoice.cashPaid ?? 0)}`)
@@ -217,15 +251,12 @@ export function buildInvoiceTicket(
                 b.line(`  Change Return: ${money(invoice.changeReturned)}`)
             }
             b.line(`  QR/Digital: ${money(invoice.qrPaid ?? 0)}`)
-            if (invoice.creditPaid && invoice.creditPaid > 0.01) {
-                b.bold(true)
-                b.line(`  Remaining Credit: ${money(invoice.creditPaid)}`)
-                b.bold(false)
-            }
         }
-        if (invoice.paymentMethod === 'credit' && invoice.creditPaid) {
+        // Credit is the guest leaving owing money, so it is spelled out on
+        // every method that can carry it, not just a split.
+        if (invoice.creditPaid && invoice.creditPaid > 0.01) {
             b.bold(true)
-            b.line(`  Remaining Credit: ${money(invoice.creditPaid)}`)
+            b.line(`  ON CREDIT: ${money(invoice.creditPaid)}`)
             b.bold(false)
         }
     }

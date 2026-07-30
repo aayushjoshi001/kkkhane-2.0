@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import DayBookClient from './DayBookClient'
-import type { DayBookEntry } from '@/types/database'
+import type { DayBookEntry, DayBookSession } from '@/types/database'
 import { getNstDateString } from '@/lib/timezone'
 import { resolveActiveDayBookSession } from '@/lib/ledger'
 
@@ -10,7 +10,14 @@ import { getRestaurantFeatures } from '@/lib/features'
 
 export const dynamic = 'force-dynamic'
 
-export default async function DayBookPage() {
+/** `YYYY-MM-DD` and nothing else — this value reaches a date-typed query. */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+export default async function DayBookPage({
+    searchParams,
+}: {
+    searchParams: Promise<{ date?: string }>
+}) {
     const currentUser = await getCurrentUser()
     if (!currentUser || !currentUser.restaurantId) redirect('/login')
 
@@ -21,11 +28,39 @@ export default async function DayBookPage() {
     const supabase = await createAdminClient()
 
     const todayDate = getNstDateString()
+    const { date: dateParam } = await searchParams
+    const requestedDate = dateParam && ISO_DATE.test(dateParam) ? dateParam : null
 
     // Cash Book and Bank Book share one Day Book session — this page just
     // reads both sides of it side by side, it never opens/closes the session
     // itself (that stays on Cash Book / Bank Book).
-    const session = await resolveActiveDayBookSession(supabase, restaurantId, currentUser.id)
+    //
+    // Only the default view resolves the *active* session, because that call
+    // auto-opens the next day when the last one is closed. Asking for a past
+    // date is a read of history and must never have that side effect — it would
+    // manufacture a session for a day the restaurant never traded.
+    let session: DayBookSession | null
+    if (requestedDate) {
+        const { data } = await supabase
+            .from('day_book_sessions')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .eq('date', requestedDate)
+            // Ordered and capped to one row before maybeSingle(), because
+            // nothing constrains one session per date — a bare maybeSingle()
+            // would throw on a duplicate rather than show the day.
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        session = (data as DayBookSession) ?? null
+    } else {
+        session = await resolveActiveDayBookSession(supabase, restaurantId, currentUser.id)
+    }
+
+    // The open session can be dated earlier than today if nobody closed it, so
+    // the picker follows the session actually on screen rather than the wall
+    // clock — otherwise the header names a day whose figures aren't shown.
+    const selectedDate = requestedDate ?? session?.date ?? todayDate
 
     let entries: DayBookEntry[] = []
     if (session) {
@@ -74,6 +109,7 @@ export default async function DayBookPage() {
             entries={entries}
             totals={totals}
             todayDate={todayDate}
+            selectedDate={selectedDate}
         />
     )
 }

@@ -2,13 +2,13 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Filter, Calendar, ChevronUp, ChevronDown, User, Phone, Bed, CreditCard, ShoppingBag, Loader2 } from 'lucide-react'
+import { Plus, Filter, Calendar, ChevronUp, ChevronDown, ShoppingBag, Loader2, AlertTriangle, RotateCcw, X } from 'lucide-react'
 import type { Booking, Room, BookingStatus } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
 import { useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import Select from '@/components/ui/Select'
 import DateCell from '@/components/ui/DateCell'
-import { getItemDisplayName } from '@/lib/utils'
+import { getBookingCustomPrice, getItemDisplayName } from '@/lib/utils'
 
 interface BookingsClientProps {
     initialBookings: Booking[]
@@ -52,13 +52,9 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
         ? Math.max(1, Math.round((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 3600 * 24)))
         : 1
 
-    const rawNightlyRate = (() => {
-        // Custom rate is stored as [CUSTOM_RATE:X] in booking.notes
-        const notes = (booking as any).notes || ''
-        const match = typeof notes === 'string' ? notes.match(/\[CUSTOM_RATE:(\d+(?:\.\d+)?)\]/) : null
-        const custom = match ? parseFloat(match[1]) : 0
-        return custom > 0 ? custom : Number((booking as any).rooms?.room_types?.base_price || 0)
-    })()
+    // A rate agreed for this stay, if there was one, else the room type's price.
+    const rawNightlyRate = getBookingCustomPrice(booking)
+        || Number((booking as any).rooms?.room_types?.base_price || 0)
     const roomBill = rawNightlyRate > 0 ? rawNightlyRate * nights : Number(booking.total_amount || 0)
     
     // Food & Beverage Bill sum from all linked orders (QR, Waiter, Cashier)
@@ -197,6 +193,16 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
     const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null)
     const searchParams = useSearchParams()
 
+    // Cancel confirmation dialog state
+    const [cancelTarget, setCancelTarget] = useState<Booking | null>(null)
+    const [cancelInput, setCancelInput] = useState('')
+    const [cancelLoading, setCancelLoading] = useState(false)
+    const [cancelError, setCancelError] = useState<string | null>(null)
+
+    // Restore confirmation dialog state
+    const [restoreTarget, setRestoreTarget] = useState<Booking | null>(null)
+    const [restoreLoading, setRestoreLoading] = useState(false)
+
     const deepLinkedId = searchParams.get('booking')
     const consumedDeepLink = useRef(false)
     useEffect(() => {
@@ -219,20 +225,69 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
         return filterStatus === 'all' || b.status === filterStatus
     })
 
-    const handleStatusChange = async (bookingId: string, newStatus: BookingStatus) => {
+    // Internal status change — used for check-in and restore
+    const applyStatusChange = async (bookingId: string, newStatus: BookingStatus, force = false) => {
         setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: newStatus } : b))
         try {
             const res = await fetch(`/api/bookings/status`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bookingId, status: newStatus })
+                body: JSON.stringify({ bookingId, status: newStatus, force })
             })
             if (!res.ok) {
-                setBookings(initialBookings)
+                setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: b.status } : b))
+                return false
+            }
+            return true
+        } catch {
+            setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: b.status } : b))
+            return false
+        }
+    }
+
+    // Open cancel dialog — checks if guest is checked in
+    const openCancelDialog = (booking: Booking) => {
+        setCancelTarget(booking)
+        setCancelInput('')
+        setCancelError(null)
+    }
+
+    // Confirm cancellation
+    const confirmCancel = async () => {
+        if (!cancelTarget) return
+        const isCheckedIn = cancelTarget.status === 'checked_in'
+        if (isCheckedIn && cancelInput.trim() !== 'CANCEL') return
+        setCancelLoading(true)
+        setCancelError(null)
+        try {
+            const res = await fetch(`/api/bookings/status`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingId: cancelTarget.id, status: 'cancelled', force: true })
+            })
+            if (res.ok) {
+                setBookings(prev => prev.map(b => b.id === cancelTarget.id ? { ...b, status: 'cancelled' } : b))
+                setCancelTarget(null)
+            } else {
+                const data = await res.json()
+                setCancelError(data.error || 'Failed to cancel booking.')
             }
         } catch {
-            setBookings(initialBookings)
+            setCancelError('Network error. Please try again.')
+        } finally {
+            setCancelLoading(false)
         }
+    }
+
+    // Confirm restore (cancelled → pending)
+    const confirmRestore = async () => {
+        if (!restoreTarget) return
+        setRestoreLoading(true)
+        const ok = await applyStatusChange(restoreTarget.id, 'pending')
+        if (ok) {
+            setRestoreTarget(null)
+        }
+        setRestoreLoading(false)
     }
 
     const getStatusColor = (status: BookingStatus) => {
@@ -368,10 +423,10 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
                                                             {isExpanded ? 'Hide Details' : 'View History'}
                                                         </button>
                                                         {b.status === 'pending' && (
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation()
-                                                                    handleStatusChange(b.id, 'checked_in')
+                                                                    applyStatusChange(b.id, 'checked_in')
                                                                 }}
                                                                 className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors"
                                                             >
@@ -379,14 +434,26 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
                                                             </button>
                                                         )}
                                                         {b.status !== 'cancelled' && b.status !== 'checked_out' && (
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation()
-                                                                    handleStatusChange(b.id, 'cancelled')
+                                                                    openCancelDialog(b)
                                                                 }}
                                                                 className="px-2 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-semibold transition-colors"
                                                             >
                                                                 Cancel
+                                                            </button>
+                                                        )}
+                                                        {b.status === 'cancelled' && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    setRestoreTarget(b)
+                                                                }}
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-colors border border-emerald-200"
+                                                            >
+                                                                <RotateCcw size={12} />
+                                                                Restore
                                                             </button>
                                                         )}
                                                     </div>
@@ -404,6 +471,133 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
                                 })}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── Cancel Confirmation Modal ─── */}
+            {cancelTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setCancelTarget(null)}>
+                    <div
+                        className="bg-surface rounded-2xl shadow-2xl border border-hairline w-full max-w-md p-6 space-y-5 animate-fade-up"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                    cancelTarget.status === 'checked_in'
+                                        ? 'bg-rose-100 text-rose-600'
+                                        : 'bg-amber-50 text-amber-600'
+                                }`}>
+                                    <AlertTriangle size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-ink text-base">Cancel Booking</h3>
+                                    <p className="text-xs text-ink-subtle mt-0.5">{cancelTarget.guest_name} · Room {cancelTarget.rooms?.room_number || '—'}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setCancelTarget(null)} className="text-ink-subtle hover:text-ink p-1 rounded-lg hover:bg-surface-muted transition-colors">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Warning for checked-in guests */}
+                        {cancelTarget.status === 'checked_in' ? (
+                            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+                                <p className="text-sm font-extrabold text-rose-700 flex items-center gap-2">
+                                    <AlertTriangle size={14} /> This guest is currently CHECKED IN!
+                                </p>
+                                <p className="text-xs text-rose-600">
+                                    Cancelling will remove them from the cashier panel and release the room. Their food orders and billing history will remain but the stay will show Rs. 0.
+                                </p>
+                                <p className="text-xs font-bold text-rose-700 mt-3">Type <span className="font-black bg-rose-100 px-1.5 py-0.5 rounded">CANCEL</span> below to confirm:</p>
+                                <input
+                                    type="text"
+                                    value={cancelInput}
+                                    onChange={(e) => setCancelInput(e.target.value)}
+                                    placeholder="Type CANCEL to confirm"
+                                    className="w-full mt-1 px-3 py-2 bg-surface border border-rose-300 rounded-lg text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500"
+                                    autoFocus
+                                />
+                            </div>
+                        ) : (
+                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                                <p className="text-sm text-amber-800">
+                                    Are you sure you want to cancel this <strong>{cancelTarget.status}</strong> booking for <strong>{cancelTarget.guest_name}</strong>? This action can be undone using the Restore button.
+                                </p>
+                            </div>
+                        )}
+
+                        {cancelError && (
+                            <p className="text-xs text-rose-600 font-semibold">{cancelError}</p>
+                        )}
+
+                        {/* Actions */}
+                        <div className="flex gap-3 pt-1">
+                            <button
+                                onClick={() => setCancelTarget(null)}
+                                className="flex-1 px-4 py-2.5 bg-surface-muted hover:bg-surface-muted/80 text-ink font-semibold rounded-xl text-sm transition-colors border border-hairline"
+                            >
+                                Keep Booking
+                            </button>
+                            <button
+                                onClick={confirmCancel}
+                                disabled={cancelLoading || (cancelTarget.status === 'checked_in' && cancelInput.trim() !== 'CANCEL')}
+                                className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {cancelLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                                Cancel Booking
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── Restore Confirmation Modal ─── */}
+            {restoreTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setRestoreTarget(null)}>
+                    <div
+                        className="bg-surface rounded-2xl shadow-2xl border border-hairline w-full max-w-md p-6 space-y-5 animate-fade-up"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                    <RotateCcw size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-ink text-base">Restore Booking</h3>
+                                    <p className="text-xs text-ink-subtle mt-0.5">{restoreTarget.guest_name} · Room {restoreTarget.rooms?.room_number || '—'}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setRestoreTarget(null)} className="text-ink-subtle hover:text-ink p-1 rounded-lg hover:bg-surface-muted transition-colors">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <p className="text-sm text-emerald-800">
+                                Restore <strong>{restoreTarget.guest_name}</strong>'s booking? The booking will return to <strong>Pending</strong> status and the room will be marked as occupied again. You can then manually re-check them in.
+                            </p>
+                        </div>
+
+                        <div className="flex gap-3 pt-1">
+                            <button
+                                onClick={() => setRestoreTarget(null)}
+                                className="flex-1 px-4 py-2.5 bg-surface-muted hover:bg-surface-muted/80 text-ink font-semibold rounded-xl text-sm transition-colors border border-hairline"
+                            >
+                                Never mind
+                            </button>
+                            <button
+                                onClick={confirmRestore}
+                                disabled={restoreLoading}
+                                className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                            >
+                                {restoreLoading ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                                Restore Booking
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

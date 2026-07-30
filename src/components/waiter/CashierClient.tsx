@@ -10,7 +10,8 @@ import { updateTakeoutStatusAction } from '@/app/(admin)/admin/takeout/actions'
 import { useCurrency, useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
-import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer } from 'lucide-react'
+import { Banknote, CheckCircle, ChefHat, Clock, Loader2, CreditCard, Receipt, ShoppingBag, Flame, X, ShoppingCart, Percent, PenLine, Printer, Search, History, Utensils, QrCode, RotateCcw } from 'lucide-react'
+import AdvancePaymentHistoryModal from '@/components/admin/AdvancePaymentHistoryModal'
 import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import Button from '@/components/ui/Button'
 import { usePrinter } from '@/lib/print/usePrinter'
@@ -25,12 +26,14 @@ import ManualEntryClient from '@/app/(admin)/admin/manual-entry/ManualEntryClien
 import AdSpace from '@/components/shared/AdSpace'
 import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
 import { getNstDateString } from '@/lib/timezone'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, roomServiceChargeApplies, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
 import CashierOrdersPanel from './CashierOrdersPanel'
 import type { BankAccount, ExpenseCategory, Supplier, Session } from '@/types/database'
 import QuickOrderModal from './QuickOrderModal'
 
 
-import { calculateNights, getBookingCustomPrice, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { calculateNights, getBookingCustomPrice, lateCheckoutNights, resolveDeparture, LATE_CHECKOUT_GRACE_HOURS, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { type GroupBill } from '@/lib/bookingGroup'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
 
 // Auto-print retry/fallback tuning, matching the kitchen screen's.
@@ -41,6 +44,10 @@ const KOT_PRINT_RETRY_MS = 2500
 // normal case, so this only has to cover a channel that is wedged rather than
 // disconnected — a state no reconnect callback ever fires for.
 const OUTSTANDING_POLL_MS = 60_000
+
+// Money is compared against a server-side total to the paisa, so every figure
+// the cashier's edits feed into is rounded the same way the API rounds it.
+const round2 = (n: number) => Math.round(n * 100) / 100
 
 type OrderItem = {
     id?: string
@@ -78,6 +85,9 @@ export type UnpaidOrder = {
 export type ActiveOrder = {
     id: string
     status: string
+    subtotal_amount?: number
+    service_charge_amount?: number
+    tax_amount?: number
     total_amount: number
     placed_at: string
     session_id: string | null
@@ -105,6 +115,8 @@ interface Props {
     restaurantAddress?: string
     restaurantPhone?: string
     userId: string
+    /** Printed on the receipt so bills from two cashiers on one till are told apart. */
+    userName?: string
     initialUnpaid: UnpaidOrder[]
     initialActive: ActiveOrder[]
     tables: TableWithSession[]
@@ -136,6 +148,35 @@ export function tableLabel(
     return base
 }
 
+/**
+ * Does this guest's name or phone match what the cashier typed?
+ *
+ * Names match on any part, not just the start: the desk is told "the bill for
+ * Mohan" and a booking registered as "MOHAN THAKUR" has to come back for
+ * "thakur" too. Case is ignored because check-in entries are typed however the
+ * cashier felt at the time — production holds both "MOHAN THAKUR" and
+ * "manoj bartaula".
+ *
+ * Phone matching compares digits only, on both sides. A number written down as
+ * "980-718-5400" or "+977 9807185400" must still find the stay saved as
+ * "9807185400", and a search for a name never reaches this because stripping a
+ * name of non-digits leaves nothing to match on.
+ */
+export function matchesGuestSearch(
+    query: string,
+    fields: (string | null | undefined)[],
+): boolean {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return true
+
+    const present = fields.filter((f): f is string => !!f && f.trim() !== '')
+    if (present.some(f => f.toLowerCase().includes(needle))) return true
+
+    const digits = needle.replace(/\D/g, '')
+    if (!digits) return false
+    return present.some(f => f.replace(/\D/g, '').includes(digits))
+}
+
 export default function CashierClient({
     restaurantId,
     restaurantSlug,
@@ -143,7 +184,8 @@ export default function CashierClient({
     restaurantAddress = '',
     restaurantPhone = '',
     userId,
-    initialUnpaid, 
+    userName = '',
+    initialUnpaid,
     initialActive,
     tables,
     rooms = [],
@@ -348,9 +390,15 @@ export default function CashierClient({
             .filter(r => billingRoomTypeFilter === 'all' || r.type_id === billingRoomTypeFilter)
     }, [roomsState, billingRoomTypeFilter])
 
+    // Who the cashier is looking for, by the name or number taken at check-in.
+    // The desk is given a name at settling time — "the bill for Mohan" — and had
+    // to know which room that was to find it in a grid keyed by room number.
+    const [billingSearch, setBillingSearch] = useState('')
+
     const [bookings, setBookings] = useState<any[]>(initialBookings)
     const [billingSubTab, setBillingSubTab] = useState<'all' | 'rooms' | 'tables' | 'takeout' | 'delivery'>('rooms')
     const [selectedBillingRoom, setSelectedBillingRoom] = useState<any | null>(null)
+    const [advanceHistoryModalOpen, setAdvanceHistoryModalOpen] = useState(false)
     const [selectedBillingTable, setSelectedBillingTable] = useState<any | null>(null)
     const [selectedBillingOrder, setSelectedBillingOrder] = useState<UnpaidOrder | null>(null)
     const [activeInvoice, setActiveInvoice] = useState<any | null>(null)
@@ -386,6 +434,13 @@ export default function CashierClient({
     const [billingStayBooking, setBillingStayBooking] = useState<any | null>(null)
     const [billingRoomCharges, setBillingRoomCharges] = useState<any[]>([])
     const [billingLinkedOrders, setBillingLinkedOrders] = useState<any[]>([])
+    // The rest of the reservation, when this room is one of several a guest
+    // took on a single booking (see /api/bookings/group). Those rooms settle on
+    // ONE bill, so the room cost and the advance shown here have to be the
+    // reservation's, not this room's share of it — quoting one room's figures
+    // was undercharging the guest by every other room on the folio. Null for an
+    // ordinary single-room stay, which keeps its original per-room math.
+    const [billingGroup, setBillingGroup] = useState<GroupBill | null>(null)
     const filteredRoomOrders = useMemo(() => {
         return billingLinkedOrders.filter(o => o.is_room_order && o.status !== 'cancelled')
     }, [billingLinkedOrders])
@@ -408,6 +463,15 @@ export default function CashierClient({
     // Table Food Discount: entered directly (like foodDiscount in room service)
     const [tableDiscount, setTableDiscount] = useState<string>('')
     const [tableDiscountReason, setTableDiscountReason] = useState<string>('')
+    // Service charge the cashier typed over the auto-calculated one. Empty
+    // string means "leave it on auto" — an explicit '0' is a real override
+    // that waives the charge, so the two can't be collapsed into a number.
+    const [tableServiceCharge, setTableServiceCharge] = useState<string>('')
+    // Room service charge the cashier typed over the auto figure — same
+    // empty-means-auto convention as tableServiceCharge above. Stamped with the
+    // room it belongs to so switching rooms starts from auto again, and so the
+    // drawer's "Go to Billing" can seed it without an effect racing the reset.
+    const [roomServiceChargeEdit, setRoomServiceChargeEdit] = useState<{ roomId: string; value: string } | null>(null)
     const [roomDiscount, setRoomDiscount] = useState<string>('')
     const [foodDiscount, setFoodDiscount] = useState<string>('')
     const [discountReason, setDiscountReason] = useState<string>('')
@@ -442,6 +506,9 @@ export default function CashierClient({
     const qrCodes = useQrCodes()
 
     const [mounted, setMounted] = useState(false)
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
 
     // Sync rooms state when prop changes
@@ -485,7 +552,10 @@ export default function CashierClient({
     // Realtime subscriptions for bookings
     useRestaurantTable(restaurantId, 'bookings', (payload) => {
         if (payload.eventType === 'INSERT') {
-            setBookings((prev: any[]) => [...prev, payload.new])
+            setBookings((prev: any[]) => {
+                if (prev.some(b => b.id === payload.new.id)) return prev
+                return [...prev, payload.new]
+            })
         } else if (payload.eventType === 'UPDATE') {
             const b = payload.new as any
             setBookings((prev: any[]) => prev.map(item => item.id === b.id ? b : item))
@@ -599,6 +669,7 @@ export default function CashierClient({
             setBillingStayBooking(null)
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
+            setBillingGroup(null)
             setLoadingStayDetails(true)
 
             // Fetch newest checked_in booking from API (ORDER BY created_at DESC)
@@ -609,12 +680,15 @@ export default function CashierClient({
                     if (data.success && data.data) {
                         const booking = data.data
                         try {
-                            // Concurrently fetch charges and linked dining orders
-                            const [chargesRes, ordersRes] = await Promise.all([
+                            // Concurrently fetch charges, linked dining orders,
+                            // and the rest of the reservation if this room is
+                            // part of a multi-room one.
+                            const [chargesRes, ordersRes, groupRes] = await Promise.all([
                                 fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json())
+                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json()),
+                                fetch(`/api/bookings/group?bookingId=${booking.id}`).then(r => r.json())
                             ])
-                            
+
                             // Set all states simultaneously
                             setBillingStayBooking(booking)
                             if (chargesRes.success) {
@@ -623,17 +697,20 @@ export default function CashierClient({
                             if (ordersRes.success) {
                                 setBillingLinkedOrders(ordersRes.items || [])
                             }
+                            setBillingGroup(groupRes?.success && groupRes.isGroup ? groupRes : null)
                         } catch (err) {
                             console.error('Error loading secondary billing details:', err)
                             // Set basic stay booking at least
                             setBillingStayBooking(booking)
                             setBillingRoomCharges([])
                             setBillingLinkedOrders([])
+                            setBillingGroup(null)
                         }
                     } else {
                         setBillingStayBooking(null)
                         setBillingRoomCharges([])
                         setBillingLinkedOrders([])
+                        setBillingGroup(null)
                     }
                 })
                 .catch(err => {
@@ -641,12 +718,14 @@ export default function CashierClient({
                     setBillingStayBooking(null)
                     setBillingRoomCharges([])
                     setBillingLinkedOrders([])
+                    setBillingGroup(null)
                 })
                 .finally(() => setLoadingStayDetails(false))
         } else {
             setBillingStayBooking(null)
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
+            setBillingGroup(null)
             setBillingPaymentMethod('none')
             setSplitCashAmount('')
             setSplitQrAmount('')
@@ -668,6 +747,7 @@ export default function CashierClient({
         setBillingQrCodeId('')
         setTableDiscount('')
         setTableDiscountReason('')
+        setTableServiceCharge('')
         setCreditCustomerName('')
         setCreditCustomerPhone('')
         setCashReceivedAmount('')
@@ -690,13 +770,29 @@ export default function CashierClient({
         setQrReceivedAmount('')
     }, [selectedBillingOrder?.id])
 
+    // Mirrors the server folio, including the late-checkout rule — if this
+    // preview left the overstay out, the cashier would quote a total the
+    // server then charged more than.
     const calculateStayCost = (room: any, booking: any) => {
+        // A multi-room reservation is billed as one folio, so the room charge is
+        // every room's, priced server-side (each room can be a different type).
+        if (billingGroup) return billingGroup.stayCost
         if (!room || !booking) return 0
         const customPrice = getBookingCustomPrice(booking)
         const price = customPrice > 0 ? customPrice : (room.room_types?.base_price || 0)
         const nights = calculateNights(booking.check_in, booking.check_out)
+            + lateCheckoutNights(booking.check_out, resolveDeparture(booking))
         return price * nights
     }
+
+    /**
+     * What the guest has already handed over on this folio. On a reservation the
+     * advance was split across its rooms at booking time, so the amount to
+     * deduct is their sum — deducting only the clicked room's share left the
+     * rest of the advance uncredited and overstated the balance due.
+     */
+    const advancePaidFor = (booking: any) =>
+        billingGroup ? billingGroup.advancePaid : (Number(booking?.paid_amount) || 0)
 
     const getRoomQrOrders = (room: any) => {
         if (!room) return []
@@ -828,6 +924,31 @@ export default function CashierClient({
             .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
     }
 
+    const getTableSessionOrders = (table: any) => {
+        if (!table?.activeSession) return []
+        return [...active, ...unpaid].filter(o => o.session_id === table.activeSession.id && o.status !== 'cancelled')
+    }
+
+    // The service charge as it stands on the bill: what the orders locked in at
+    // placement time, and what the cashier has decided it should be. `delta` is
+    // the only part that changes the money owed — the auto figure is already
+    // baked into each order's total_amount, so charging the override means
+    // adding the difference on top, never the whole overridden amount.
+    const resolveTableServiceCharge = (table: any) => {
+        const auto = round2(getTableSessionOrders(table).reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0))
+        const isOverridden = tableServiceCharge.trim() !== ''
+        const charged = isOverridden ? round2(Math.max(0, parseFloat(tableServiceCharge) || 0)) : auto
+        return { auto, charged, isOverridden, delta: round2(charged - auto) }
+    }
+
+    // Mirrors the folio's room service charge rule (src/lib/folio.ts) so the
+    // figure the cashier reads is the one /api/bookings/checkout will bill.
+    const resolveRoomSc = (room: any) => {
+        const auto = autoRoomServiceCharge(billingLinkedOrders, features, room?.id)
+        const typed = roomServiceChargeEdit?.roomId === room?.id ? roomServiceChargeEdit?.value ?? '' : ''
+        return resolveRoomServiceCharge(auto, typed)
+    }
+
     const calculateGrandTotal = (room: any, booking: any) => {
         const stayCost = calculateStayCost(room, booking)
         const qrOrdersTotal = filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
@@ -841,7 +962,10 @@ export default function CashierClient({
         const effectiveFoodOrders = Math.max(0, totalFoodOrders - foodDiscountVal)
         const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
         const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
-        return effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal
+        // Added whole rather than as a delta: unlike the folio's ordersTotal,
+        // the food totals above are raw line items with no service charge in
+        // them, so there is nothing here to double up on.
+        return round2(effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal + resolveRoomSc(room).charged)
     }
 
     const renderPaymentInputsAndCalculator = (balanceDue: number) => {
@@ -1075,8 +1199,23 @@ export default function CashierClient({
 
             const customPrice = getBookingCustomPrice(booking)
             const price = customPrice > 0 ? customPrice : (room.room_types?.base_price || 0)
-            const nights = calculateNights(booking.check_in, booking.check_out)
-            const stayCost = price * nights
+            // Late-checkout aware (and reservation-wide when this room is part
+            // of one), so the printed room line adds up to the total charged
+            // rather than quietly omitting the overstay night.
+            const stayCost = calculateStayCost(room, booking)
+            const nights = billingGroup
+                ? billingGroup.nights
+                : calculateNights(booking.check_in, booking.check_out)
+                    + lateCheckoutNights(booking.check_out, resolveDeparture(booking))
+            // One printed line per room when several settle together, so the
+            // guest can see what each room cost instead of one opaque lump.
+            const roomLines = billingGroup
+                ? billingGroup.rooms.map(r => ({
+                    roomNumber: r.roomNumber,
+                    nights: r.nights,
+                    stayCost: r.stayCost,
+                }))
+                : undefined
 
             // Merge duplicate items (same dish ordered at different times in the same session)
             const mergeFn = (rawItems: any[]) => {
@@ -1100,12 +1239,22 @@ export default function CashierClient({
             const linkedOrders = mergeFn(filteredLinkedOrders)
             const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
+            const roomSc = resolveRoomSc(room)
             const total = calculateGrandTotal(room, booking)
 
             // Advance already paid at booking
-            const advancePaid = Number(booking.paid_amount) || 0
+            const advancePaid = advancePaidFor(booking)
             const balanceDue = Math.max(0, total - advancePaid)
 
+            // What was handed over vs what is actually being taken: a guest can
+            // hand over a round note (change goes back) or short-pay on purpose
+            // (the rest becomes credit). Each branch below is explicit rather
+            // than falling through to an "else" so a stale splitCashAmount left
+            // over from a previous 'both' selection can't leak into a 'credit'
+            // settlement, and neither 'both' nor a short cash payment has to add
+            // up to the balance — whatever's left becomes credit, confirmed via
+            // the settlement popup (a guard against a typo, not just against a
+            // deliberate part-credit sale).
             const cashGivenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashReceivedAmount.trim() !== '' ? parseFloat(cashReceivedAmount) : null
             const cashTakenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashTakenAmount.trim() !== '' ? parseFloat(cashTakenAmount) : null
 
@@ -1138,8 +1287,13 @@ export default function CashierClient({
             return {
                 type: 'room',
                 id: room.id,
-                label: `Room ${room.room_number}`,
-                roomType: room.room_types?.name || 'Deluxe',
+                label: billingGroup
+                    ? `Rooms ${billingGroup.rooms.map(r => r.roomNumber).filter(Boolean).join(', ')}`
+                    : `Room ${room.room_number}`,
+                // A reservation can hold rooms of different types, so naming one
+                // of them on a combined bill would be wrong.
+                roomType: billingGroup ? undefined : (room.room_types?.name || 'Deluxe'),
+                roomLines,
                 guestName: booking.guest_name,
                 guestPhone: booking.guest_phone,
                 checkIn: booking.check_in,
@@ -1172,15 +1326,24 @@ export default function CashierClient({
                 discountAmount: (parseFloat(roomDiscount) || 0) + (parseFloat(foodDiscount) || 0),
                 discountReason: discountReason,
                 extraHourCharge: extraHourChargeVal,
+                serviceCharge: roomSc.charged,
+                serviceChargeOverride: roomSc.isOverridden ? roomSc.charged : undefined,
             }
         } else if (type === 'table') {
             const table = item
             const sessionOrders = getTableSessionItems(table)
             const itemsSubtotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
-            const subtotal = getTableSessionOrdersTotal(table)
+            const sessionOrdersList = getTableSessionOrders(table)
+            const sc = resolveTableServiceCharge(table)
+            const serviceCharge = sc.charged
+            const taxAmount = sessionOrdersList.reduce((sum, o) => sum + (Number((o as any).tax_amount) || 0), 0)
 
             const discountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
-            const total = Math.max(0, subtotal - discountAmount)
+            // Billed off the orders' own total_amount plus whatever the cashier
+            // moved the service charge by — the exact arithmetic
+            // /api/tables/checkout re-does server-side, so the split payment
+            // amounts sent up always reconcile against it.
+            const total = Math.max(0, round2(getTableSessionOrdersTotal(table) + sc.delta - discountAmount))
 
             const cashGivenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashReceivedAmount.trim() !== '' ? parseFloat(cashReceivedAmount) : null
             const cashTakenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashTakenAmount.trim() !== '' ? parseFloat(cashTakenAmount) : null
@@ -1220,6 +1383,10 @@ export default function CashierClient({
                 nights: 0,
                 basePrice: 0,
                 stayCost: 0,
+                subtotal: itemsSubtotal,
+                serviceCharge,
+                serviceChargeOverride: sc.isOverridden ? sc.charged : undefined,
+                taxAmount,
                 qrOrders: sessionOrders,
                 qrOrdersTotal: itemsSubtotal,
                 manualCharges: [],
@@ -1322,8 +1489,13 @@ export default function CashierClient({
     // (whether the whole bill or a leftover from 'both') because it needs a
     // customer name + phone to post against.
     const compileInvoice = (type: 'room' | 'table' | 'takeout' | 'delivery', item: any) => {
-        const data = buildInvoiceData(type, item)
-        if (!data) return
+        const built = buildInvoiceData(type, item)
+        if (!built) return
+        // Stamped here, at the one funnel every invoice type passes through,
+        // rather than in each of buildInvoiceData's three branches — the
+        // settlement popup's finalData spreads this object, so it carries
+        // through to both the preview and the thermal ticket.
+        const data = { ...built, cashierName: userName }
 
         if (data.paymentMethod === 'both' || data.paymentMethod === 'credit' || (data.creditPaid && data.creditPaid > 0.01)) {
             // Seed the popup's name/phone from whatever identity is already
@@ -1369,7 +1541,15 @@ export default function CashierClient({
         setPendingInvoice(null)
     }
 
-    const handleCloseGuestDirectly = async (room: any) => {
+    /**
+     * Settle a room bill from the till.
+     *
+     * `closeStay` false takes the money and leaves the guest in the room — the
+     * card is here now, they're leaving before the desk opens, the group is
+     * splitting up. The room is released later with handleReleaseRoom, which
+     * moves no money at all.
+     */
+    const handleCloseGuestDirectly = async (room: any, closeStay = true) => {
         if (!room || isDirectCheckingOut) return
         setIsDirectCheckingOut(true)
         try {
@@ -1377,7 +1557,7 @@ export default function CashierClient({
             if (!booking) return
 
             const total = calculateGrandTotal(room, booking)
-            const advancePaid = Number(booking.paid_amount) || 0
+            const advancePaid = advancePaidFor(booking)
             const balanceDue = Math.max(0, total - advancePaid)
             const matchingTable = tablesState.find(t => t.room_id === room.id)
             const sessionId = matchingTable?.activeSession?.id
@@ -1407,24 +1587,73 @@ export default function CashierClient({
                     discount_amount: (parseFloat(roomDiscount) || 0) + (parseFloat(foodDiscount) || 0),
                     discount_reason: discountReason || undefined,
                     extra_hour_charge: extraHourChargeVal,
+                    service_charge_override: resolveRoomSc(room).isOverridden ? resolveRoomSc(room).charged : undefined,
+                    close_stay: closeStay,
                 })
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
 
-            setBookings(prev => prev.map(b =>
-                b.id === booking.id ? { ...b, status: 'checked_out' } : b
-            ))
-            setRoomsState(prev => prev.map(r =>
-                r.id === room.id ? { ...r, status: 'dirty' } : r
-            ))
+            // The guest who kept their room is still in it — flipping the room
+            // to dirty here would show it free with someone asleep in it.
+            if (closeStay) {
+                setBookings(prev => prev.map(b =>
+                    b.id === booking.id ? { ...b, status: 'checked_out' } : b
+                ))
+                setRoomsState(prev => prev.map(r =>
+                    r.id === room.id ? { ...r, status: 'dirty' } : r
+                ))
+            }
 
-            toast.success('Room guest checked out successfully!')
+            toast.success(
+                closeStay
+                    ? 'Room guest checked out successfully!'
+                    : 'Bill settled — the guest keeps the room until you check them out.'
+            )
             setSelectedBillingRoom(null)
             router.refresh()
         } catch (err) {
             console.error('Error during direct checkout:', err)
             toast.error(err instanceof Error ? err.message : 'Checkout failed')
+        } finally {
+            setIsDirectCheckingOut(false)
+        }
+    }
+
+    /**
+     * Release a room whose bill was already settled. Posts nothing — the money
+     * went through when the guest paid — so it goes nowhere near the settlement
+     * path. The server refuses if anything was charged since, and says how much.
+     */
+    const handleReleaseRoom = async (room: { id: string }) => {
+        if (!room || isDirectCheckingOut) return
+        const booking = billingStayBooking ?? bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+        if (!booking) return
+
+        setIsDirectCheckingOut(true)
+        try {
+            const res = await fetch('/api/bookings/close-stay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ booking_id: booking.id }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not check the guest out')
+
+            const closedIds = new Set<string>(data.bookingIds || [booking.id])
+            const closedRoomIds = new Set<string>(data.roomIds || [room.id])
+            setBookings(prev => prev.map(b => closedIds.has(b.id) ? { ...b, status: 'checked_out' } : b))
+            setRoomsState(prev => prev.map(r => closedRoomIds.has(r.id) ? { ...r, status: 'dirty' } : r))
+
+            toast.success(
+                data.roomsClosed > 1
+                    ? `${data.roomsClosed} rooms checked out and sent to housekeeping`
+                    : 'Guest checked out — room sent to housekeeping'
+            )
+            setSelectedBillingRoom(null)
+            router.refresh()
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not check the guest out')
         } finally {
             setIsDirectCheckingOut(false)
         }
@@ -1504,6 +1733,7 @@ export default function CashierClient({
                         discount_amount: invoice.discountAmount || 0,
                         discount_reason: invoice.discountReason,
                         extra_hour_charge: invoice.extraHourCharge || 0,
+                        service_charge_override: invoice.serviceChargeOverride,
                     })
                 })
                 const data = await res.json()
@@ -1539,6 +1769,7 @@ export default function CashierClient({
                         qr_code_id: invoice.qrCodeId,
                         discount_amount: invoice.discountAmount || 0,
                         discount_reason: invoice.discountReason,
+                        service_charge_override: invoice.serviceChargeOverride,
                         customer_name: invoice.customerName,
                         customer_phone: invoice.customerPhone,
                     })
@@ -1696,7 +1927,7 @@ export default function CashierClient({
                 .single()
             // Previously silent — if this fetch fails (RLS, network, ...) the new
             // order just never shows up anywhere in Billing/Orders, with no sign why.
-            if (error) console.error('[Cashier orders realtime] INSERT fetch failed:', error)
+            if (error) console.error('[Cashier orders realtime] INSERT fetch failed:', error.message || error)
             if (data) {
                 // Guard against a duplicate/replayed INSERT event (reconnects,
                 // redelivery) adding the same order twice — React then throws
@@ -1806,6 +2037,47 @@ export default function CashierClient({
     // session to group by, unlike dine-in tables).
     const billingTakeoutEntries = useMemo(() => unpaid.filter(o => o.order_type === 'takeout' && !o.booking_id), [unpaid])
     const billingDeliveryEntries = useMemo(() => unpaid.filter(o => o.order_type === 'delivery' && !o.booking_id), [unpaid])
+
+    // ── Billing search ──────────────────────────────────────────────────────
+    // Each kind of bill knows its guest differently. A room's guest is the stay
+    // checked into it, which is where the name and number the desk is quoting
+    // were taken. A takeaway or delivery order carries its own customer. A
+    // dine-in table has no guest of its own at all, so it matches on the orders
+    // sitting against it — a walk-in table with nothing named stays unmatched
+    // rather than pretending to be a hit.
+    const roomMatchesSearch = useCallback((room: any) => {
+        if (!billingSearch.trim()) return true
+        const booking = bookings.find(b => b.room_id === room.id && b.status === 'checked_in')
+        return matchesGuestSearch(billingSearch, [booking?.guest_name, booking?.guest_phone])
+    }, [billingSearch, bookings])
+
+    const tableMatchesSearch = useCallback((entry: any) => {
+        if (!billingSearch.trim()) return true
+        const sessionId = entry.activeSession?.id
+        if (!sessionId) return false
+        return unpaid.some(o => o.session_id === sessionId
+            && matchesGuestSearch(billingSearch, [o.customer_name, o.customer_phone]))
+    }, [billingSearch, unpaid])
+
+    const orderMatchesSearch = useCallback((order: UnpaidOrder) =>
+        matchesGuestSearch(billingSearch, [order.customer_name, order.customer_phone]),
+    [billingSearch])
+
+    // Every occupied room, before the room-type filter — what the All tab lists.
+    const occupiedBillingRooms = useMemo(
+        () => (isHotel ? roomsState.filter((r: any) => r.status === 'occupied') : []),
+        [isHotel, roomsState])
+
+    const searchedOccupiedRooms = useMemo(
+        () => occupiedBillingRooms.filter(roomMatchesSearch), [occupiedBillingRooms, roomMatchesSearch])
+    const searchedBillingRooms = useMemo(
+        () => filteredBillingRooms.filter(roomMatchesSearch), [filteredBillingRooms, roomMatchesSearch])
+    const searchedTableEntries = useMemo(
+        () => billingTableEntries.filter(tableMatchesSearch), [billingTableEntries, tableMatchesSearch])
+    const searchedTakeoutEntries = useMemo(
+        () => billingTakeoutEntries.filter(orderMatchesSearch), [billingTakeoutEntries, orderMatchesSearch])
+    const searchedDeliveryEntries = useMemo(
+        () => billingDeliveryEntries.filter(orderMatchesSearch), [billingDeliveryEntries, orderMatchesSearch])
 
     // Group unpaid by session
     const unpaidBySession = useMemo(() => {
@@ -2021,10 +2293,18 @@ export default function CashierClient({
                             tables={tablesState}
                             activeOrders={active}
                             unpaidOrders={unpaid}
-                            onGoToBilling={(room) => {
+                            onGoToBilling={(room, serviceChargeOverride) => {
                                 setActiveTab('billing')
                                 setBillingSubTab('rooms')
                                 setSelectedBillingRoom(room)
+                                // Carry the drawer's edit over rather than
+                                // silently reverting to auto on the panel that
+                                // actually settles.
+                                setRoomServiceChargeEdit(
+                                    serviceChargeOverride === undefined
+                                        ? null
+                                        : { roomId: room.id, value: String(serviceChargeOverride) }
+                                )
                             }}
                             onOrderPlaced={async (orderId) => {
                                 const supabase = supabaseRef.current
@@ -2118,7 +2398,30 @@ export default function CashierClient({
                                     <Receipt size={14} className="text-red-400" />
                                     Awaiting Payment
                                 </h2>
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    {/* Find a bill by the guest rather than by the room
+                                        number — the desk is given a name, not a number. */}
+                                    <div className="relative">
+                                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
+                                        <input
+                                            type="text"
+                                            value={billingSearch}
+                                            onChange={(e) => setBillingSearch(e.target.value)}
+                                            placeholder="Search guest name or phone"
+                                            aria-label="Search bills by guest name or phone"
+                                            className="w-56 pl-8 pr-7 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                        />
+                                        {billingSearch && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setBillingSearch('')}
+                                                aria-label="Clear search"
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink"
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        )}
+                                    </div>
                                     {billingSubTab === 'rooms' && (
                                         <div className="flex items-center gap-1.5">
                                             <span className="text-[10px] font-black text-ink-subtle uppercase shrink-0">Type:</span>
@@ -2142,8 +2445,8 @@ export default function CashierClient({
                                             }`}
                                         >
                                             All ({
-                                                (isHotel ? roomsState.filter(r => r.status === 'occupied').length : 0)
-                                                + billingTableEntries.length + billingTakeoutEntries.length + billingDeliveryEntries.length
+                                                searchedOccupiedRooms.length + searchedTableEntries.length
+                                                + searchedTakeoutEntries.length + searchedDeliveryEntries.length
                                             })
                                         </button>
                                         {isHotel && (
@@ -2153,7 +2456,7 @@ export default function CashierClient({
                                                     billingSubTab === 'rooms' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                                 }`}
                                             >
-                                                Rooms ({roomsState.filter(r => r.status === 'occupied').length})
+                                                Rooms ({searchedOccupiedRooms.length})
                                             </button>
                                         )}
                                         <button
@@ -2162,7 +2465,7 @@ export default function CashierClient({
                                                 billingSubTab === 'tables' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                             }`}
                                         >
-                                            Tables ({billingTableEntries.length})
+                                            Tables ({searchedTableEntries.length})
                                         </button>
                                         <button
                                             onClick={() => setBillingSubTab('takeout')}
@@ -2170,7 +2473,7 @@ export default function CashierClient({
                                                 billingSubTab === 'takeout' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                             }`}
                                         >
-                                            Takeaway ({billingTakeoutEntries.length})
+                                            Takeaway ({searchedTakeoutEntries.length})
                                         </button>
                                         <button
                                             onClick={() => setBillingSubTab('delivery')}
@@ -2178,21 +2481,46 @@ export default function CashierClient({
                                                 billingSubTab === 'delivery' ? 'bg-white text-ink shadow-sm' : 'text-ink-subtle hover:text-ink-muted'
                                             }`}
                                         >
-                                            Delivery ({billingDeliveryEntries.length})
+                                            Delivery ({searchedDeliveryEntries.length})
                                         </button>
                                     </div>
                                 </div>
                             </div>
 
                             {(() => {
-                                const occupiedRooms = isHotel ? roomsState.filter((r: any) => r.status === 'occupied') : []
-                                const activeList = billingSubTab === 'all' ? [...occupiedRooms, ...billingTableEntries, ...billingTakeoutEntries, ...billingDeliveryEntries]
-                                    : billingSubTab === 'rooms' ? filteredBillingRooms
-                                    : billingSubTab === 'tables' ? billingTableEntries
-                                    : billingSubTab === 'takeout' ? billingTakeoutEntries
-                                    : billingDeliveryEntries
+                                const occupiedRooms = searchedOccupiedRooms
+                                const activeList = billingSubTab === 'all' ? [...occupiedRooms, ...searchedTableEntries, ...searchedTakeoutEntries, ...searchedDeliveryEntries]
+                                    : billingSubTab === 'rooms' ? searchedBillingRooms
+                                    : billingSubTab === 'tables' ? searchedTableEntries
+                                    : billingSubTab === 'takeout' ? searchedTakeoutEntries
+                                    : searchedDeliveryEntries
 
                                 if (activeList.length === 0) {
+                                    // An empty grid means two different things. "All bills
+                                    // settled" under an active search would be a lie — the
+                                    // bills are there, they just don't match — and would
+                                    // send the cashier looking for a stay they were told
+                                    // had already been paid.
+                                    if (billingSearch.trim()) {
+                                        return (
+                                            <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
+                                                <Search size={32} className="mx-auto text-ink-subtle/40 mb-2" />
+                                                <p className="text-sm font-medium text-ink-subtle">
+                                                    No unpaid bill for &ldquo;{billingSearch.trim()}&rdquo;
+                                                </p>
+                                                <p className="text-xs text-gray-300 mt-1">
+                                                    Searches the guest name and phone taken at check-in. Check another category, or clear the search.
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBillingSearch('')}
+                                                    className="mt-3 px-3 py-1.5 rounded-lg text-xs font-bold bg-surface-muted text-ink-muted hover:text-ink transition-colors"
+                                                >
+                                                    Clear search
+                                                </button>
+                                            </div>
+                                        )
+                                    }
                                     return (
                                         <div className="bg-surface rounded-2xl border border-hairline shadow-sm p-10 text-center">
                                             <CheckCircle size={32} className="mx-auto text-emerald-300 mb-2" />
@@ -2230,7 +2558,7 @@ export default function CashierClient({
                                                     </button>
                                                 )
                                             })}
-                                            {billingTableEntries.map(table => {
+                                            {searchedTableEntries.map(table => {
                                                 const sessionItems = getTableSessionItems(table)
                                                 return (
                                                     <button
@@ -2247,7 +2575,7 @@ export default function CashierClient({
                                                     </button>
                                                 )
                                             })}
-                                            {[...billingTakeoutEntries, ...billingDeliveryEntries].map(order => (
+                                            {[...searchedTakeoutEntries, ...searchedDeliveryEntries].map(order => (
                                                 <button
                                                     key={`order:${order.id}`}
                                                     onClick={() => setSelectedBillingOrder(order)}
@@ -2515,14 +2843,45 @@ export default function CashierClient({
 
                                 <div className="space-y-4">
                                     <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Stay billing breakdown</h4>
+
+                                    {/* A reservation covering several rooms settles here as one bill,
+                                        so say so plainly — the cashier is closing every one of these
+                                        rooms, not just the one they clicked. */}
+                                    {billingGroup && (
+                                        <div className="border border-brand-200 bg-brand-50/60 rounded-2xl p-4 text-xs space-y-2">
+                                            <p className="font-black text-brand-700 uppercase text-[10px] tracking-wider">
+                                                Combined bill · {billingGroup.rooms.length} rooms
+                                            </p>
+                                            <p className="text-[10px] text-ink-muted font-semibold">
+                                                {billingGroup.guestName || billingStayBooking.guest_name} booked these rooms together. Settling
+                                                here checks all of them out and takes one payment.
+                                            </p>
+                                        </div>
+                                    )}
+
                                     <div className="border border-hairline rounded-2xl overflow-hidden divide-y divide-gray-100 bg-surface">
                                         <div className="flex justify-between items-center p-4 text-xs">
                                             <div>
                                                 <p className="font-extrabold text-ink">Room Stay Cost</p>
-                                                <p className="text-[10px] text-ink-subtle">{money(selectedBillingRoom.room_types?.base_price || 0)} / Night</p>
+                                                <p className="text-[10px] text-ink-subtle">
+                                                    {billingGroup
+                                                        ? `${billingGroup.rooms.length} rooms on this reservation`
+                                                        : `${money(selectedBillingRoom.room_types?.base_price || 0)} / Night`}
+                                                </p>
                                             </div>
                                             <span className="font-extrabold text-ink-muted tabular-nums">{money(stayCost)}</span>
                                         </div>
+
+                                        {billingGroup && (
+                                            <div className="p-4 space-y-1.5">
+                                                {billingGroup.rooms.map(r => (
+                                                    <div key={r.bookingId} className="flex justify-between text-[10px] text-ink-muted">
+                                                        <span className="font-semibold">Room {r.roomNumber} · {r.nights}n</span>
+                                                        <span className="tabular-nums font-semibold">{money(r.stayCost)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
 
                                         {extraHourChargeVal > 0 && (
                                             <div className="flex justify-between items-center p-4 text-xs bg-rose-50/20">
@@ -2554,11 +2913,20 @@ export default function CashierClient({
                                             </div>
                                         )}
 
-                                        {billingLinkedOrders.length > 0 && (
-                                            <div className="p-4 space-y-2">
-                                                <p className="font-extrabold text-xs text-indigo-650 font-semibold">Service Orders (QR + Dining)</p>
-                                                <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                    {billingLinkedOrders.map((item) => (
+                                        {/* Separate Section: Restaurant Dining (Dine-In Table Orders) */}
+                                        {filteredLinkedOrders.length > 0 && (
+                                            <div className="p-4 space-y-2 border-t border-hairline bg-emerald-50/20">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <p className="font-extrabold text-emerald-700 flex items-center gap-1.5 font-bold">
+                                                        <Utensils size={14} className="text-emerald-600" />
+                                                        Restaurant Dining (Dine-In Table Orders)
+                                                    </p>
+                                                    <span className="font-extrabold text-emerald-700 tabular-nums">
+                                                        {money(filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-emerald-300">
+                                                    {filteredLinkedOrders.map((item) => (
                                                         <div key={item.id} className="flex justify-between text-[10px] text-ink-muted">
                                                             <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
                                                             <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
@@ -2567,6 +2935,86 @@ export default function CashierClient({
                                                 </div>
                                             </div>
                                         )}
+
+                                        {/* Separate Section: In-Room QR & Room Service Orders */}
+                                        {filteredRoomOrders.length > 0 && (
+                                            <div className="p-4 space-y-2 border-t border-hairline bg-indigo-50/20">
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <p className="font-extrabold text-indigo-700 flex items-center gap-1.5 font-bold">
+                                                        <QrCode size={14} className="text-indigo-600" />
+                                                        In-Room QR & Room Service Orders
+                                                    </p>
+                                                    <span className="font-extrabold text-indigo-700 tabular-nums">
+                                                        {money(filteredRoomOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0))}
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-1.5 pl-3 border-l-2 border-indigo-300">
+                                                    {filteredRoomOrders.map((item) => (
+                                                        <div key={item.id} className="flex justify-between text-[10px] text-ink-muted">
+                                                            <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
+                                                            <span className="tabular-nums font-semibold">{money(Number(item.unit_price) * item.quantity)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Room Service Charge — the folio's own rule, shown
+                                            so the cashier can see and adjust what the
+                                            settlement is about to bill. */}
+                                        {(() => {
+                                            const roomSc = resolveRoomSc(selectedBillingRoom)
+                                            // Shown even for a room that carries no automatic
+                                            // charge: the cashier can still add one, and the
+                                            // settlement bills it as a difference from 0.
+                                            const scIsAutomatic = roomServiceChargeApplies(features, selectedBillingRoom?.id)
+                                            return (
+                                                <div className="p-4 space-y-2 border-t border-hairline bg-sky-50/20">
+                                                    <div className="flex justify-between items-center gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-extrabold text-sky-700 flex items-center gap-1.5">
+                                                                Room Service Charge
+                                                                {roomSc.isOverridden && (
+                                                                    <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">
+                                                                        {scIsAutomatic ? 'EDITED' : 'MANUAL'}
+                                                                    </span>
+                                                                )}
+                                                            </p>
+                                                            <p className="text-[10px] text-sky-600/70 font-semibold">
+                                                                {scIsAutomatic
+                                                                    ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto ${money(roomSc.auto)}`
+                                                                    : 'Not charged automatically for this room — type an amount to add one'}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                            {roomSc.isOverridden && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setRoomServiceChargeEdit(null)}
+                                                                    title={scIsAutomatic ? `Reset to the auto-calculated ${money(roomSc.auto)}` : 'Clear the manual charge'}
+                                                                    className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                                >
+                                                                    <RotateCcw size={12} />
+                                                                </button>
+                                                            )}
+                                                            <div className="relative w-28">
+                                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    value={roomSc.isOverridden ? (roomServiceChargeEdit?.value ?? '') : (roomSc.auto ? String(roomSc.auto) : '')}
+                                                                    placeholder={roomSc.auto ? String(roomSc.auto) : '0.00'}
+                                                                    onChange={e => setRoomServiceChargeEdit({ roomId: selectedBillingRoom.id, value: e.target.value })}
+                                                                    aria-label="Room service charge"
+                                                                    className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })()}
 
                                         {billingRoomCharges.length > 0 && (
                                             <div className="p-4 space-y-2">
@@ -2734,8 +3182,9 @@ export default function CashierClient({
 
                                     {(() => {
                                         const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                        const advancePaid = Number(billingStayBooking?.paid_amount) || 0
-                                        const balanceDue = Math.max(0, grandTotal - advancePaid)
+                                        const advancePaid = advancePaidFor(billingStayBooking)
+                                        const netBalance = grandTotal - advancePaid
+                                        const balanceDue = Math.max(0, netBalance)
                                         return renderPaymentInputsAndCalculator(balanceDue)
                                     })()}
                                 </div>
@@ -2745,27 +3194,58 @@ export default function CashierClient({
                                     {/* Gross Total + Advance row */}
                                     {(() => {
                                         const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
-                                        const advancePaid = Number(billingStayBooking?.paid_amount) || 0
-                                        const balanceDue = Math.max(0, grandTotal - advancePaid)
+                                        const advancePaid = advancePaidFor(billingStayBooking)
+                                        const netBalance = grandTotal - advancePaid
+                                        const balanceDue = Math.max(0, netBalance)
+                                        const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
+                                        // Settled earlier and kept the room: what is left is to
+                                        // release it, unless something was charged since. The
+                                        // half-rupee cushion mirrors the server's — the folio and
+                                        // the stored paid amount both round to paisa.
+                                        // Stamped by every settlement, so "paid but still here" is
+                                        // that stamp against a stay not yet checked out.
+                                        const billAlreadySettled = !!billingStayBooking?.bill_settled_at
+                                            && billingStayBooking?.status !== 'checked_out'
+                                        const balanceOutstanding = balanceDue > 0.5
                                         return (
                                             <>
+                                                {billAlreadySettled && (
+                                                    <div className={`rounded-xl border px-3 py-2 text-[10px] font-bold ${
+                                                        balanceOutstanding
+                                                            ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                                            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                                    }`}>
+                                                        {balanceOutstanding
+                                                            ? `Bill settled earlier · ${money(balanceDue)} charged since`
+                                                            : 'Bill settled earlier · nothing further owed'}
+                                                    </div>
+                                                )}
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-[10px] font-bold text-ink-subtle uppercase">Total bill amount</span>
                                                     <span className="text-sm font-black text-ink-muted tabular-nums">{money(grandTotal)}</span>
                                                 </div>
                                                 {advancePaid > 0 && (
-                                                    <div className="flex items-center justify-between">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAdvanceHistoryModalOpen(true)}
+                                                        className="flex items-center justify-between w-full hover:underline cursor-pointer group transition-all"
+                                                    >
                                                         <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
                                                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                                             Advance Paid ({advanceMethodLabel(billingStayBooking?.advance_payment_method)})
+                                                            <History className="w-3 h-3 inline ml-1 opacity-70 group-hover:opacity-100" />
                                                         </span>
                                                         <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
-                                                    </div>
+                                                    </button>
                                                 )}
                                                 <div className="flex items-center justify-between pt-1 border-t border-dashed border-hairline">
                                                     <div>
-                                                        <span className="text-[10px] font-bold text-ink-subtle uppercase">{advancePaid > 0 ? 'Balance Due' : 'Total Due'}</span>
-                                                        <p className="text-2xl font-black text-brand-600 tabular-nums">{money(balanceDue)}</p>
+                                                        <span className={`text-[10px] font-bold uppercase ${returnAmount > 0 ? 'text-emerald-600' : 'text-ink-subtle'}`}>
+                                                            {returnAmount > 0 ? 'Return to Guest' : advancePaid > 0 ? 'Balance Due' : 'Total Due'}
+                                                        </span>
+                                                        <p className={`text-2xl font-black tabular-nums ${returnAmount > 0 ? 'text-emerald-600' : 'text-brand-600'}`}>
+                                                            {returnAmount > 0 ? money(returnAmount) : money(balanceDue)}
+                                                        </p>
                                                     </div>
                                                     <div className="flex gap-2 items-center">
                                                         <Button variant="secondary" onClick={() => setSelectedBillingRoom(null)}>Close</Button>
@@ -2778,16 +3258,41 @@ export default function CashierClient({
                                                             >
                                                                 Generate Estimate
                                                             </Button>
-                                                        ) : !irdSyncEnabled ? (
+                                                        ) : billAlreadySettled && !balanceOutstanding ? (
+                                                            /* Already paid — this only releases the room.
+                                                               No money moves, so it does not go through
+                                                               the settlement path at all. */
                                                             <Button
                                                                 variant="primary"
                                                                 loading={isDirectCheckingOut}
-                                                                disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
-                                                                onClick={() => handleCloseGuestDirectly(selectedBillingRoom)}
+                                                                onClick={() => handleReleaseRoom(selectedBillingRoom)}
                                                                 className="px-6 text-xs animate-scale-in"
                                                             >
-                                                                Close Guest
+                                                                Check Out &amp; Release Room
                                                             </Button>
+                                                        ) : !irdSyncEnabled ? (
+                                                            <>
+                                                                {/* Takes the money and stops there: the stay
+                                                                    stays open, the room stays the guest's. */}
+                                                                <Button
+                                                                    variant="secondary"
+                                                                    loading={isDirectCheckingOut}
+                                                                    disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                                    onClick={() => handleCloseGuestDirectly(selectedBillingRoom, false)}
+                                                                    className="px-4 text-xs animate-scale-in"
+                                                                >
+                                                                    Settle, Keep Room
+                                                                </Button>
+                                                                <Button
+                                                                    variant="primary"
+                                                                    loading={isDirectCheckingOut}
+                                                                    disabled={discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                                    onClick={() => handleCloseGuestDirectly(selectedBillingRoom)}
+                                                                    className="px-6 text-xs animate-scale-in"
+                                                                >
+                                                                    Close Guest
+                                                                </Button>
+                                                            </>
                                                         ) : (
                                                             <Button
                                                                 variant="primary"
@@ -2864,24 +3369,95 @@ export default function CashierClient({
                                 // above which is pre-tax and would understate it.
                                 const itemsSubtotal = getTableSessionItems(selectedBillingTable).reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0)
                                 const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
-                                const taxOrServiceAdjustment = tableSubtotal - itemsSubtotal
+                                const sc = resolveTableServiceCharge(selectedBillingTable)
+                                // What's owed before the discount: the orders' own
+                                // totals, shifted by however far the cashier moved
+                                // the service charge off its auto figure.
+                                const billableSubtotal = round2(tableSubtotal + sc.delta)
                                 const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
-                                const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > tableSubtotal
+                                const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > billableSubtotal
+                                const finalCalculatedTotal = Math.max(0, round2(billableSubtotal - tableDiscountAmount))
+
+                                const sessionOrders = getTableSessionOrders(selectedBillingTable)
+                                const sessionTax = sessionOrders.reduce((sum, o) => sum + (Number(o.tax_amount) || 0), 0)
+                                const residualAdjustment = tableSubtotal - (itemsSubtotal + sc.auto + sessionTax)
 
                                 return (
                                     <div className="space-y-6">
-                                        {Math.abs(taxOrServiceAdjustment) > 0.01 && (
-                                            <div className="flex justify-between items-center px-1 text-xs">
-                                                <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
-                                                <span className="font-bold text-ink-muted tabular-nums">{money(taxOrServiceAdjustment)}</span>
+                                        <div className="space-y-2 px-1 text-xs">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-ink-subtle font-semibold">Subtotal</span>
+                                                <span className="font-bold text-ink tabular-nums">{money(itemsSubtotal)}</span>
                                             </div>
-                                        )}
-                                        {tableDiscountAmount > 0 && (
-                                            <div className="flex justify-between items-center px-1 text-xs text-rose-600">
-                                                <span className="font-semibold">Food Discount</span>
-                                                <span className="font-extrabold tabular-nums">− {money(tableDiscountAmount)}</span>
+
+                                            {tableDiscountAmount > 0 && (
+                                                <div className="flex justify-between items-center text-rose-600">
+                                                    <span className="font-semibold">Discount</span>
+                                                    <span className="font-extrabold tabular-nums">− {money(tableDiscountAmount)}</span>
+                                                </div>
+                                            )}
+
+                                            {sessionOrders.length > 0 && (
+                                                <div className="flex justify-between items-center gap-3">
+                                                    <span className="text-ink-subtle font-semibold shrink-0">
+                                                        Service Charge
+                                                        {sc.isOverridden && (
+                                                            <span className="ml-1.5 text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 align-middle">EDITED</span>
+                                                        )}
+                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {sc.isOverridden && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setTableServiceCharge('')}
+                                                                title={`Reset to the auto-calculated ${money(sc.auto)}`}
+                                                                className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                            >
+                                                                <RotateCcw size={12} />
+                                                            </button>
+                                                        )}
+                                                        <div className="relative w-28">
+                                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={sc.isOverridden ? tableServiceCharge : (sc.auto ? String(sc.auto) : '')}
+                                                                placeholder={sc.auto ? String(sc.auto) : '0.00'}
+                                                                onChange={e => setTableServiceCharge(e.target.value)}
+                                                                aria-label="Service charge"
+                                                                className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {sc.isOverridden && Math.abs(sc.delta) > 0.001 && (
+                                                <p className="text-[9px] text-ink-subtle font-semibold text-right -mt-1">
+                                                    Auto: {money(sc.auto)} · {sc.delta > 0 ? '+' : '−'}{money(Math.abs(sc.delta))} on the bill
+                                                </p>
+                                            )}
+
+                                            {sessionTax > 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-ink-subtle font-semibold">Tax (VAT)</span>
+                                                    <span className="font-bold text-ink tabular-nums">{money(sessionTax)}</span>
+                                                </div>
+                                            )}
+
+                                            {Math.abs(residualAdjustment) > 0.01 && sc.auto === 0 && sessionTax === 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-ink-subtle font-semibold">Tax / Service charge</span>
+                                                    <span className="font-bold text-ink tabular-nums">{money(residualAdjustment)}</span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex justify-between items-center pt-2 border-t border-dashed border-hairline font-extrabold text-sm">
+                                                <span className="text-ink">Grand Total</span>
+                                                <span className="text-brand-600 tabular-nums text-base">{money(finalCalculatedTotal)}</span>
                                             </div>
-                                        )}
+                                        </div>
 
                                         {/* Food Discount */}
                                         <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
@@ -2892,7 +3468,7 @@ export default function CashierClient({
                                                     </div>
                                                     <div>
                                                         <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Food Discount</p>
-                                                        <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(tableSubtotal)}</p>
+                                                        <p className="text-[10px] text-amber-700/70 font-semibold">Standard total: {money(billableSubtotal)}</p>
                                                     </div>
                                                 </div>
                                                 <div className="relative w-32">
@@ -2900,7 +3476,7 @@ export default function CashierClient({
                                                     <input
                                                         type="number"
                                                         min="0"
-                                                        max={tableSubtotal}
+                                                        max={billableSubtotal}
                                                         placeholder="0.00"
                                                         value={tableDiscount}
                                                         onChange={e => setTableDiscount(e.target.value)}
@@ -2980,7 +3556,7 @@ export default function CashierClient({
                                                 </button>
                                             </div>
 
-                                            {renderPaymentInputsAndCalculator(tableSubtotal - tableDiscountAmount)}
+                                            {renderPaymentInputsAndCalculator(finalCalculatedTotal)}
                                         </div>
                                         )}
                                     </div>
@@ -2990,10 +3566,10 @@ export default function CashierClient({
 
                         {/* Fixed Footer */}
                         {(() => {
-                            const tableSubtotal = getTableSessionOrdersTotal(selectedBillingTable)
+                            const billableSubtotal = round2(getTableSessionOrdersTotal(selectedBillingTable) + resolveTableServiceCharge(selectedBillingTable).delta)
                             const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
-                            const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > tableSubtotal
-                            const tableTotal = Math.max(0, tableSubtotal - tableDiscountAmount)
+                            const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > billableSubtotal
+                            const tableTotal = Math.max(0, round2(billableSubtotal - tableDiscountAmount))
 
                             return (
                                 <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface flex items-center justify-between">
@@ -3567,6 +4143,14 @@ export default function CashierClient({
                     onDone={dequeueTicketFallback}
                 />
             )}
+
+            <AdvancePaymentHistoryModal
+                isOpen={advanceHistoryModalOpen}
+                onClose={() => setAdvanceHistoryModalOpen(false)}
+                bookingId={billingStayBooking?.id || null}
+                guestName={billingStayBooking?.guest_name}
+                roomNumber={selectedBillingRoom?.room_number}
+            />
 
         </div>
     )

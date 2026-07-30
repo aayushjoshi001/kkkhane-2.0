@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
-import { findOrCreateCustomerCreditAccount, postCreditCharge, postLoyaltyEarn, postLoyaltyRedeem } from '@/lib/customerCredit'
+import { findOrCreateCustomerCreditAccount, postCreditCharge, settleLoyalty } from '@/lib/customerCredit'
 import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
 
@@ -41,9 +41,13 @@ async function settleOrders(
         .neq('status', 'cancelled')
         .eq('needs_confirmation', false)
 
+    // cashier_id names who settled the bill, alongside the waiter_id/chef_id the
+    // order already carries. Scoped to the same `neq('payment_status', 'paid')`
+    // guard as paid_at for the same reason: an order settled earlier in the stay
+    // keeps the cashier who actually took the money, not whoever closed the table.
     await supabase
         .from('orders')
-        .update({ status: 'delivered', delivered_at: now, payment_status: 'paid', paid_at: now })
+        .update({ status: 'delivered', delivered_at: now, payment_status: 'paid', paid_at: now, cashier_id: userId })
         .in('id', orderIds)
         .neq('payment_status', 'paid')
 
@@ -74,7 +78,7 @@ export async function POST(req: Request) {
         const {
             session_id, cash_paid, qr_paid, credit_amount, qr_code_id,
             discount_amount, discount_reason, customer_name, customer_phone,
-            redeemed_points,
+            redeemed_points, service_charge_override,
         } = body
 
         if (!session_id) {
@@ -83,7 +87,6 @@ export async function POST(req: Request) {
 
         const { getRestaurantFeatures } = await import('@/lib/features')
         const features = await getRestaurantFeatures(currentUser.restaurantId)
-        const isIrd = !!features?.irdSyncEnabled
 
         // A bargained table total — same audit-trail rule as the room checkout:
         // any staff can apply one, but a reason is mandatory.
@@ -94,6 +97,15 @@ export async function POST(req: Request) {
         const discountReason = typeof discount_reason === 'string' ? discount_reason.trim() : ''
         if (discountAmount > 0 && !discountReason) {
             return NextResponse.json({ error: 'A reason is required to apply a discount' }, { status: 400 })
+        }
+
+        // The cashier can type over the service charge the orders locked in at
+        // placement time. Absent/null means "leave it on auto" — 0 is a real
+        // instruction to waive it, so it has to survive the check below.
+        const hasServiceChargeOverride = service_charge_override !== undefined && service_charge_override !== null && service_charge_override !== ''
+        const serviceChargeOverride = hasServiceChargeOverride ? round2(Number(service_charge_override)) : null
+        if (serviceChargeOverride !== null && (!Number.isFinite(serviceChargeOverride) || serviceChargeOverride < 0)) {
+            return NextResponse.json({ error: 'service_charge_override must be a non-negative number' }, { status: 400 })
         }
 
         // Cash + QR + credit can be combined in any mix (e.g. Rs.300 cash +
@@ -148,7 +160,7 @@ export async function POST(req: Request) {
         // re-derived from raw line items here.
         const { data: orders, error: ordersError } = await supabase
             .from('orders')
-            .select('id, total_amount')
+            .select('id, total_amount, service_charge_amount')
             .eq('session_id', session_id)
             .eq('restaurant_id', currentUser.restaurantId)
             .neq('status', 'cancelled')
@@ -157,10 +169,21 @@ export async function POST(req: Request) {
         if (ordersError) throw ordersError
         const subtotal = round2((orders || []).reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0))
 
-        if (discountAmount > subtotal) {
+        // Each order's total_amount already contains its own service charge, so
+        // an override is billed as the difference from that auto figure — adding
+        // the whole overridden amount would charge the guest for it twice.
+        const autoServiceCharge = round2((orders || []).reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0))
+        const serviceChargeCharged = serviceChargeOverride ?? autoServiceCharge
+        const serviceChargeDelta = round2(serviceChargeCharged - autoServiceCharge)
+        const billableSubtotal = round2(subtotal + serviceChargeDelta)
+
+        if (billableSubtotal < 0) {
+            return NextResponse.json({ error: 'Service charge override makes the bill negative' }, { status: 400 })
+        }
+        if (discountAmount > billableSubtotal) {
             return NextResponse.json({ error: 'Discount cannot exceed the session total' }, { status: 400 })
         }
-        const authoritativeTotal = round2(subtotal - discountAmount)
+        const authoritativeTotal = round2(billableSubtotal - discountAmount)
 
         // A table settles in full, unlike a multi-day hotel stay — cash + QR +
         // credit must reconcile exactly to what's owed, catching a stale/
@@ -294,28 +317,17 @@ export async function POST(req: Request) {
                 })
             }
 
-            // Handle loyalty points (5% earn on Cash/QR payments)
-            const rPoints = Number(redeemed_points) || 0
-            const phone = customerPhone ? customerPhone.trim() : ''
-            const name = customerName ? customerName.trim() : 'Table Guest'
-            if (phone && (cashPaid > 0 || qrPaid > 0 || rPoints > 0)) {
-                const pointsToEarn = Math.round((cashPaid + qrPaid) * 0.05)
-                const { data: account } = await supabase
-                    .from('customer_credit_accounts')
-                    .select('id')
-                    .eq('restaurant_id', currentUser.restaurantId)
-                    .eq('customer_phone', phone)
-                    .maybeSingle()
-
-                if (account) {
-                    if (pointsToEarn > 0) {
-                        await postLoyaltyEarn(supabase, currentUser.restaurantId, account.id, pointsToEarn, `Earned from Table ${tableLabel} bill`)
-                    }
-                    if (rPoints > 0) {
-                        await postLoyaltyRedeem(supabase, currentUser.restaurantId, account.id, rPoints, `Redeemed on Table ${tableLabel} bill`)
-                    }
-                }
-            }
+            // Handle loyalty points (5% earn on Cash/QR payments). settleLoyalty
+            // creates the guest's CRM record if this is their first visit — read
+            // only, a cash-paying guest never had one and so never earned anything.
+            await settleLoyalty(supabase, currentUser.restaurantId, currentUser.id, {
+                name: customerName ? customerName.trim() : 'Table Guest',
+                phone: customerPhone ? customerPhone.trim() : '',
+                earnPoints: Math.round((cashPaid + qrPaid) * 0.05),
+                redeemPoints: Number(redeemed_points) || 0,
+                earnDescription: `Earned from Table ${tableLabel} bill`,
+                redeemDescription: `Redeemed on Table ${tableLabel} bill`,
+            })
         }
 
         void logAudit({
@@ -326,6 +338,9 @@ export async function POST(req: Request) {
             entityId: session_id,
             newValue: {
                 subtotal,
+                service_charge_auto: autoServiceCharge,
+                service_charge_charged: serviceChargeCharged,
+                service_charge_overridden: serviceChargeOverride !== null,
                 discount_amount: discountAmount,
                 discount_reason: discountAmount > 0 ? discountReason : null,
                 total: authoritativeTotal,

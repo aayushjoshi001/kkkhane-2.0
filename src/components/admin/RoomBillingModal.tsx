@@ -1,18 +1,20 @@
 'use client'
 
-import { useState, useEffect, useSyncExternalStore } from 'react'
+import { useState, useEffect, useSyncExternalStore, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Loader2, CheckCircle2, Percent, Clock, Printer } from 'lucide-react'
+import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed, RotateCcw, Link2, Unlink, Plus, DoorOpen, BedDouble } from 'lucide-react'
+import AdvancePaymentHistoryModal from './AdvancePaymentHistoryModal'
 import type { Booking, Room } from '@/types/database'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
-import { calculateNights, getBookingCustomPrice, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
+import { calculateNights, getBookingCustomPrice, lateCheckoutNights, resolveDeparture, LATE_CHECKOUT_GRACE_HOURS, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import { buildInvoiceTicket, type ActiveInvoice } from '@/lib/print/templates/invoiceTicket'
 import InvoiceReceipt from '@/components/shared/InvoiceReceipt'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
-import { useFeatureEnabled, useDateFormatter } from '@/lib/contexts/FeatureContext'
+import { useFeatureEnabled, useDateFormatter, useFeatures } from '@/lib/contexts/FeatureContext'
+import { autoRoomServiceCharge, resolveRoomServiceCharge, roomServiceChargeApplies, ROOM_SERVICE_CHARGE_RATE } from '@/lib/roomServiceCharge'
 import Select from '@/components/ui/Select'
 import { useDates } from '@/lib/contexts/CalendarContext'
 
@@ -29,7 +31,8 @@ export interface BillingOrderItem {
     id: string
     quantity: number
     unit_price: number
-    menu_items?: { name: string } | null
+    station?: string | null
+    menu_items?: { name: string; station?: string | null } | null
 }
 
 /** Active order shape the admin room pages pass in. */
@@ -52,6 +55,10 @@ export interface SettlementResult {
     total: number
     paidAmount: number
     paymentStatus: 'paid' | 'partial'
+    /** False when the guest paid but kept the room — the stay is still open and
+     *  the room is still occupied, so callers must not mark it for
+     *  housekeeping. */
+    closed: boolean
 }
 
 interface RoomBillingModalProps {
@@ -62,6 +69,8 @@ interface RoomBillingModalProps {
     restaurantName: string
     restaurantAddress?: string
     restaurantPhone?: string
+    /** Printed on the receipt, mirroring the Cashier POS — see ActiveInvoice.cashierName. */
+    userName?: string
     onClose: () => void
     /** Called after the server confirms the checkout so the caller can update its local state. */
     onSettled: (result: SettlementResult) => void
@@ -70,10 +79,45 @@ interface RoomBillingModalProps {
 const money = (amount: number) =>
     'Rs. ' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+/** The other rooms billing onto this same folio (see /api/bookings/group). */
+interface GroupBill {
+    groupId: string
+    rooms: Array<{
+        bookingId: string
+        roomId: string
+        roomNumber: string
+        nights: number
+        stayCost: number
+        paidAmount: number
+        /** Guest already left; their share stays on this bill. */
+        departed?: boolean
+        departedAt?: string | null
+    }>
+    stayCost: number
+    advancePaid: number
+}
+
+/** An open stay that could be pulled onto this bill (see /api/bookings/combine-bill). */
+interface CombineCandidate {
+    bookingId: string
+    roomNumber: string
+    guestName: string
+    guestPhone: string
+    checkIn: string
+    checkOut: string
+    advancePaid: number
+    /** Rooms it would bring, itself included — >1 when it is already on a bill. */
+    bringsRooms: number
+}
+
+// Mirrors the server folio, including the late-checkout rule — if this preview
+// left the overstay out, the cashier would quote a total the server then
+// charged more than.
 const calculateStayCost = (room: Room, booking: Booking) => {
     const customPrice = getBookingCustomPrice(booking)
     const price = customPrice > 0 ? customPrice : (room.room_types?.base_price || 0)
     const nights = calculateNights(booking.check_in, booking.check_out)
+        + lateCheckoutNights(booking.check_out, resolveDeparture(booking))
     return price * nights
 }
 
@@ -83,7 +127,7 @@ const calculateStayCost = (room: Room, booking: Booking) => {
  * charges fetch and the call to /api/bookings/checkout; callers only react
  * to onSettled/onClose. Shared by the admin Bookings and Rooms pages.
  */
-export default function RoomBillingModal({ room, booking, tables, activeOrders, restaurantName, restaurantAddress = '', restaurantPhone = '', onClose, onSettled }: RoomBillingModalProps) {
+export default function RoomBillingModal({ room, booking, tables, activeOrders, restaurantName, restaurantAddress = '', restaurantPhone = '', userName = '', onClose, onSettled }: RoomBillingModalProps) {
     // true after hydration (portals can't render during SSR)
     const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
     const formatDate = useDateFormatter()
@@ -91,12 +135,18 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // Loading is derived: we're loading until charges have arrived for this booking
     const [chargesLoadedFor, setChargesLoadedFor] = useState<string | null>(null)
     const loadingDetails = booking ? chargesLoadedFor !== booking.id : false
+    // A rate the desk agreed for this stay, if any — it replaces the room
+    // type's price everywhere this bill quotes a nightly figure.
+    const customRatePerNight = getBookingCustomPrice(booking)
     // Discount fields for room stay and food/beverage orders
     const [roomDiscount, setRoomDiscount] = useState('')
     const [orderDiscount, setOrderDiscount] = useState('')
     const [discountReason, setDiscountReason] = useState('')
     const [extraHourCharge, setExtraHourCharge] = useState('')
+    const [applyRoomServiceCharge, setApplyRoomServiceCharge] = useState(true)
+    const [roomServiceChargeInput, setRoomServiceChargeInput] = useState('')
     const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qr_digital' | 'split' | 'credit'>('cash')
+    const [historyModalOpen, setHistoryModalOpen] = useState(false)
     const [splitCashAmount, setSplitCashAmount] = useState('')
     const [splitQrAmount, setSplitQrAmount] = useState('')
     const [qrCodeId, setQrCodeId] = useState('')
@@ -120,6 +170,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const printBillEnabled = useFeatureEnabled('printBillEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
+    const features = useFeatures()
     const { formatDateTime, calendar } = useDates()
     const { print: printInvoice } = usePrinter('invoice')
     // True once the checkout API confirms the room is settled — printing
@@ -128,6 +179,22 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const [invoiceSettled, setInvoiceSettled] = useState(false)
     const [showSettlementPrintPrompt, setShowSettlementPrintPrompt] = useState(false)
     const [settlementCopies, setSettlementCopies] = useState(1)
+
+    // Bumped whenever the rooms on this bill change. Every figure in this modal
+    // is drawn from three fetches that each resolve the whole folio — charges,
+    // linked orders and the group bill — so combining or separating a room has
+    // to re-run all three, not just the one that obviously moved.
+    const [billVersion, setBillVersion] = useState(0)
+    const [combinePickerOpen, setCombinePickerOpen] = useState(false)
+    const [candidates, setCandidates] = useState<CombineCandidate[]>([])
+    const [loadingCandidates, setLoadingCandidates] = useState(false)
+    const [pickedCandidateIds, setPickedCandidateIds] = useState<string[]>([])
+    const [isCombining, setIsCombining] = useState(false)
+    // Which of the two settle buttons is being confirmed. The split/credit
+    // confirmation and the print prompt both sit between the click and the
+    // request, so the intent has to survive them.
+    const [pendingCloseStay, setPendingCloseStay] = useState(true)
+    const [isClosingStay, setIsClosingStay] = useState(false)
 
     useEffect(() => {
         if (!booking) return
@@ -146,7 +213,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             .catch(err => console.error('Error loading charges:', err))
             .finally(() => { if (!cancelled) setChargesLoadedFor(booking.id) })
         return () => { cancelled = true }
-    }, [booking])
+    }, [booking, billVersion])
 
     // Rooms are joined to QR ordering by key: tables.room_id points at the room
     // this table is the in-room QR for (migration 20260709140000).
@@ -173,7 +240,31 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             })
             .catch(err => console.error('Error loading linked dining orders:', err))
         return () => { cancelled = true }
-    }, [booking])
+    }, [booking, billVersion])
+
+    // A multi-room reservation settles as one bill, so this modal has to show
+    // every room on it — not just the one the cashier happened to click. The
+    // server is still authoritative (see computeFolioForStays); this is the
+    // preview the cashier confirms before taking the money.
+    const [loadedGroupBill, setLoadedGroupBill] = useState<GroupBill | null>(null)
+    const [groupBillLoadedFor, setGroupBillLoadedFor] = useState<string | null>(null)
+    // Derived rather than cleared in the effect, matching chargesLoadedFor
+    // above: until the fetch lands for THIS booking, there is no group bill, so
+    // a previous room's reservation can never bleed into the one on screen.
+    const groupBill = booking && groupBillLoadedFor === booking.id ? loadedGroupBill : null
+    useEffect(() => {
+        if (!booking) return
+        let cancelled = false
+        fetch(`/api/bookings/group?bookingId=${booking.id}`)
+            .then(r => r.json())
+            .then(data => {
+                if (cancelled) return
+                setLoadedGroupBill(data.success && data.isGroup ? data : null)
+                setGroupBillLoadedFor(booking.id)
+            })
+            .catch(err => console.error('Error loading group bill:', err))
+        return () => { cancelled = true }
+    }, [booking, billVersion])
 
     // The room's own QR session carries booking_id, so its orders arrive in BOTH
     // qrOrderItems (by session) and linkedDiningOrders (by booking) — dedupe by
@@ -181,7 +272,27 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const allServiceOrderItems = Array.from(
         new Map([...qrOrderItems, ...linkedDiningOrders].map(it => [it.id, it])).values()
     ).filter((it: any) => it.status !== 'cancelled')
-    const stayCost = booking ? calculateStayCost(room, booking) : 0
+
+    const dineInOrderItems = useMemo(() => {
+        return allServiceOrderItems.filter((it: any) => !it.is_room_order)
+    }, [allServiceOrderItems])
+
+    const qrRoomServiceOrderItems = useMemo(() => {
+        return allServiceOrderItems.filter((it: any) => it.is_room_order)
+    }, [allServiceOrderItems])
+
+    const dineInTotal = useMemo(() => {
+        return dineInOrderItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+    }, [dineInOrderItems])
+
+    const qrRoomServiceTotal = useMemo(() => {
+        return qrRoomServiceOrderItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
+    }, [qrRoomServiceOrderItems])
+
+    // For a group the room cost is every room's cost, since the guest pays once.
+    const stayCost = groupBill
+        ? groupBill.stayCost
+        : (booking ? calculateStayCost(room, booking) : 0)
     const qrOrdersTotal = allServiceOrderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
     const manualChargesTotal = charges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
 
@@ -199,17 +310,55 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
     const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal
     const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
+    // What the guest owes for orders: every service order against the stay,
+    // room service and linked dine-in tables alike, less the order discount.
     const effectiveOrdersTotal = Math.max(0, qrOrdersTotal - orderDiscountVal)
 
-    const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal
-    const advancePaid = Number(booking?.paid_amount) || 0
-    const balanceDue = Math.max(0, grandTotal - advancePaid)
+    // Service charge on food items for direct room orders & room QR orders only
+    // (linked dining tables excluded). Gated on the same settings the server
+    // folio checks, so this can't quote a charge the settlement won't make.
+    const autoServiceCharge = useMemo(
+        () => autoRoomServiceCharge(allServiceOrderItems, features, room?.id),
+        [allServiceOrderItems, features, room?.id],
+    )
+    // A room the settings exempt still gets the field — the override is billed
+    // as a difference from the auto figure, which for these rooms is 0.
+    const serviceChargeIsAutomatic = roomServiceChargeApplies(features, room?.id)
+    const serviceCharge = resolveRoomServiceCharge(autoServiceCharge, roomServiceChargeInput)
+    const roomServiceChargeAmount = applyRoomServiceCharge ? serviceCharge.charged : 0
+    // A waive via the toggle is an override to zero as far as the API cares.
+    const serviceChargeOverrideValue = !applyRoomServiceCharge ? 0 : serviceCharge.isOverridden ? serviceCharge.charged : undefined
+
+    const grandTotal = effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount
+    // Advances were taken per room, so a reservation's advance is their sum.
+    const advancePaid = groupBill ? groupBill.advancePaid : (Number(booking?.paid_amount) || 0)
+    const netBalance = grandTotal - advancePaid
+    const balanceDue = Math.max(0, netBalance)
+    const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
+
+    // This guest paid earlier and kept the room. What is left to do is release
+    // it — unless something has been charged since (another night, a last round
+    // of room service), in which case there is a real balance to take first and
+    // the ordinary settle buttons come back. The half-rupee cushion mirrors the
+    // server's: the folio and the stored paid amount both round to paisa and can
+    // differ in the last place, which is not an unpaid bill.
+    // `bill_settled_at` marks every settlement, so "paid but still here" is that
+    // stamp against a stay that has not been checked out yet.
+    const billAlreadySettled = !!booking?.bill_settled_at && booking.status !== 'checked_out'
+    const balanceOutstanding = balanceDue > 0.5
 
     const checkOutTime = booking ? new Date(booking.check_out) : null
     const currentTime = new Date()
     const isExceeded = checkOutTime ? currentTime > checkOutTime : false
     const extraHours = isExceeded && checkOutTime
         ? Math.ceil((currentTime.getTime() - checkOutTime.getTime()) / (1000 * 60 * 60))
+        : 0
+    // Nights the overstay has already added to the room cost above. Past the
+    // grace period the stay is billed another full day automatically, so the
+    // manual extra-hour field must not be offered for the same time again —
+    // that would charge the guest twice for one overstay.
+    const autoLateNights = booking
+        ? lateCheckoutNights(booking.check_out, resolveDeparture(booking))
         : 0
 
     const cashGivenVal = (paymentMethod === 'cash' || paymentMethod === 'split') && cashGivenAmount.trim() !== '' ? parseFloat(cashGivenAmount) : null
@@ -232,6 +381,10 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         : paymentMethod === 'split' ? (parseFloat(splitQrAmount) || 0)
         : 0
 
+    // Neither 'split' nor a short cash payment has to add up to the balance due
+    // — whatever's left over becomes credit, confirmed via the settlement popup
+    // below (that guards against a typo, not just a deliberate part-credit
+    // sale).
     const resolvedCredit = paymentMethod === 'credit' ? balanceDue
         : paymentMethod === 'split' ? Math.max(0, balanceDue - resolvedCash - resolvedQr)
         : paymentMethod === 'cash' ? Math.max(0, balanceDue - resolvedCash)
@@ -267,15 +420,25 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     const invoiceData: ActiveInvoice | null = booking ? {
         type: 'room',
         id: booking.id,
-        label: `Room ${room.room_number}`,
-        roomType: room.room_types?.name,
+        // A multi-room reservation settles on one bill, so the receipt names
+        // every room it covers and itemizes them below. Its rooms can be of
+        // different types, so no single type name would be right.
+        label: groupBill
+            ? `Rooms ${groupBill.rooms.map(r => r.roomNumber).filter(Boolean).join(', ')}`
+            : `Room ${room.room_number}`,
+        roomType: groupBill ? undefined : room.room_types?.name,
         guestName: booking.guest_name,
         guestPhone: booking.guest_phone,
+        cashierName: userName,
         nights: calculateNights(booking.check_in, booking.check_out),
-        basePrice: getBookingCustomPrice(booking) || room.room_types?.base_price || 0,
+        basePrice: customRatePerNight || room.room_types?.base_price || 0,
         stayCost: stayCost,
+        roomLines: groupBill
+            ? groupBill.rooms.map(r => ({ roomNumber: r.roomNumber, nights: r.nights, stayCost: r.stayCost }))
+            : undefined,
         qrOrders: mergeLineItems(allServiceOrderItems),
         qrOrdersTotal,
+        serviceCharge: roomServiceChargeAmount || undefined,
         manualCharges: charges.map(c => ({ id: c.id, description: c.description, amount: Number(c.amount) })),
         manualChargesTotal,
         total: grandTotal,
@@ -292,6 +455,156 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         discountReason: discountReason,
         extraHourCharge: extraHourChargeVal,
     } : null
+
+    // ── Combining separately-made bookings onto this one bill ──
+    //
+    // Two guests who arrived on different days and want to pay together were
+    // previously three clicks away from three separate bills. Membership of a
+    // reservation group is the only thing that changes here; the folio, the
+    // receipt and the checkout RPC all already read it.
+
+    const openCombinePicker = async () => {
+        if (!booking) return
+        setCombinePickerOpen(true)
+        setPickedCandidateIds([])
+        setLoadingCandidates(true)
+        try {
+            const res = await fetch(`/api/bookings/combine-bill?bookingId=${booking.id}`)
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not load the other rooms')
+            setCandidates(data.candidates || [])
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not load the other rooms')
+            setCombinePickerOpen(false)
+        } finally {
+            setLoadingCandidates(false)
+        }
+    }
+
+    const handleCombine = async () => {
+        if (!booking || pickedCandidateIds.length === 0) return
+        setIsCombining(true)
+        try {
+            const res = await fetch('/api/bookings/combine-bill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingId: booking.id, addBookingIds: pickedCandidateIds }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not combine the bills')
+
+            toast.success(
+                data.absorbedCount > 0
+                    ? `${data.roomCount} rooms now on one bill (${data.absorbedCount} came from a bill they were already sharing)`
+                    : `${data.roomCount} rooms now on one bill`
+            )
+            setCombinePickerOpen(false)
+            setPickedCandidateIds([])
+            setBillVersion(v => v + 1)
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not combine the bills')
+        } finally {
+            setIsCombining(false)
+        }
+    }
+
+    /**
+     * Send one room of this shared bill home early. Moves no money — the room's
+     * share stays on the bill and settles with everyone else — so it goes
+     * nowhere near the settlement path.
+     */
+    const handleCheckoutRoom = async (targetBookingId: string, roomNumber: string) => {
+        setIsCombining(true)
+        try {
+            const res = await fetch('/api/bookings/checkout-room', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ booking_id: targetBookingId }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not check that room out')
+
+            toast.success(`Room ${roomNumber} checked out — its share stays on this bill`)
+
+            // The room the cashier is standing in just left; there is nothing
+            // more to do here, and the parent needs to drop it off the board.
+            if (booking && targetBookingId === booking.id) {
+                onSettled({
+                    bookingId: booking.id,
+                    roomId: room.id,
+                    total: grandTotal,
+                    paidAmount: advancePaid,
+                    paymentStatus: 'partial',
+                    closed: true,
+                })
+                return
+            }
+            setBillVersion(v => v + 1)
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not check that room out')
+        } finally {
+            setIsCombining(false)
+        }
+    }
+
+    const handleSeparate = async (targetBookingId: string, roomNumber: string) => {
+        setIsCombining(true)
+        try {
+            const res = await fetch(`/api/bookings/combine-bill?bookingId=${targetBookingId}`, { method: 'DELETE' })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not separate that room')
+
+            toast.success(
+                data.dissolved
+                    ? `Room ${roomNumber} taken off — the rooms are on separate bills again`
+                    : `Room ${roomNumber} taken off this bill`
+            )
+            setBillVersion(v => v + 1)
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not separate that room')
+        } finally {
+            setIsCombining(false)
+        }
+    }
+
+    /**
+     * Release a room whose bill was settled earlier. Posts nothing — the money
+     * went through when the guest paid — so it deliberately does not go through
+     * the checkout path at all. The server refuses if anything has been charged
+     * since, and says how much.
+     */
+    const handleCloseStay = async () => {
+        if (!booking) return
+        setIsClosingStay(true)
+        try {
+            const res = await fetch('/api/bookings/close-stay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ booking_id: booking.id }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Could not check the guest out')
+
+            toast.success(
+                data.roomsClosed > 1
+                    ? `${data.roomsClosed} rooms checked out and sent to housekeeping`
+                    : 'Guest checked out — room sent to housekeeping'
+            )
+            setInvoiceSettled(true)
+            onSettled({
+                bookingId: booking.id,
+                roomId: room.id,
+                total: Number(data.total) || 0,
+                paidAmount: Number(data.paid) || 0,
+                paymentStatus: 'paid',
+                closed: true,
+            })
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not check the guest out')
+        } finally {
+            setIsClosingStay(false)
+        }
+    }
 
     const handlePrintBill = async () => {
         if (!invoiceData) return
@@ -310,7 +623,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // 'credit' open the confirmation popup instead (see showSettlementConfirm
     // above); its own Confirm button calls handleSettle directly once the
     // breakdown (and, if needed, customer details) are confirmed.
-    const handleSettleClick = () => {
+    const handleSettleClick = (closeStay: boolean) => {
         if (discountInvalid) {
             toast.error('Discount amounts must be between 0 and the respective stay/order subtotals')
             return
@@ -319,6 +632,10 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             toast.error('A reason is required to apply a discount')
             return
         }
+        setPendingCloseStay(closeStay)
+        // Any leftover credit goes through the popup too, whatever method is
+        // selected: it posts to the customer's ledger, and that needs a name
+        // and phone confirmed before the money moves.
         if (paymentMethod === 'split' || paymentMethod === 'credit' || resolvedCredit > 0.01) {
             setShowSettlementConfirm(true)
             return
@@ -330,6 +647,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
         if (!booking) return
         if (overpaid || creditFieldsInvalid) return
 
+        const closeStay = pendingCloseStay
         setShowSettlementConfirm(false)
         setIsSaving(true)
         try {
@@ -352,12 +670,18 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                     customer_name: resolvedCredit > 0 ? creditCustomerName.trim() : undefined,
                     customer_phone: resolvedCredit > 0 ? creditCustomerPhone.trim() : undefined,
                     extra_hour_charge: extraHourChargeVal,
+                    service_charge_override: serviceChargeOverrideValue,
+                    close_stay: closeStay,
                 })
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || 'Failed to checkout booking')
 
-            toast.success('Room billing settled and guest checked out successfully!')
+            toast.success(
+                closeStay
+                    ? 'Room billing settled and guest checked out successfully!'
+                    : 'Bill settled — the guest keeps the room until you check them out.'
+            )
             setIsSaving(false)
             setInvoiceSettled(true)
 
@@ -396,7 +720,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                 roomId: room.id,
                 total: grandTotal,
                 paidAmount,
-                paymentStatus: paidAmount >= grandTotal ? 'paid' : 'partial'
+                paymentStatus: paidAmount >= grandTotal ? 'paid' : 'partial',
+                closed: closeStay,
             })
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Failed to checkout')
@@ -447,10 +772,198 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                     <p className="font-semibold text-ink-subtle">In: {formatDateTime(booking.check_in)}</p>
                                     <p className="font-semibold text-ink-subtle">Out: {formatDateTime(booking.check_out)}</p>
                                     {isExceeded && (
-                                        <p className="text-[9px] text-rose-600 font-bold mt-1">⚠ Exceeded by {extraHours} hr(s)</p>
+                                        <p className="text-[9px] text-rose-600 font-bold mt-1">
+                                            ⚠ Exceeded by {extraHours} hr(s)
+                                            {autoLateNights > 0
+                                                ? ` — billed as ${autoLateNights} extra day${autoLateNights === 1 ? '' : 's'}`
+                                                : ` — within ${LATE_CHECKOUT_GRACE_HOURS}h grace`}
+                                        </p>
                                     )}
                                 </div>
                             </div>
+
+                            {/* This stay has already paid. Says so before the cashier
+                                reads the numbers below, and names the balance if
+                                anything has been charged since. */}
+                            {billAlreadySettled && !invoiceSettled && (
+                                <div className={`rounded-2xl border p-4 flex items-start gap-3 ${
+                                    balanceOutstanding
+                                        ? 'border-amber-200 bg-amber-50'
+                                        : 'border-emerald-200 bg-emerald-50'
+                                }`}>
+                                    <CheckCircle2 size={16} className={balanceOutstanding ? 'text-amber-600 mt-0.5 shrink-0' : 'text-emerald-600 mt-0.5 shrink-0'} />
+                                    <div className="text-xs">
+                                        <p className={`font-extrabold ${balanceOutstanding ? 'text-amber-800' : 'text-emerald-800'}`}>
+                                            Bill settled {booking.bill_settled_at ? `on ${formatDateTime(booking.bill_settled_at)}` : 'earlier'} — guest kept the room
+                                        </p>
+                                        <p className={`mt-0.5 font-semibold ${balanceOutstanding ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                            {balanceOutstanding
+                                                ? `${money(balanceDue)} has been charged since. Take it, then the room can be released.`
+                                                : 'Nothing further owed. Release the room when the guest leaves.'}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── Rooms on this bill ──
+                                Rooms booked at different times still settle together when
+                                the guests ask to pay once. Only membership changes here —
+                                every figure below is recomputed from it. Hidden once the
+                                bill is settled, when the money is already in the books and
+                                moving a room between folios would misattribute it. */}
+                            {!invoiceSettled && booking && (
+                                <div className="space-y-3">
+                                    <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider flex items-center gap-2">
+                                        <Link2 size={13} className="text-brand-500" />
+                                        Rooms on this bill
+                                        <span className="ml-auto normal-case font-semibold text-ink-subtle">
+                                            {groupBill ? `${groupBill.rooms.length} rooms combined` : 'Room ' + room.room_number + ' only'}
+                                        </span>
+                                    </h4>
+
+                                    <div className="border border-hairline rounded-2xl bg-surface divide-y divide-hairline overflow-hidden">
+                                        {groupBill && groupBill.rooms.map(r => {
+                                            // A departed room keeps its share of this bill; its
+                                            // nights are frozen and it can no longer be moved
+                                            // between bills, so it shows as a fact rather than
+                                            // an action.
+                                            const openRooms = groupBill.rooms.filter(x => !x.departed).length
+                                            return (
+                                                <div key={r.bookingId} className={`flex items-center justify-between gap-3 px-4 py-2.5 text-xs ${r.departed ? 'bg-surface-muted/40' : ''}`}>
+                                                    <span className={`font-bold ${r.departed ? 'text-ink-subtle' : 'text-ink'}`}>
+                                                        Room {r.roomNumber}
+                                                        <span className="ml-2 font-semibold text-ink-subtle">
+                                                            {r.nights} night{r.nights === 1 ? '' : 's'} · {money(r.stayCost)}
+                                                        </span>
+                                                        {r.departed && (
+                                                            <span className="ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">
+                                                                Departed{r.departedAt ? ` ${formatDate(r.departedAt)}` : ''}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    {!r.departed && (
+                                                        <span className="flex items-center gap-1 shrink-0">
+                                                            {/* Sends this guest home while the bill stays
+                                                                whole. Blocked on the last room still in
+                                                                house — that one settles the bill instead. */}
+                                                            {openRooms > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleCheckoutRoom(r.bookingId, r.roomNumber)}
+                                                                    disabled={isCombining || isSaving || isClosingStay}
+                                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-ink-subtle hover:text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-40"
+                                                                >
+                                                                    <DoorOpen size={11} /> Check out
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSeparate(r.bookingId, r.roomNumber)}
+                                                                disabled={isCombining || isSaving || isClosingStay}
+                                                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-ink-subtle hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40"
+                                                            >
+                                                                <Unlink size={11} /> Separate
+                                                            </button>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+
+                                        {!combinePickerOpen ? (
+                                            <button
+                                                type="button"
+                                                onClick={openCombinePicker}
+                                                disabled={isCombining || isSaving}
+                                                className="w-full flex items-center justify-center gap-2 px-4 py-3 text-[11px] font-extrabold text-brand-600 hover:bg-brand-50 transition-colors disabled:opacity-40"
+                                            >
+                                                <Plus size={13} /> Add another room to this bill
+                                            </button>
+                                        ) : (
+                                            <div className="p-4 space-y-3 bg-surface-muted/30">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-[10px] font-black uppercase tracking-wider text-ink-subtle">
+                                                        Pick the rooms paying together
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCombinePickerOpen(false)}
+                                                        className="text-ink-subtle hover:text-ink p-0.5 rounded"
+                                                        aria-label="Close room picker"
+                                                    >
+                                                        <X size={13} />
+                                                    </button>
+                                                </div>
+
+                                                {loadingCandidates ? (
+                                                    <div className="flex items-center justify-center gap-2 py-4 text-[11px] text-ink-subtle">
+                                                        <Loader2 size={13} className="animate-spin text-brand-500" /> Loading rooms…
+                                                    </div>
+                                                ) : candidates.length === 0 ? (
+                                                    <p className="py-3 text-center text-[11px] text-ink-subtle font-semibold">
+                                                        No other rooms are checked in right now.
+                                                    </p>
+                                                ) : (
+                                                    <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                                                        {candidates.map(c => {
+                                                            const picked = pickedCandidateIds.includes(c.bookingId)
+                                                            return (
+                                                                <button
+                                                                    key={c.bookingId}
+                                                                    type="button"
+                                                                    aria-pressed={picked}
+                                                                    onClick={() => setPickedCandidateIds(prev =>
+                                                                        picked
+                                                                            ? prev.filter(id => id !== c.bookingId)
+                                                                            : [...prev, c.bookingId]
+                                                                    )}
+                                                                    className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl border-2 text-left transition-all ${
+                                                                        picked
+                                                                            ? 'border-brand-500 bg-brand-50'
+                                                                            : 'border-hairline bg-surface hover:border-brand-300'
+                                                                    }`}
+                                                                >
+                                                                    <span className="min-w-0">
+                                                                        <span className={`block text-xs font-extrabold ${picked ? 'text-brand-700' : 'text-ink'}`}>
+                                                                            Room {c.roomNumber}
+                                                                            {/* A room already sharing a bill brings the rest of
+                                                                                it — said before the click, not after. */}
+                                                                            {c.bringsRooms > 1 && (
+                                                                                <span className="ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                                                                                    +{c.bringsRooms - 1} more room{c.bringsRooms - 1 === 1 ? '' : 's'}
+                                                                                </span>
+                                                                            )}
+                                                                        </span>
+                                                                        <span className="block text-[10px] font-semibold text-ink-subtle truncate">
+                                                                            {c.guestName}
+                                                                            {c.guestPhone && ` · ${c.guestPhone}`}
+                                                                            {' · in '}{formatDate(c.checkIn)}
+                                                                        </span>
+                                                                    </span>
+                                                                    {picked && <CheckCircle2 size={15} className="text-brand-500 shrink-0" />}
+                                                                </button>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {candidates.length > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleCombine}
+                                                        disabled={pickedCandidateIds.length === 0 || isCombining}
+                                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    >
+                                                        {isCombining ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />}
+                                                        Combine onto one bill
+                                                        {pickedCandidateIds.length > 0 && ` (${pickedCandidateIds.length})`}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="space-y-4">
                                 <h4 className="text-xs font-bold uppercase text-ink-subtle tracking-wider">Stay billing breakdown</h4>
@@ -459,14 +972,32 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         <div>
                                             <p className="font-extrabold text-ink flex items-center gap-1.5">
                                                 <span>Room Stay Cost</span>
-                                                {getBookingCustomPrice(booking) > 0 && (
+                                                {customRatePerNight > 0 && (
                                                     <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">Custom Rate</span>
                                                 )}
                                             </p>
-                                            <p className="text-[10px] text-ink-subtle">{money(getBookingCustomPrice(booking) || room.room_types?.base_price || 0)} / Night</p>
+                                            {groupBill ? (
+                                                <p className="text-[10px] text-ink-subtle">{groupBill.rooms.length} rooms on one bill</p>
+                                            ) : (
+                                                <p className="text-[10px] text-ink-subtle">{money(customRatePerNight || room.room_types?.base_price || 0)} / Night</p>
+                                            )}
                                         </div>
                                         <span className="font-extrabold text-ink-subtle tabular-nums">{money(stayCost)}</span>
                                     </div>
+
+                                    {/* A reservation's rooms itemized, so the cashier can see what the
+                                        combined figure above is actually made of before charging it. */}
+                                    {groupBill && groupBill.rooms.map(r => (
+                                        <div key={r.bookingId} className="flex justify-between items-center py-2 px-4 pl-8 text-[11px] bg-surface-muted/30">
+                                            <span className="font-bold text-ink-subtle">
+                                                Room {r.roomNumber}
+                                                <span className="ml-1.5 font-semibold opacity-70">
+                                                    {r.nights} night{r.nights === 1 ? '' : 's'}
+                                                </span>
+                                            </span>
+                                            <span className="font-bold text-ink-subtle tabular-nums">{money(r.stayCost)}</span>
+                                        </div>
+                                    ))}
 
                                     {extraHourChargeVal > 0 && (
                                         <div className="flex justify-between items-center p-4 text-xs bg-rose-50/20">
@@ -498,12 +1029,40 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         </div>
                                     )}
 
-                                    {allServiceOrderItems.length > 0 && (
-                                        <div className="p-4 space-y-2">
-                                            <p className="font-extrabold text-xs text-indigo-600">Service Orders (QR + Dining)</p>
-                                            <div className="space-y-1.5 pl-3 border-l-2 border-indigo-100">
-                                                {allServiceOrderItems.map((item, idx) => (
-                                                    <div key={`service-item-${item.id || 'item'}-${idx}`} className="flex justify-between text-[10px] text-ink-subtle">
+                                    {/* Separate Section: Restaurant Dining (Dine-In / Table Orders) */}
+                                    {dineInOrderItems.length > 0 && (
+                                        <div className="p-4 space-y-2 border-t border-hairline bg-emerald-50/20">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <p className="font-extrabold text-emerald-700 flex items-center gap-1.5">
+                                                    <Utensils size={14} className="text-emerald-600" />
+                                                    Restaurant Dining (Dine-In Table Orders)
+                                                </p>
+                                                <span className="font-extrabold text-emerald-700 tabular-nums">{money(dineInTotal)}</span>
+                                            </div>
+                                            <div className="space-y-1.5 pl-3 border-l-2 border-emerald-300">
+                                                {dineInOrderItems.map((item, idx) => (
+                                                    <div key={`dinein-item-${item.id || idx}`} className="flex justify-between text-[10px] text-ink-subtle">
+                                                        <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
+                                                        <span className="tabular-nums font-semibold">{money(item.unit_price * item.quantity)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Separate Section: In-Room QR & Room Service Orders */}
+                                    {qrRoomServiceOrderItems.length > 0 && (
+                                        <div className="p-4 space-y-2 border-t border-hairline bg-indigo-50/20">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <p className="font-extrabold text-indigo-700 flex items-center gap-1.5">
+                                                    <QrCode size={14} className="text-indigo-600" />
+                                                    In-Room QR & Room Service Orders
+                                                </p>
+                                                <span className="font-extrabold text-indigo-700 tabular-nums">{money(qrRoomServiceTotal)}</span>
+                                            </div>
+                                            <div className="space-y-1.5 pl-3 border-l-2 border-indigo-300">
+                                                {qrRoomServiceOrderItems.map((item, idx) => (
+                                                    <div key={`qr-item-${item.id || idx}`} className="flex justify-between text-[10px] text-ink-subtle">
                                                         <span>{getItemDisplayName(item)} ({item.quantity}×)</span>
                                                         <span className="tabular-nums font-semibold">{money(item.unit_price * item.quantity)}</span>
                                                     </div>
@@ -525,6 +1084,71 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Room Service Charge — auto figure where the room carries
+                                        one, an empty field to add one by hand where it doesn't */}
+                                    <div className="p-4 border-t border-hairline bg-surface-muted/20 space-y-2">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-extrabold text-ink flex items-center gap-1.5">
+                                                        Room Service Charge
+                                                        {serviceCharge.isOverridden && applyRoomServiceCharge && (
+                                                            <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">
+                                                                {serviceChargeIsAutomatic ? 'EDITED' : 'MANUAL'}
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                    <p className="text-[10px] text-ink-subtle">
+                                                        {serviceChargeIsAutomatic
+                                                            ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room QR & direct room food orders · auto ${money(autoServiceCharge)}`
+                                                            : 'Not charged automatically for this room — type an amount to add one'}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setApplyRoomServiceCharge(!applyRoomServiceCharge)}
+                                                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+                                                            applyRoomServiceCharge
+                                                                ? 'bg-brand-500 text-white shadow-sm'
+                                                                : 'bg-surface-muted text-ink-subtle border border-hairline hover:bg-surface-muted/80'
+                                                        }`}
+                                                    >
+                                                        {applyRoomServiceCharge ? 'ON' : 'OFF'}
+                                                    </button>
+                                                    {serviceCharge.isOverridden && applyRoomServiceCharge && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setRoomServiceChargeInput('')}
+                                                            title={serviceChargeIsAutomatic ? `Reset to the auto-calculated ${money(autoServiceCharge)}` : 'Clear the manual charge'}
+                                                            className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
+                                                        >
+                                                            <RotateCcw size={12} />
+                                                        </button>
+                                                    )}
+                                                    <div className="relative w-28">
+                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            disabled={!applyRoomServiceCharge}
+                                                            value={serviceCharge.isOverridden ? roomServiceChargeInput : (autoServiceCharge ? String(autoServiceCharge) : '')}
+                                                            placeholder={autoServiceCharge ? String(autoServiceCharge) : '0.00'}
+                                                            onChange={e => setRoomServiceChargeInput(e.target.value)}
+                                                            aria-label="Room service charge"
+                                                            className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500 disabled:opacity-50 disabled:bg-surface-muted"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {applyRoomServiceCharge && roomServiceChargeAmount > 0 && (
+                                                <div className="flex justify-between items-center text-xs pt-1 font-extrabold text-brand-700">
+                                                    <span>Room Food Service Charge</span>
+                                                    <span className="tabular-nums">+{money(roomServiceChargeAmount)}</span>
+                                                </div>
+                                            )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -601,11 +1225,25 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                         </div>
                                         <div>
                                             <p className="text-xs font-black text-rose-800 uppercase tracking-wider">Late Checkout Alert</p>
-                                            <p className="text-[10px] text-rose-700/70 font-semibold">Exceeded by {extraHours} hour(s)</p>
+                                            <p className="text-[10px] text-rose-700/70 font-semibold">
+                                                Exceeded by {extraHours} hour(s)
+                                                {autoLateNights > 0 && ` · ${autoLateNights} extra day${autoLateNights === 1 ? '' : 's'} already in the room cost`}
+                                            </p>
                                         </div>
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="block text-[9px] font-black text-rose-800 uppercase">Extra Hour Charge (Optional)</label>
+                                        <label className="block text-[9px] font-black text-rose-800 uppercase">
+                                            {autoLateNights > 0 ? 'Additional Charge (Optional)' : 'Extra Hour Charge (Optional)'}
+                                        </label>
+                                        {autoLateNights > 0 && (
+                                            /* The overstay is already priced as whole days above. Anything
+                                               typed here is on top of that, so say so — otherwise the
+                                               obvious reading is that this is where the late fee goes, and
+                                               the guest pays for the same hours twice. */
+                                            <p className="text-[9px] text-rose-700/70 font-semibold">
+                                                Past {LATE_CHECKOUT_GRACE_HOURS}h the stay is billed a full extra day automatically. Only add here if you are charging something beyond that.
+                                            </p>
+                                        )}
                                         <div className="relative">
                                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-700">Rs.</span>
                                             <input
@@ -681,7 +1319,8 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                 paymentMethod === 'credit'
                                                     ? 'border-brand-500 bg-orange-50/50 text-brand-500'
                                                     : 'border-hairline bg-surface text-ink-subtle hover:border-brand-500/50 hover:text-brand-500'
-                                            }`}>
+                                            }`}
+                                        >
                                             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 9V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M22 17v-1a2 2 0 0 0-2-2h-1"/><rect width="8" height="8" x="14" y="14" rx="2"/></svg>
                                             Credit
                                         </button>
@@ -857,18 +1496,27 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                 <span className="text-sm font-black text-ink-subtle tabular-nums">{money(grandTotal)}</span>
                             </div>
                             {advancePaid > 0 && (
-                                <div className="flex items-center justify-between">
+                                <button
+                                    type="button"
+                                    onClick={() => setHistoryModalOpen(true)}
+                                    className="flex items-center justify-between w-full hover:underline cursor-pointer group transition-all"
+                                >
                                     <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
                                         <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                         Advance Paid ({advanceMethodLabel(booking.advance_payment_method)})
+                                        <History className="w-3 h-3 inline ml-1 opacity-70 group-hover:opacity-100" />
                                     </span>
                                     <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
-                                </div>
+                                </button>
                             )}
                             <div className="flex items-center justify-between pt-1 border-t border-dashed border-hairline">
                                 <div>
-                                    <span className="text-[10px] font-bold text-ink-subtle uppercase">{advancePaid > 0 ? 'Balance Due' : 'Total Due'}</span>
-                                    <p className="text-2xl font-black text-brand-500 tabular-nums">{money(balanceDue)}</p>
+                                    <span className={`text-[10px] font-bold uppercase ${returnAmount > 0 ? 'text-emerald-600' : 'text-ink-subtle'}`}>
+                                        {returnAmount > 0 ? 'Return to Guest' : advancePaid > 0 ? 'Balance Due' : 'Total Due'}
+                                    </span>
+                                    <p className={`text-2xl font-black tabular-nums ${returnAmount > 0 ? 'text-emerald-600' : 'text-brand-500'}`}>
+                                        {returnAmount > 0 ? money(returnAmount) : money(balanceDue)}
+                                    </p>
                                 </div>
                                 <div className="flex gap-2">
                                     {invoiceSettled ? (
@@ -892,14 +1540,45 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                     Print Bill
                                                 </button>
                                             )}
-                                            <button
-                                                onClick={handleSettleClick}
-                                                disabled={isSaving || discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
-                                                className="px-6 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-brand-500/10 disabled:opacity-50 flex items-center gap-1.5"
-                                            >
-                                                {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
-                                                {!irdSyncEnabled ? 'Close Guest' : 'Settle & Checkout'}
-                                            </button>
+
+                                            {/* A guest who has already paid needs releasing, not
+                                                charging — no money moves here, so it goes through
+                                                close-stay rather than the settlement path. Any
+                                                balance that accrued since is charged by the button
+                                                to its right instead. */}
+                                            {billAlreadySettled && !balanceOutstanding && (
+                                                <button
+                                                    onClick={handleCloseStay}
+                                                    disabled={isClosingStay || isSaving}
+                                                    className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-emerald-600/10 disabled:opacity-50 flex items-center gap-1.5"
+                                                >
+                                                    {isClosingStay ? <Loader2 size={12} className="animate-spin" /> : <DoorOpen size={13} />}
+                                                    Check Out &amp; Release Room
+                                                </button>
+                                            )}
+
+                                            {(!billAlreadySettled || balanceOutstanding) && (
+                                                <>
+                                                    {/* Takes the money and stops there: the stay stays
+                                                        open and the room stays the guest's. */}
+                                                    <button
+                                                        onClick={() => handleSettleClick(false)}
+                                                        disabled={isSaving || isClosingStay || discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                        className="px-4 py-2 border-2 border-brand-500 text-brand-600 hover:bg-brand-50 font-bold rounded-xl text-xs transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                                    >
+                                                        {isSaving ? <Loader2 size={12} className="animate-spin" /> : <BedDouble size={13} />}
+                                                        Settle Bill, Keep Room
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleSettleClick(true)}
+                                                        disabled={isSaving || isClosingStay || discountInvalid || (totalDiscountAmount > 0 && !discountReason.trim())}
+                                                        className="px-6 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs transition-all shadow-md shadow-brand-500/10 disabled:opacity-50 flex items-center gap-1.5"
+                                                    >
+                                                        {isSaving ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                        {!irdSyncEnabled ? 'Close Guest' : 'Settle & Checkout'}
+                                                    </button>
+                                                </>
+                                            )}
                                         </>
                                     )}
                                 </div>
@@ -1110,6 +1789,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                         <InvoiceReceipt invoice={invoiceData} money={money} formatDate={formatDate} restaurantName={restaurantName} restaurantAddress={restaurantAddress} restaurantPhone={restaurantPhone} />
                     </div>
                 )}
+
+                <AdvancePaymentHistoryModal
+                    isOpen={historyModalOpen}
+                    onClose={() => setHistoryModalOpen(false)}
+                    bookingId={booking?.id || null}
+                    guestName={booking?.guest_name}
+                    roomNumber={room?.room_number}
+                />
         </Modal>
     )
 }

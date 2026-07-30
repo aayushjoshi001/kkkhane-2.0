@@ -1,13 +1,20 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { resolveFolioBookingIds } from '@/lib/bookingGroup'
 
 /**
  * GET /api/bookings/linked-orders?bookingId=<uuid>
- * 
+ *
  * Fetches all order items from dining sessions linked to a booking via booking_id.
  * Used by the billing modal to show dining orders placed at restaurant tables
  * that were linked to a hotel guest's booking.
+ *
+ * On a multi-room reservation this returns every room's orders, because they
+ * all settle on one bill — a family that ordered room service to room 306 pays
+ * for it on the reservation's single folio, whichever of their rooms the
+ * cashier opened. `resolveFolioBookingIds` returns a one-element list for a
+ * normal stay, which is exactly the query this route always ran.
  */
 export async function GET(req: NextRequest) {
     try {
@@ -24,6 +31,10 @@ export async function GET(req: NextRequest) {
 
         const supabase = await createAdminClient()
 
+        // Every booking on this folio — the one asked for, plus its siblings if
+        // it belongs to a multi-room reservation.
+        const folioBookingIds = await resolveFolioBookingIds(supabase, bookingId)
+
         // Find all sessions linked to this booking. Pull the session's table so we
         // can tell an ordinary dining table (room_id NULL) from the room's own
         // in-room QR table.
@@ -35,7 +46,7 @@ export async function GET(req: NextRequest) {
         const { data: linkedSessions, error: sessErr } = await supabase
             .from('sessions')
             .select('id')
-            .eq('booking_id', bookingId)
+            .in('booking_id', folioBookingIds)
 
         if (sessErr) {
             console.error('[linked-orders] Error fetching sessions:', sessErr)
@@ -64,7 +75,7 @@ export async function GET(req: NextRequest) {
             .from('orders')
             .select(`
                 id, session_id, status, payment_status, placed_at, order_type,
-                order_items(id, status, quantity, unit_price, special_request, menu_items(name), menu_item_variations:menu_item_variation_id(id, name)),
+                order_items(id, status, quantity, unit_price, station, special_request, menu_items(name, station), menu_item_variations:menu_item_variation_id(id, name)),
                 sessions(id, table_id, tables:table_id(room_id))
             `)
             .in('restaurant_id', targetRestaurantIds)
@@ -75,9 +86,9 @@ export async function GET(req: NextRequest) {
         }
 
         if (sessionIds.length > 0) {
-            query = query.or(`booking_id.eq.${bookingId},session_id.in.(${sessionIds.join(',')})`)
+            query = query.or(`booking_id.in.(${folioBookingIds.join(',')}),session_id.in.(${sessionIds.join(',')})`)
         } else {
-            query = query.eq('booking_id', bookingId)
+            query = query.in('booking_id', folioBookingIds)
         }
 
         const { data: orders, error: ordErr } = await query
@@ -98,7 +109,7 @@ export async function GET(req: NextRequest) {
             return tbl?.room_id ?? null
         }
 
-        type LinkedOrderItem = { id: string; status?: string; quantity: number; unit_price: number; special_request?: string | null; menu_items: unknown; menu_item_variations?: unknown }
+        type LinkedOrderItem = { id: string; status?: string; quantity: number; unit_price: number; station?: string | null; special_request?: string | null; menu_items: unknown; menu_item_variations?: unknown }
         type LinkedOrder = { id: string; session_id: string | null; status: string; payment_status: string; placed_at: string; order_type?: string; sessions: any; order_items?: LinkedOrderItem[] }
         const items = ((orders || []) as LinkedOrder[]).flatMap((o) => {
             const roomId = getRoomId(o.sessions)
@@ -113,6 +124,7 @@ export async function GET(req: NextRequest) {
                     order_type: o.order_type || 'dine_in',
                     quantity: item.quantity,
                     unit_price: item.unit_price,
+                    station: (item as any).station ?? null,
                     special_request: item.special_request,
                     menu_items: item.menu_items,
                     menu_item_variations: item.menu_item_variations,

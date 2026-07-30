@@ -35,6 +35,7 @@ export default async function CashierPage() {
         { data: ingredients },
         { data: customerAccounts },
         openSession,
+        { data: currentUserRow },
     ] = await Promise.all([
         // (1) Delivered but not yet paid — all order types (dine-in, room service, etc.)
         adminSupabase
@@ -151,6 +152,14 @@ export default async function CashierPage() {
             .eq('is_active', true)
             .order('customer_name', { ascending: true }),
         resolveActiveDayBookSession(adminSupabase, restaurantId, userId),
+
+        // Printed on every bill this till issues, so two cashiers sharing a
+        // counter produce receipts you can tell apart.
+        adminSupabase
+            .from('users')
+            .select('full_name')
+            .eq('id', userId)
+            .maybeSingle(),
     ])
 
     // Merge delivered unpaid + takeout/delivery unpaid, deduplicating by order id
@@ -212,6 +221,7 @@ export default async function CashierPage() {
             restaurantAddress={restaurantAddress}
             restaurantPhone={restaurantPhone}
             userId={userId}
+            userName={currentUserRow?.full_name || ''}
             initialUnpaid={(unpaidOrders || []) as unknown as UnpaidOrder[]}
             initialActive={(activeOrders || []) as unknown as ActiveOrder[]}
             tables={mappedTables as any}

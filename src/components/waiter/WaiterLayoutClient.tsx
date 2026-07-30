@@ -113,7 +113,11 @@ export default function WaiterLayoutClient({
                     <div className="flex items-center gap-1.5 md:gap-2.5 shrink-0">
                         <CommandHint />
                         {commandRole === 'cashier' && <PrinterSettingsButton role="invoice" variant="light" />}
-                        <CalendarToggle className="hidden sm:inline-flex" />
+                        {/* Not `hidden sm:*`: the cashier works the desk on a phone
+                            as often as a monitor, and hiding this was hiding the only
+                            way to switch the check-in/check-out pickers between BS and
+                            AD — the toggle read as broken because it wasn't on screen. */}
+                        <CalendarToggle />
                         <SoundEnableButton variant="light" />
                         {staffName && (
                             <div className="hidden md:flex items-center gap-2">

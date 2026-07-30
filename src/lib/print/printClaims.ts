@@ -85,7 +85,7 @@ export async function fetchOrdersWithUnprintedItems(
         .order('placed_at', { ascending: true })
         .limit(limit)
     if (error) {
-        console.error('[print claim] outstanding fetch failed:', error)
+        console.error('[print claim] outstanding fetch failed:', error.message || error)
         return []
     }
     // The embedded filter narrows order_items but still returns the parent order
