@@ -2,21 +2,19 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { resolveBankAccountId, isCategoryOwned } from '@/lib/ledger'
+import { assertBusinessOpen } from '@/lib/auth/businessGuard'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/day-book/entries  — Add a cash_in or cash_out entry
-// Body: {
-//   session_id:   string
-//   type:         'cash_in' | 'cash_out'
-//   amount:       number          (must be > 0)
-//   description:  string          (1–500 chars)
-//   category?:    string          (defaults to 'other')
-//   reference_id?: string         (optional UUID link to order/booking)
-// }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(request: Request) {
     const currentUser = await getCurrentUser()
     const restaurantId = currentUser.restaurantId
+
+    const guard = await assertBusinessOpen(restaurantId)
+    if (!guard.allowed) {
+        return NextResponse.json({ error: guard.error }, { status: 403 })
+    }
 
     const body = await request.json().catch(() => ({}))
     const { session_id, type, amount, description, category, reference_id, bank_name, expense_category_id } = body

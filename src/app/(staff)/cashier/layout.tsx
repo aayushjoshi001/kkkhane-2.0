@@ -8,6 +8,10 @@ import { getRestaurantFeatures, getRestaurantMode } from '@/lib/features'
 import { FeatureProvider, BusinessModeProvider } from '@/lib/contexts/FeatureContext'
 import SessionSync from '@/components/shared/SessionSync'
 
+import { BusinessSessionProvider } from '@/lib/contexts/BusinessSessionContext'
+import BusinessGuard from '@/components/shared/BusinessGuard'
+import { getNstDateString } from '@/lib/timezone'
+
 export default async function CashierLayout({ children }: { children: ReactNode }) {
     const { id: userId, restaurantId, role } = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
 
@@ -17,19 +21,41 @@ export default async function CashierLayout({ children }: { children: ReactNode 
         redirect('/wifi-required?redirect=/cashier')
     }
     const adminSupabase = await createAdminClient()
+    const todayDate = getNstDateString()
 
-    const [{ data: user }, { data: restaurant }, features, mode] = await Promise.all([
+    const [{ data: user }, { data: restaurant }, features, mode, { data: openSession }] = await Promise.all([
         adminSupabase.from('users').select('full_name').eq('id', userId).single(),
         adminSupabase.from('restaurants').select('name, address, contact_phone').eq('id', restaurantId).single(),
         getRestaurantFeatures(restaurantId),
         getRestaurantMode(restaurantId),
+        adminSupabase
+            .from('day_book_sessions')
+            .select('id, date, status, opening_balance, opening_bank_balance')
+            .eq('restaurant_id', restaurantId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
     ])
 
     const notificationSoundUrl = (features as Record<string, unknown> | null)?.notificationSoundUrl as string | null | undefined
 
+    const sessionProp = openSession ? {
+        id: openSession.id,
+        date: openSession.date,
+        status: openSession.status as 'open' | 'closed',
+        opening_balance: Number(openSession.opening_balance),
+        opening_bank_balance: Number(openSession.opening_bank_balance)
+    } : null
+
     return (
         <FeatureProvider features={features}>
         <BusinessModeProvider mode={mode}>
+        <BusinessSessionProvider
+            initialSession={sessionProp}
+            userRole={role || 'cashier'}
+            todayDate={todayDate}
+            restaurantId={restaurantId}
+        >
             <SessionSync userId={userId} />
             <WaiterLayoutClient
                 restaurantName={restaurant?.name || undefined}
@@ -38,8 +64,11 @@ export default async function CashierLayout({ children }: { children: ReactNode 
                 portalLabel="Cashier"
                 commandRole="cashier"
             >
-                {children}
+                <BusinessGuard>
+                    {children}
+                </BusinessGuard>
             </WaiterLayoutClient>
+        </BusinessSessionProvider>
         </BusinessModeProvider>
         </FeatureProvider>
     )

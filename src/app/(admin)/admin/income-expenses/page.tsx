@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import IncomeExpensesManager from './IncomeExpensesManager'
 
 import { getRestaurantFeatures } from '@/lib/features'
+import { attachCreatorNames } from '@/lib/ledger'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,12 +68,17 @@ export default async function IncomeExpensesPage() {
             .eq('is_active', true)
     ])
 
+    const [namedIncomeEntries, namedExpenses] = await Promise.all([
+        attachCreatorNames(supabase, incomeEntries || []),
+        attachCreatorNames(supabase, expenses || []),
+    ])
+
     return (
         <IncomeExpensesManager
             initialIncomeCategories={incomeCategories || []}
             initialExpenseCategories={expenseCategories || []}
-            initialIncomeEntries={incomeEntries || []}
-            initialExpenses={expenses || []}
+            initialIncomeEntries={namedIncomeEntries}
+            initialExpenses={namedExpenses}
             suppliers={suppliers || []}
             bankAccounts={bankAccounts || []}
             qrCodes={qrCodes || []}

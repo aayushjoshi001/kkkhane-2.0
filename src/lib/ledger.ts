@@ -193,16 +193,12 @@ export async function autoOpenNextDayBookSession(
 }
 
 // Resolves "the day book session active right now" for a restaurant: the
-// open one if any (even if it's still dated yesterday and hasn't been
-// closed), otherwise auto-opens the next one carrying forward the last
-// closed session's balances — so a manager only ever enters an opening
-// balance manually once, the very first time the restaurant uses the Day
-// Book. Returns null only in that true first-time case, when there is no
-// prior balance to carry forward and the caller must collect one.
+// open one if any (even if it's still dated yesterday and hasn't been closed).
+// Returns null if the business is currently closed (no open session exists).
 export async function resolveActiveDayBookSession(
     supabase: SupabaseClient,
     restaurantId: string,
-    createdBy: string | null
+    createdBy?: string | null
 ): Promise<DayBookSession | null> {
     const { data: openSession } = await supabase
         .from('day_book_sessions')
@@ -215,6 +211,13 @@ export async function resolveActiveDayBookSession(
 
     if (openSession) return openSession as DayBookSession
 
+    return null
+}
+
+export async function getLastClosedDayBookSession(
+    supabase: SupabaseClient,
+    restaurantId: string
+): Promise<DayBookSession | null> {
     const { data: lastClosed } = await supabase
         .from('day_book_sessions')
         .select('*')
@@ -224,9 +227,132 @@ export async function resolveActiveDayBookSession(
         .limit(1)
         .maybeSingle()
 
-    if (!lastClosed) return null
+    return (lastClosed as DayBookSession) ?? null
+}
 
-    return autoOpenNextDayBookSession(supabase, restaurantId, lastClosed as DayBookSession, createdBy)
+
+/**
+ * Resolves each row's `created_by` uuid to the staff member's display name —
+ * shared by Day Book, Cash Book and Bank Book so their entries tables can
+ * show who actually collected (money in) or handed out (money out) each
+ * entry, batched into one `users` query instead of N+1 lookups per row.
+ * Rows with no `created_by` (or one PostgREST can't resolve) get `null`,
+ * which callers render as "Unknown" rather than a blank cell.
+ */
+export async function attachCreatorNames<T extends { created_by?: string | null }>(
+    supabase: SupabaseClient,
+    rows: T[]
+): Promise<(T & { created_by_name: string | null })[]> {
+    const ids = [...new Set(rows.map(r => r.created_by).filter((id): id is string => !!id))]
+    if (ids.length === 0) return rows.map(r => ({ ...r, created_by_name: null }))
+
+    const { data } = await supabase.from('users').select('id, full_name').in('id', ids)
+    const nameById = new Map((data || []).map(u => [u.id as string, u.full_name as string | null]))
+    return rows.map(r => ({ ...r, created_by_name: r.created_by ? (nameById.get(r.created_by) ?? null) : null }))
+}
+
+export interface DayBookRangeTotals {
+    opening_cash_balance: number
+    opening_bank_balance: number
+    total_cash_in: number
+    total_cash_out: number
+    total_bank_in: number
+    total_bank_out: number
+    closing_cash_balance: number
+    closing_bank_balance: number
+}
+
+export interface DayBookRangeResult {
+    sessions: DayBookSession[]
+    entries: (DayBookEntry & { session_date: string; created_by_name: string | null })[]
+    totals: DayBookRangeTotals
+}
+
+/**
+ * Aggregates every day_book_entries row across every session whose date
+ * falls in [from, to] inclusive — the multi-day counterpart to reading one
+ * session's entries. Shared by the Day Book page's own range view and
+ * GET /api/day-book/range (which Bank Book / Cash Book call client-side for
+ * their historical-statement panels), so the two can never disagree about
+ * what counts as "in range" or what a pending-approval cheque excludes.
+ */
+export async function computeDayBookRange(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    from: string,
+    to: string,
+    type: 'all' | 'cash' | 'bank' = 'all'
+): Promise<DayBookRangeResult> {
+    const { data: sessions } = await supabase
+        .from('day_book_sessions')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .gte('date', from)
+        .lte('date', to)
+        .order('date', { ascending: true })
+
+    const sessionRows = (sessions as DayBookSession[]) || []
+    const sessionDateById = new Map(sessionRows.map(s => [s.id, s.date]))
+    const sessionIds = sessionRows.map(s => s.id)
+
+    let entries: (DayBookEntry & { session_date: string; created_by_name: string | null })[] = []
+    if (sessionIds.length > 0) {
+        const { data: entryRows } = await supabase
+            .from('day_book_entries')
+            .select('*')
+            .in('session_id', sessionIds)
+            .order('created_at', { ascending: true })
+
+        // A pending-approval cheque (packed into the JSON description, real
+        // amount held at 0.01 until a manager signs off — see
+        // parseEntryDescription above) isn't real money yet, same exclusion
+        // the single-day Day Book view applies.
+        const filtered = ((entryRows as DayBookEntry[]) || [])
+            .filter(e => {
+                if (!e.description?.startsWith('{')) return true
+                try {
+                    return JSON.parse(e.description).status !== 'pending_approval'
+                } catch {
+                    return true
+                }
+            })
+            .filter(e => {
+                if (type === 'cash') return e.type === 'cash_in' || e.type === 'cash_out'
+                if (type === 'bank') return e.type === 'bank_in' || e.type === 'bank_out'
+                return true
+            })
+            .map(e => ({ ...e, session_date: sessionDateById.get(e.session_id) || '' }))
+        entries = await attachCreatorNames(supabase, filtered)
+    }
+
+    const sum = (t: DayBookEntry['type']) => entries.filter(e => e.type === t).reduce((s, e) => s + Number(e.amount), 0)
+    const totalCashIn = sum('cash_in')
+    const totalCashOut = sum('cash_out')
+    const totalBankIn = sum('bank_in')
+    const totalBankOut = sum('bank_out')
+
+    // The range's opening balance is whatever the first session in it opened
+    // at — carrying forward from before `from` is exactly what that
+    // session's own opening_balance already represents (see
+    // computeCarriedOverOpeningBalances above).
+    const firstSession = sessionRows[0]
+    const openingCashBalance = Number(firstSession?.opening_balance ?? 0)
+    const openingBankBalance = Number(firstSession?.opening_bank_balance ?? 0)
+
+    return {
+        sessions: sessionRows,
+        entries,
+        totals: {
+            opening_cash_balance: openingCashBalance,
+            opening_bank_balance: openingBankBalance,
+            total_cash_in: totalCashIn,
+            total_cash_out: totalCashOut,
+            total_bank_in: totalBankIn,
+            total_bank_out: totalBankOut,
+            closing_cash_balance: openingCashBalance + totalCashIn - totalCashOut,
+            closing_bank_balance: openingBankBalance + totalBankIn - totalBankOut,
+        },
+    }
 }
 
 // `%` and `_` are wildcards to ilike, so a bank literally named "50_50" would

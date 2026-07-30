@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import BankBookClient from './BankBookClient'
 import type { DayBookEntry, ExpenseCategory } from '@/types/database'
 import { getNstDateString } from '@/lib/timezone'
-import { resolveActiveDayBookSession } from '@/lib/ledger'
+import { resolveActiveDayBookSession, attachCreatorNames } from '@/lib/ledger'
 
 import { getRestaurantFeatures } from '@/lib/features'
 
@@ -29,6 +29,17 @@ export default async function BankBookPage() {
     // Cash Book — one session governs both cash and bank together.
     const session = await resolveActiveDayBookSession(supabase, restaurantId, currentUser.id)
 
+    // For stamping new entries with a name client-side the instant they're
+    // added — the row that comes back from POST /api/day-book/entries only
+    // has created_by (a uuid), and it's always the acting user, so this
+    // avoids a round-trip through attachCreatorNames just to show one name.
+    const { data: currentUserRow } = await supabase
+        .from('users')
+        .select('full_name')
+        .eq('id', currentUser.id)
+        .maybeSingle()
+    const currentUserName = currentUserRow?.full_name ?? null
+
     // Fetch active bank accounts
     const { data: bankAccounts } = await supabase
         .from('bank_accounts')
@@ -45,7 +56,7 @@ export default async function BankBookPage() {
         .order('name', { ascending: true })
 
     // Fetch today's entries (if session exists)
-    let entries: DayBookEntry[] = []
+    let entries: (DayBookEntry & { created_by_name: string | null })[] = []
     if (session) {
         const { data: entriesData } = await supabase
             .from('day_book_entries')
@@ -53,8 +64,8 @@ export default async function BankBookPage() {
             .eq('session_id', session.id)
             .in('type', ['bank_in', 'bank_out'])
             .order('created_at', { ascending: false })
-        
-        entries = ((entriesData as DayBookEntry[]) || []).filter(e => {
+
+        const filtered = ((entriesData as DayBookEntry[]) || []).filter(e => {
             try {
                 if (e.description.startsWith('{')) {
                     const parsed = JSON.parse(e.description)
@@ -63,6 +74,7 @@ export default async function BankBookPage() {
             } catch {}
             return true
         })
+        entries = await attachCreatorNames(supabase, filtered)
     }
 
     // Calculate bank totals
@@ -90,6 +102,7 @@ export default async function BankBookPage() {
             initialTotals={initialTotals}
             todayDate={todayDate}
             userRole={currentUser.role}
+            currentUserName={currentUserName}
             previousClosingBankBalance={previousClosingBankBalance}
             previousClosingCashBalance={previousClosingCashBalance}
             bankAccounts={bankAccounts || []}

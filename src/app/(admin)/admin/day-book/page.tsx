@@ -1,10 +1,10 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
-import DayBookClient from './DayBookClient'
+import DayBookClient, { DayBookRangeView } from './DayBookClient'
 import type { DayBookEntry, DayBookSession } from '@/types/database'
 import { getNstDateString } from '@/lib/timezone'
-import { resolveActiveDayBookSession } from '@/lib/ledger'
+import { resolveActiveDayBookSession, computeDayBookRange, attachCreatorNames } from '@/lib/ledger'
 
 import { getRestaurantFeatures } from '@/lib/features'
 
@@ -16,7 +16,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 export default async function DayBookPage({
     searchParams,
 }: {
-    searchParams: Promise<{ date?: string }>
+    searchParams: Promise<{ date?: string; from?: string; to?: string }>
 }) {
     const currentUser = await getCurrentUser()
     if (!currentUser || !currentUser.restaurantId) redirect('/login')
@@ -28,8 +28,21 @@ export default async function DayBookPage({
     const supabase = await createAdminClient()
 
     const todayDate = getNstDateString()
-    const { date: dateParam } = await searchParams
-    const requestedDate = dateParam && ISO_DATE.test(dateParam) ? dateParam : null
+    const { date: dateParam, from: fromParam, to: toParam } = await searchParams
+    const requestedFrom = fromParam && ISO_DATE.test(fromParam) ? fromParam : null
+    const requestedTo = toParam && ISO_DATE.test(toParam) ? toParam : null
+
+    // A genuine multi-day span (from !== to) gets the aggregated statement
+    // view instead of one session's detail — everything below this block is
+    // unchanged and still drives the single-day view, including for the
+    // from=to case a range picker naturally produces when both ends land on
+    // the same day.
+    if (requestedFrom && requestedTo && requestedFrom !== requestedTo) {
+        const range = await computeDayBookRange(supabase, restaurantId, requestedFrom, requestedTo, 'all')
+        return <DayBookRangeView range={{ from: requestedFrom, to: requestedTo, ...range }} />
+    }
+
+    const requestedDate = requestedFrom ?? requestedTo ?? (dateParam && ISO_DATE.test(dateParam) ? dateParam : null)
 
     // Cash Book and Bank Book share one Day Book session — this page just
     // reads both sides of it side by side, it never opens/closes the session
@@ -62,7 +75,7 @@ export default async function DayBookPage({
     // clock — otherwise the header names a day whose figures aren't shown.
     const selectedDate = requestedDate ?? session?.date ?? todayDate
 
-    let entries: DayBookEntry[] = []
+    let entries: (DayBookEntry & { created_by_name: string | null })[] = []
     if (session) {
         const { data: entriesData } = await supabase
             .from('day_book_entries')
@@ -70,7 +83,7 @@ export default async function DayBookPage({
             .eq('session_id', session.id)
             .order('created_at', { ascending: false })
 
-        entries = ((entriesData as DayBookEntry[]) || []).filter(e => {
+        const filtered = ((entriesData as DayBookEntry[]) || []).filter(e => {
             try {
                 if (e.description.startsWith('{')) {
                     const parsed = JSON.parse(e.description)
@@ -79,6 +92,7 @@ export default async function DayBookPage({
             } catch {}
             return true
         })
+        entries = await attachCreatorNames(supabase, filtered)
     }
 
     const sum = (type: DayBookEntry['type']) => entries.filter(e => e.type === type).reduce((s, e) => s + Number(e.amount), 0)

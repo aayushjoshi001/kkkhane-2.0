@@ -169,7 +169,11 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', 'framer-motion', '@marsidev/react-turnstile'],
   },
-  turbopack: {},
+  turbopack: {
+    // A lockfile at /Users/aayushjoshi/package-lock.json (outside this repo)
+    // makes Turbopack infer the wrong workspace root. Pin it explicitly.
+    root: __dirname,
+  },
 }
 
 const serwistConfig = withSerwist(nextConfig)
