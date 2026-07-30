@@ -19,10 +19,10 @@ export default async function AdminOrdersPage() {
         .from('orders')
         .select(`
             id, status, payment_status, total_amount, refunded_amount, placed_at, customer_note,
-            subtotal_amount, tax_amount, tip_amount, discount_amount,
+            subtotal_amount, service_charge_amount, tax_amount, tip_amount, discount_amount,
             payment_method, confirmed_at, ready_at, delivered_at, paid_at, cancellation_reason,
-            order_type, customer_name, customer_phone, delivery_address,
-            sessions ( seat_number, tables ( label ), bookings:booking_id ( guest_name, rooms ( room_number ) ) ),
+            order_type, customer_name, customer_phone, delivery_address, cashier_id,
+            sessions ( seat_number, opened_by, tables ( label ), bookings:booking_id ( guest_name, rooms ( room_number ) ) ),
             order_items (
                 id, quantity, unit_price, special_request, status,
                 menu_items ( name ),
@@ -39,10 +39,10 @@ export default async function AdminOrdersPage() {
             .from('orders')
             .select(`
                 id, status, payment_status, total_amount, refunded_amount, placed_at, customer_note,
-                subtotal_amount, tax_amount, tip_amount, discount_amount,
+                subtotal_amount, service_charge_amount, tax_amount, tip_amount, discount_amount,
                 payment_method, confirmed_at, ready_at, delivered_at, paid_at, cancellation_reason,
-                order_type, customer_name, customer_phone, delivery_address,
-                sessions ( seat_number, tables ( label ) ),
+                order_type, customer_name, customer_phone, delivery_address, cashier_id,
+                sessions ( seat_number, opened_by, tables ( label ) ),
                 order_items (
                     id, quantity, unit_price, special_request, status,
                     menu_items ( name )
@@ -54,6 +54,28 @@ export default async function AdminOrdersPage() {
         orders = fallbackOrders
     }
 
+    // Resolve staff names for who opened the session / placed the order
+    const staffIds = new Set<string>()
+    for (const o of orders || []) {
+        if (o.sessions?.opened_by) staffIds.add(o.sessions.opened_by)
+        if (o.cashier_id) staffIds.add(o.cashier_id)
+    }
+    const staffNameMap = new Map<string, string>()
+    if (staffIds.size > 0) {
+        const { data: staffUsers } = await adminSupabase
+            .from('users')
+            .select('id, full_name')
+            .in('id', Array.from(staffIds))
+        for (const u of staffUsers || []) {
+            if (u.id && u.full_name) staffNameMap.set(u.id, u.full_name)
+        }
+    }
+
+    const ordersWithStaffNames = (orders || []).map(o => ({
+        ...o,
+        staff_name: (o.sessions?.opened_by ? staffNameMap.get(o.sessions.opened_by) : null) || (o.cashier_id ? staffNameMap.get(o.cashier_id) : null) || null
+    }))
+
     return (
         <div className="space-y-4 md:space-y-6">
             <RealtimeRefresh restaurantId={restaurantId} tables={['orders']} />
@@ -64,7 +86,7 @@ export default async function AdminOrdersPage() {
                 color="blue"
             />
 
-            <OrdersClient orders={orders || []} canRefund={canRefund} />
+            <OrdersClient orders={ordersWithStaffNames} canRefund={canRefund} />
         </div>
     )
 }

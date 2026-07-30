@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CustomersLedgerManager from './CustomersLedgerManager'
+import { attachCreatorNames } from '@/lib/ledger'
 
 import { getRestaurantFeatures } from '@/lib/features'
 
@@ -30,5 +31,7 @@ export default async function CustomersLedgerPage() {
             .order('created_at', { ascending: false }),
     ])
 
-    return <CustomersLedgerManager initialAccounts={accounts || []} initialTransactions={transactions || []} />
+    const transactionsWithCreator = await attachCreatorNames(supabase, transactions || [])
+
+    return <CustomersLedgerManager initialAccounts={accounts || []} initialTransactions={transactionsWithCreator} />
 }

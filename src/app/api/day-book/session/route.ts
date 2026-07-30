@@ -55,7 +55,37 @@ export async function POST(request: Request) {
         .maybeSingle()
 
     if (existing) {
-        return NextResponse.json({ success: true, data: existing })
+        if (existing.status === 'open') {
+            return NextResponse.json({ success: true, data: existing })
+        }
+
+        // Today's session already exists but was closed — e.g. closed by
+        // mistake, or someone is retrying registers after a close. Returning
+        // the closed row here (the old behavior) told the caller "opened
+        // successfully" while every panel stayed locked. Re-opening a closed
+        // day is the same sensitive action PATCH `action=reopen` gates to
+        // managers/super_admins, so mirror that check here instead of lying.
+        const canReopen = ['manager', 'super_admin'].includes(currentUser.role as string)
+        if (!canReopen) {
+            return NextResponse.json(
+                { error: `Business day ${today} was already closed. Ask a manager to re-open it.` },
+                { status: 403 }
+            )
+        }
+
+        const { data: reopened, error: reopenError } = await supabase
+            .from('day_book_sessions')
+            .update({ status: 'open', closed_at: null, closed_by: null })
+            .eq('id', existing.id)
+            .eq('restaurant_id', restaurantId)
+            .select()
+            .single()
+
+        if (reopenError) {
+            return NextResponse.json({ error: reopenError.message }, { status: 500 })
+        }
+
+        return NextResponse.json({ success: true, data: reopened })
     }
 
     // ── 2. Opening balances = the previous day's closing balances ────────────

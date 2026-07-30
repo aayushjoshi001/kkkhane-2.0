@@ -15,7 +15,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { computeFolioForStays, type FolioBreakdown } from '@/lib/folio'
 import { resolveFolioBookingIds } from '@/lib/bookingGroup'
-import { getBookingCustomPrice } from '@/lib/utils'
+import { getBookingCustomPrice, bookingInvoiceNumber } from '@/lib/utils'
 
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
 
@@ -588,7 +588,7 @@ export async function buildBookingBill(
             discountAmount: round2(Number(settlementValue?.discount_amount) || 0),
             // Rebuilt the way the checkout route builds it for the IRD filing,
             // which is the only place this reference is minted.
-            invoiceNumber: `INV-HOTEL-${(primary.id as string).split('-')[0].toUpperCase()}`,
+            invoiceNumber: bookingInvoiceNumber(primary.id as string),
             snapshot,
         }
         : null

@@ -2,10 +2,10 @@
 
 import Modal from '@/components/ui/Modal'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
-import { getItemDisplayName } from '@/lib/utils'
+import { getItemDisplayName, orderInvoiceNumber } from '@/lib/utils'
 import { useDates } from '@/lib/contexts/CalendarContext'
 import type { AdminOrder } from '@/app/(admin)/admin/orders/OrdersClient'
-import { Clock, MapPin, Phone, User, Utensils, X } from 'lucide-react'
+import { Clock, MapPin, Phone, Receipt, User, Utensils, X } from 'lucide-react'
 
 const STATUS_TONE: Record<string, string> = {
     pending: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -39,19 +39,6 @@ function Field({ label, value, icon: Icon }: { label: string; value?: string | n
     )
 }
 
-/**
- * Everything recorded against one order, for a manager auditing it after the
- * fact: the line items with their prices and modifiers, the kitchen timestamps,
- * who it was for, and how the total was arrived at.
- *
- * The orders table only ever showed a count ("3 items") with the names hidden in
- * a title attribute, so a manager questioning a bill had no way to see what was
- * actually on it, what each line cost, or when the order moved through the
- * kitchen — short of querying the database.
- *
- * Rendered from the row data the list already holds, so opening it is instant
- * and needs no fetch.
- */
 export default function OrderDetailModal({
     order,
     onClose,
@@ -63,6 +50,8 @@ export default function OrderDetailModal({
     const { formatDateTime } = useDates()
     if (!order) return null
 
+    const billNo = orderInvoiceNumber(order.id)
+    const orderedBy = order.staff_name || order.customer_name || order.bookings?.guest_name || 'Staff'
     const items = order.order_items || []
     const seat = order.sessions?.seat_number
     const tableLabel = order.sessions?.tables?.label
@@ -70,13 +59,11 @@ export default function OrderDetailModal({
         : null
     const roomLabel = order.bookings?.rooms?.room_number ? `Room ${order.bookings.rooms.room_number}` : null
 
-    // Only show a money row when it carries information — a zero tip or an
-    // absent discount is noise on a receipt this dense.
     const totalsRows: Array<[string, number]> = []
     if (order.subtotal_amount != null) totalsRows.push(['Subtotal', order.subtotal_amount])
     if (order.discount_amount) totalsRows.push(['Discount', -Math.abs(order.discount_amount)])
     if (order.service_charge_amount) totalsRows.push(['Service charge', order.service_charge_amount])
-    if (order.tax_amount) totalsRows.push(['Tax', order.tax_amount])
+    if (order.tax_amount) totalsRows.push(['Tax / VAT', order.tax_amount])
     if (order.tip_amount) totalsRows.push(['Tip', order.tip_amount])
 
     return (
@@ -84,13 +71,16 @@ export default function OrderDetailModal({
             open={!!order}
             onClose={onClose}
             size="lg"
-            ariaLabel={`Order ${order.id.substring(0, 8).toUpperCase()} details`}
+            ariaLabel={`Order ${billNo} billing details`}
             className="overflow-hidden flex flex-col max-h-[85vh]"
         >
-            <div className="px-6 py-4 border-b border-hairline flex items-center justify-between gap-3 shrink-0">
-                <h3 className="font-bold text-ink font-mono tracking-wide">
-                    #{order.id.substring(0, 8).toUpperCase()}
-                </h3>
+            <div className="px-6 py-4 border-b border-hairline flex items-center justify-between gap-3 shrink-0 bg-surface-muted/30">
+                <div>
+                    <h3 className="font-extrabold text-brand-600 text-base tracking-wide flex items-center gap-2">
+                        <Receipt size={18} /> {billNo}
+                    </h3>
+                    <p className="text-[11px] font-mono text-ink-subtle mt-0.5">Order ID: #{order.id}</p>
+                </div>
                 <button
                     type="button"
                     onClick={onClose}
@@ -101,7 +91,7 @@ export default function OrderDetailModal({
                 </button>
             </div>
 
-            {/* The item list can run long; the header stays put while it scrolls. */}
+            {/* Content area */}
             <div className="p-6 space-y-6 overflow-y-auto">
                 <div className="flex flex-wrap items-center gap-2">
                     <Badge value={order.status} />
@@ -111,12 +101,14 @@ export default function OrderDetailModal({
 
                 {/* Who and where */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-surface-muted/40 border border-hairline">
-                    <Field label="Placed" value={formatDateTime(order.placed_at)} icon={Clock} />
-                    <Field label="Location" value={roomLabel || tableLabel} icon={Utensils} />
-                    <Field label="Guest" value={order.customer_name || order.bookings?.guest_name} icon={User} />
+                    <Field label="Bill Number" value={billNo} icon={Receipt} />
+                    <Field label="Ordered By" value={orderedBy} icon={User} />
+                    <Field label="Placed Time" value={formatDateTime(order.placed_at)} icon={Clock} />
+                    <Field label="Location" value={roomLabel || tableLabel || 'Dining Area'} icon={Utensils} />
                     <Field label="Phone" value={order.customer_phone} icon={Phone} />
                     <Field label="Delivery to" value={order.delivery_address} icon={MapPin} />
-                    <Field label="Paid with" value={order.payment_method?.replace(/_/g, ' ')} />
+                    <Field label="Paid with" value={order.payment_method?.replace(/_/g, ' ') || 'Unspecified'} />
+                    <Field label="Payment Status" value={order.payment_status?.toUpperCase()} />
                 </div>
 
                 {/* Kitchen timeline — only the stages this order actually reached. */}

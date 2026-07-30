@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useMemo, useRef } from 'react'
+import Link from 'next/link'
 import {
-    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, Users, Download, Printer, HandCoins, TrendingUp, TrendingDown, ShieldAlert, Eye, Receipt, CreditCard, CheckCircle2, ChevronDown, ChevronUp, Info, Percent
+    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, Users, Download, Printer, HandCoins, TrendingUp, TrendingDown, ShieldAlert, Receipt, CreditCard, CheckCircle2, ChevronDown, ChevronUp, Info, Percent
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import {
@@ -15,20 +16,35 @@ import { downloadCsv, downloadExcel } from '@/lib/exportCsv'
 import { downloadPdf } from '@/lib/exportPdf'
 import PrintableReport, { type PrintableReportHandle } from '@/components/admin/PrintableReport'
 import { useDateFormatter } from '@/lib/contexts/FeatureContext'
-import type { CustomerCreditAccount, ReceivableTransaction, ReceivableTransactionType } from '@/types/database'
+import type { CustomerCreditAccount, ReceivableTransaction, ReceivableTransactionType, ReceivableTransactionWithCreator } from '@/types/database'
+import { bookingInvoiceNumber } from '@/lib/utils'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
 import DateCell from '@/components/ui/DateCell'
 
+/** A charge minted at hotel checkout embeds its booking id in the description
+ *  JSON — see `settle_booking_checkout_v2` / `settle_booking_group_checkout`.
+ *  Manual ledger entries and older transactions have neither, so this is
+ *  best-effort: null just means "no bill number to show", not an error. */
+function getChargeBookingId(descString: string): string | null {
+    if (!descString?.startsWith('{')) return null
+    try {
+        const parsed = JSON.parse(descString)
+        return typeof parsed.booking_id === 'string' ? parsed.booking_id : null
+    } catch {
+        return null
+    }
+}
+
 interface CustomersLedgerManagerProps {
     initialAccounts: CustomerCreditAccount[]
-    initialTransactions: ReceivableTransaction[]
+    initialTransactions: ReceivableTransactionWithCreator[]
 }
 
 export default function CustomersLedgerManager({ initialAccounts, initialTransactions }: CustomersLedgerManagerProps) {
     const { confirm } = useConfirmStore()
     const [accounts, setAccounts] = useState<CustomerCreditAccount[]>(initialAccounts)
-    const [transactions, setTransactions] = useState<ReceivableTransaction[]>(initialTransactions)
+    const [transactions, setTransactions] = useState<ReceivableTransactionWithCreator[]>(initialTransactions)
     const formatDate = useDateFormatter()
     const [searchQuery, setSearchQuery] = useState('')
 
@@ -136,7 +152,7 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
             if (res.error) {
                 toast.error(res.error)
             } else if (res.data) {
-                const newOrUpdated = res.data as ReceivableTransaction
+                const newOrUpdated = { ...(res.data as ReceivableTransaction), created_by_name: null }
                 setTransactions(prev => {
                     const filtered = prev.filter(t => t.id !== newOrUpdated.id)
                     return [newOrUpdated, ...filtered]
@@ -251,7 +267,7 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
             if (res.error) {
                 toast.error(res.error)
             } else if (res.data) {
-                const newTxn = res.data as ReceivableTransaction
+                const newTxn = { ...(res.data as ReceivableTransaction), created_by_name: null }
                 setTransactions(prev => [newTxn, ...prev])
                 setTxnModalOpen(false)
                 setTxnType('charge')
@@ -354,35 +370,6 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
         return mapped
     }, [ledgerAccount, transactions])
 
-    const chargePaymentsMap = useMemo(() => {
-        const map = new Map<string, number>()
-        if (!customerLedgerEntries || customerLedgerEntries.length === 0) return map
-
-        const payments = customerLedgerEntries.filter(x => x.type === 'payment')
-        const charges = customerLedgerEntries.filter(x => x.type === 'charge')
-
-        for (const p of payments) {
-            let pMeta: any = null
-            try {
-                if (p.description?.startsWith('{')) pMeta = JSON.parse(p.description)
-            } catch {}
-
-            const linkedId = pMeta?.linked_charge_id
-            if (linkedId) {
-                map.set(linkedId, (map.get(linkedId) || 0) + Number(p.amount || 0))
-            } else {
-                const pDescClean = getCleanDescription(p.description).toLowerCase().replace('payment for ', '').trim()
-                if (pDescClean) {
-                    const matchCharge = charges.find(c => getCleanDescription(c.description).toLowerCase().trim() === pDescClean)
-                    if (matchCharge) {
-                        map.set(matchCharge.id, (map.get(matchCharge.id) || 0) + Number(p.amount || 0))
-                    }
-                }
-            }
-        }
-        return map
-    }, [customerLedgerEntries])
-
     const totalCharged = useMemo(() => customerLedgerEntries.reduce((sum, t) => sum + (t.type === 'charge' ? t.amount : 0), 0), [customerLedgerEntries])
     const totalCollected = useMemo(() => customerLedgerEntries.reduce((sum, t) => sum + (t.type === 'payment' ? t.amount : 0), 0), [customerLedgerEntries])
     const outstandingBalance = useMemo(() => customerLedgerEntries[customerLedgerEntries.length - 1]?.runningBalance ?? 0, [customerLedgerEntries])
@@ -390,24 +377,22 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
     const printRef = useRef<PrintableReportHandle>(null)
     const reportColumns = [
         { key: 'date', label: 'Date', dateStacked: true },
+        { key: 'bill_no', label: 'Bill No.' },
         { key: 'type', label: 'Type' },
         { key: 'description', label: 'Description' },
+        { key: 'responsible', label: 'Responsible Person' },
         { key: 'due', label: 'Due', align: 'right' as const },
         { key: 'paid', label: 'Paid', align: 'right' as const },
         { key: 'running_balance', label: 'Running Balance', align: 'right' as const },
     ]
     const reportRows = customerLedgerEntries.map(t => {
-        const cleanDesc = getCleanDescription(t.description)
-        let descText = cleanDesc
-        if (t.type === 'charge') {
-            const paidForBill = chargePaymentsMap.get(t.id) || 0
-            const leftForBill = Math.max(0, t.amount - paidForBill)
-            descText = `${cleanDesc} [Left: ${formatCurrency(leftForBill)}]`
-        }
+        const bookingId = getChargeBookingId(t.description)
         return {
             date: formatDate(t.created_at),
+            bill_no: bookingId ? bookingInvoiceNumber(bookingId) : '—',
             type: t.type === 'charge' ? 'Charge' : 'Payment Collected',
-            description: descText,
+            description: getCleanDescription(t.description),
+            responsible: t.created_by_name || '—',
             due: t.type === 'charge' ? formatCurrency(t.amount) : '',
             paid: t.type === 'payment' ? formatCurrency(t.amount) : '',
             running_balance: formatCurrency(t.runningBalance),
@@ -705,8 +690,10 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                         <thead>
                                             <tr className="bg-surface-muted border-b border-hairline text-ink-subtle">
                                                 <th className="px-5 py-3.5 font-extrabold">Date</th>
+                                                <th className="px-5 py-3.5 font-extrabold w-40">Bill No.</th>
                                                 <th className="px-5 py-3.5 font-extrabold text-center w-36">Type</th>
                                                 <th className="px-5 py-3.5 font-extrabold">Description</th>
+                                                <th className="px-5 py-3.5 font-extrabold w-40">Responsible Person</th>
                                                 <th className="px-5 py-3.5 font-extrabold text-right w-32 text-rose-500">Due</th>
                                                 <th className="px-5 py-3.5 font-extrabold text-right w-32 text-emerald-600">Paid</th>
                                                 <th className="px-5 py-3.5 font-extrabold text-right w-36 bg-surface-muted/50">Running Balance</th>
@@ -717,36 +704,30 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                                             {customerLedgerEntries.map(t => (
                                                 <tr key={t.id} className="hover:bg-surface-muted/50 transition-colors">
                                                     <td className="px-4 py-3 text-ink-subtle font-semibold"><DateCell value={t.created_at} /></td>
+                                                    <td className="px-4 py-3 font-semibold">
+                                                        {(() => {
+                                                            const bookingId = getChargeBookingId(t.description)
+                                                            if (!bookingId) return <span className="text-ink-subtle">—</span>
+                                                            return (
+                                                                <Link
+                                                                    href={`/admin/bookings?booking=${bookingId}`}
+                                                                    className="text-brand-600 hover:text-brand-700 hover:underline"
+                                                                    title="Open this stay's full bill"
+                                                                >
+                                                                    {bookingInvoiceNumber(bookingId)}
+                                                                </Link>
+                                                            )
+                                                        })()}
+                                                    </td>
                                                     <td className="px-4 py-3 text-center">
                                                         <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase ${t.type === 'charge' ? 'bg-orange-50 text-orange-700' : 'bg-emerald-50 text-emerald-700'}`}>
                                                             {t.type === 'charge' ? 'Charge' : 'Payment'}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3 font-bold text-ink max-w-xs sm:max-w-sm md:max-w-md break-words whitespace-normal">
-                                                        <div className="space-y-1">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => openTxnDetailsModal(t)}
-                                                                className="text-left font-bold text-brand-600 hover:text-brand-700 hover:underline inline-flex items-start gap-1.5 leading-snug break-words max-w-full focus:outline-none transition-colors"
-                                                                title="Click to view full Order / Bill History details (Discounts, Service Charges, Tax, Cash/QR split)"
-                                                            >
-                                                                <Eye size={13} className="text-brand-500 shrink-0 mt-0.5" />
-                                                                <span className="break-words">{getCleanDescription(t.description)}</span>
-                                                            </button>
-
-                                                            {t.type === 'charge' && (() => {
-                                                                const paidForBill = chargePaymentsMap.get(t.id) || 0
-                                                                const leftForBill = Math.max(0, t.amount - paidForBill)
-                                                                return (
-                                                                    <div className="pt-0.5">
-                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-900 bg-rose-100/90 px-2 py-0.5 rounded-md border border-rose-300 shadow-2xs">
-                                                                            Left: {formatCurrency(leftForBill)}
-                                                                        </span>
-                                                                    </div>
-                                                                )
-                                                            })()}
-                                                        </div>
+                                                        {getCleanDescription(t.description)}
                                                     </td>
+                                                    <td className="px-4 py-3 text-ink-subtle font-semibold">{t.created_by_name || '—'}</td>
                                                     <td className="px-4 py-3 text-right font-black text-rose-600">
                                                         {t.type === 'charge' ? formatCurrency(t.amount) : <span className="text-ink-subtle">—</span>}
                                                     </td>

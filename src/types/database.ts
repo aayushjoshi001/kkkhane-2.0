@@ -1340,6 +1340,10 @@ export interface ReceivableTransaction {
     customer_credit_accounts?: CustomerCreditAccount | null
 }
 
+/** A receivable transaction with the responsible staff member's name resolved
+ *  from `created_by` — attached server-side, never stored. */
+export type ReceivableTransactionWithCreator = ReceivableTransaction & { created_by_name: string | null }
+
 export interface Supplier {
     id: string
     restaurant_id: string
