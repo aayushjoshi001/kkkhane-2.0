@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import Select from '@/components/ui/Select'
 import { NepaliDateInput } from '@/components/ui/NepaliDateInput'
+import { chequeTypeForBankAccount } from '@/lib/utils'
 
 export type SupplierPaymentSource = 'cash' | 'qr' | 'cheque' | 'cash_qr'
 
@@ -97,6 +98,7 @@ interface BankAccountOption {
     id: string
     name: string
     account_number?: string | null
+    bank_name?: string | null
 }
 
 interface SupplierPaymentFieldsProps {
@@ -191,7 +193,16 @@ export default function SupplierPaymentFields({ value, onChange, bankAccounts, p
                     </label>
                     <Select
                         value={value.bank_name}
-                        onChange={e => onChange({ ...value, bank_name: e.target.value })}
+                        onChange={e => {
+                            const baName = e.target.value
+                            // Picking an account whose ownership was set when it
+                            // was added (Company → A/C Payee, Personal → Normal)
+                            // default-selects the matching Cheque Type below,
+                            // still changeable by hand.
+                            const matched = bankAccounts.find(b => b.name === baName)
+                            const suggested = chequeTypeForBankAccount(matched?.bank_name)
+                            onChange({ ...value, bank_name: baName, cheque_type: suggested ?? value.cheque_type })
+                        }}
                         required
                         className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                     >

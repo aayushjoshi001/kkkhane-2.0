@@ -370,6 +370,9 @@ export interface SupplierBillDetails {
     paid_amount: number | null
     payment_type: string
     bank_name: string
+    // The supplier's own invoice/bill reference number, if the person
+    // recording the purchase had one to enter — optional, free text.
+    bill_number?: string
     // Only present when payment_type === 'cash_qr' — how much of paid_amount
     // was cash vs QR, since that one payment splits across two Day Book entries.
     cash_portion?: number
@@ -682,5 +685,38 @@ export function matchesMenuSearch(item: any, searchQuery: string): boolean {
     if (tokens.length === 0) return true
 
     return tokens.every(token => fullText.includes(token))
+}
+
+/**
+ * bank_accounts has no real "ownership" column — it's encoded as a
+ * `company:`/`personal:`/legacy `ac_payee:` prefix on the free-text
+ * bank_name, set when the account is added (see the "Ownership Category"
+ * field on every bank account form: "Company Account (A/C Payee)" /
+ * "Personal Account (Manager/Owner)"). Parses that back out for display.
+ */
+export function parseBankAccountOwnership(bankName: string | null | undefined): {
+    ownership: 'company' | 'personal' | 'ac_payee' | null
+    displayName: string
+} {
+    const bName = bankName || ''
+    if (bName.startsWith('personal:')) return { ownership: 'personal', displayName: bName.slice('personal:'.length) }
+    if (bName.startsWith('company:')) return { ownership: 'company', displayName: bName.slice('company:'.length) }
+    if (bName.startsWith('ac_payee:')) return { ownership: 'ac_payee', displayName: bName.slice('ac_payee:'.length) }
+    return { ownership: null, displayName: bName }
+}
+
+/**
+ * The cheque type a bank account's ownership implies — a company account's
+ * chequebook is drawn A/C Payee, a personal one issues normal person
+ * cheques. Used to default-select Cheque Type the moment a bank account is
+ * picked in a cheque payment form, still changeable afterward. Null when the
+ * account has no recognizable ownership tag, so callers leave whatever
+ * cheque type is already selected alone rather than guessing.
+ */
+export function chequeTypeForBankAccount(bankName: string | null | undefined): 'ac_payee' | 'normal' | null {
+    const { ownership } = parseBankAccountOwnership(bankName)
+    if (ownership === 'personal') return 'normal'
+    if (ownership === 'company' || ownership === 'ac_payee') return 'ac_payee'
+    return null
 }
 

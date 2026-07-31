@@ -6,6 +6,7 @@ import { FileText, Calendar, TrendingUp, DollarSign, Printer, RefreshCw, Downloa
 import toast from 'react-hot-toast'
 import useSWR from 'swr'
 import { fetchReportsData } from '@/lib/swr-fetchers'
+import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import type { EodReport } from '@/types/database'
 import type { EodReportNotes, PersonAmount } from '@/lib/reports'
 import { getNstDateString } from '@/lib/timezone'
@@ -129,6 +130,12 @@ export default function ReportsViewer({ initialReports, restaurantId }: {
     restaurantId: string
 }) {
     const { data: reports = initialReports, mutate } = useSWR(['reports', restaurantId], () => fetchReportsData(restaurantId), { fallbackData: initialReports })
+    // A report generated elsewhere — the nightly cron job, or another
+    // manager recalculating a day — used to sit invisible here until this
+    // tab was refocused or reloaded. Revalidating the same SWR fetch on any
+    // eod_reports change keeps the list live without disturbing scroll
+    // position or which report is currently expanded.
+    useRestaurantTable(restaurantId, 'eod_reports', () => mutate())
     const [generating, setGenerating] = useState(false)
     const [expanded, setExpanded] = useState<string | null>(null)
     const [customDate, setCustomDate] = useState(getNstDateString())

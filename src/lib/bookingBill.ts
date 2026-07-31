@@ -261,37 +261,43 @@ export async function buildBookingBill(
 
     const memberIds = await resolveFolioBookingIds(supabase, bookingId)
 
-    const { data: stayRows } = await supabase
-        .from('bookings')
-        .select(`
-            id, restaurant_id, room_id, group_id, guest_name, guest_phone, status,
-            check_in, check_out, checked_in_at, checked_in_by, checked_out_at, cashier_id,
-            total_amount, paid_amount, discount_amount, discount_reason, extra_hour_charge,
-            service_charge_override, advance_payment_method, notes, parking_vehicle_no,
-            rooms:room_id(room_number, room_types:type_id(name, base_price))
-        `)
-        .in('id', memberIds)
-        .order('created_at', { ascending: true })
+    // None of these three depends on either of the others' results — only on
+    // memberIds/restaurantId, both already known — so they were previously
+    // three sequential round trips for no reason. Fetching them together
+    // cuts that to one.
+    const [stayRowsRes, currentRestRes, linkedSessionsRes] = await Promise.all([
+        supabase
+            .from('bookings')
+            .select(`
+                id, restaurant_id, room_id, group_id, guest_name, guest_phone, status,
+                check_in, check_out, checked_in_at, checked_in_by, checked_out_at, cashier_id,
+                total_amount, paid_amount, discount_amount, discount_reason, extra_hour_charge,
+                service_charge_override, advance_payment_method, notes, parking_vehicle_no,
+                rooms:room_id(room_number, room_types:type_id(name, base_price))
+            `)
+            .in('id', memberIds)
+            .order('created_at', { ascending: true }),
+        // The partner restaurant's orders bill onto this folio too, so its id
+        // has to be in scope for the order query below — the same resolution
+        // folio.ts does.
+        supabase
+            .from('restaurants')
+            .select('linked_restaurant_id, linked_hotel_id')
+            .eq('id', restaurantId)
+            .maybeSingle(),
+        supabase
+            .from('sessions')
+            .select('id')
+            .in('booking_id', memberIds),
+    ])
 
-    const stays = stayRows || []
+    const stays = stayRowsRes.data || []
     const primary = stays.find(s => s.id === bookingId)
     if (!primary || primary.restaurant_id !== restaurantId) return null
 
-    // The partner restaurant's orders bill onto this folio too, so its id has to
-    // be in scope for the order query below — the same resolution folio.ts does.
-    const { data: currentRest } = await supabase
-        .from('restaurants')
-        .select('linked_restaurant_id, linked_hotel_id')
-        .eq('id', restaurantId)
-        .maybeSingle()
-    const partnerId = currentRest?.linked_restaurant_id || currentRest?.linked_hotel_id
+    const partnerId = currentRestRes.data?.linked_restaurant_id || currentRestRes.data?.linked_hotel_id
     const targetRestaurantIds = partnerId ? [restaurantId, partnerId] : [restaurantId]
-
-    const { data: linkedSessions } = await supabase
-        .from('sessions')
-        .select('id')
-        .in('booking_id', memberIds)
-    const sessionIds = (linkedSessions || []).map(s => s.id as string)
+    const sessionIds = (linkedSessionsRes.data || []).map(s => s.id as string)
 
     const orderSelect = `
         id, session_id, booking_id, status, payment_status, placed_at, order_type,
@@ -310,22 +316,9 @@ export async function buildBookingBill(
         ? orderQuery.or(`booking_id.in.(${memberIds.join(',')}),session_id.in.(${sessionIds.join(',')})`)
         : orderQuery.in('booking_id', memberIds)
 
-    const [folioRes, ordersRes, chargesRes, paymentsRes, settlementRes] = await Promise.all([
-        // No serviceChargeOverride passed, so a settled stay replays the charge
-        // it was billed at rather than what the rules would produce today.
-        computeFolioForStays(supabase, {
-            restaurantId,
-            stays: stays.map(s => ({
-                bookingId: s.id as string,
-                roomId: s.room_id as string,
-                checkIn: s.check_in as string,
-                checkOut: s.check_out as string,
-                checkedOutAt: s.checked_out_at as string | null,
-                status: s.status as string | null,
-            })),
-            sessionId: null,
-            discountAmount: Number(primary.discount_amount) || 0,
-        }).catch(() => null),
+    // Orders, manual charges, payments and the settlement snapshot don't need
+    // the live folio recomputed to be read, so fetch them without waiting on it.
+    const [ordersRes, chargesRes, paymentsRes, settlementRes] = await Promise.all([
         orderQuery,
         supabase
             .from('room_charges')
@@ -352,16 +345,47 @@ export async function buildBookingBill(
             .limit(1),
     ])
 
-    const folio = folioRes
     const settlementRow = settlementRes.data?.[0] ?? null
     const settlementValue = (settlementRow?.new_value ?? null) as Record<string, unknown> | null
+    const isSettled = !!settlementRow
+    // Undefined/missing means the stay closed out normally (the common case
+    // recorded before this field existed); only an explicit `false` means the
+    // guest paid and kept the room.
+    const closedStay = settlementValue?.closed_stay !== false
+
+    // The full folio recompute — room pricing rules, occupancy, per-order
+    // service charge, and several more queries inside it — is only needed
+    // while a stay is still running, or once settled if the guest paid and
+    // kept the room, where charges can still be added after the bill was
+    // issued. A stay that is settled AND closed can never run up more: its
+    // bill is the settlement snapshot, full stop. Recomputing the live folio
+    // just to confirm runningSinceSettlement is 0 there is wasted latency —
+    // and that's the case for the large majority of "View History" clicks,
+    // which look back at stays that finished long ago.
+    const folio = (!isSettled || closedStay === false)
+        ? await computeFolioForStays(supabase, {
+            // No serviceChargeOverride passed, so a settled stay replays the
+            // charge it was billed at rather than what the rules would
+            // produce today.
+            restaurantId,
+            stays: stays.map(s => ({
+                bookingId: s.id as string,
+                roomId: s.room_id as string,
+                checkIn: s.check_in as string,
+                checkOut: s.check_out as string,
+                checkedOutAt: s.checked_out_at as string | null,
+                status: s.status as string | null,
+            })),
+            sessionId: null,
+            discountAmount: Number(primary.discount_amount) || 0,
+        }).catch(() => null)
+        : null
 
     // Which folio the bill is built from, decided once: the snapshot for a stay
     // that has been settled — that is the bill the guest was given, and every
     // line, room and per-order figure has to come from the same place or the
     // parts stop adding up to the total — and the live one while it is running.
     const snapshot = (settlementValue?.folio ?? null) as FolioBreakdown | null
-    const isSettled = !!settlementRow
     const lines = (isSettled ? snapshot : null) ?? folio
     const settledTotal = round2(Number(settlementValue?.total_amount) || 0)
     const total = isSettled ? settledTotal : round2(folio?.total ?? 0)
@@ -580,7 +604,7 @@ export async function buildBookingBill(
         ? {
             at: settlementRow.created_at as string,
             by: nameOf(settlementRow.user_id as string | null) ?? nameOf(primary.cashier_id as string | null),
-            closedStay: settlementValue?.closed_stay !== false,
+            closedStay,
             totalCharged: settledTotal,
             cashPaid: round2(Number(settlementValue?.cash_paid) || 0),
             qrPaid: round2(Number(settlementValue?.qr_paid) || 0),

@@ -4,11 +4,11 @@ import { useState, useMemo, Fragment } from 'react'
 import Modal from '@/components/ui/Modal'
 import { createIngredientAction, addStockMovementAction, deleteIngredientAction, updateIngredientAction, createIngredientCategoryAction, createIngredientSupplierAction } from './actions'
 import { createSupplierBillAction } from '../suppliers/actions'
-import { Plus, Trash2, Edit2, AlertTriangle, Package, PackagePlus, X, Check, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Edit2, AlertTriangle, Package, PackagePlus, X, Check, Loader2, Boxes, History } from 'lucide-react'
 import toast from 'react-hot-toast'
 import useSWR from 'swr'
 import type { Ingredient, ExpenseCategory, Supplier, BankAccount } from '@/types/database'
-import { fetchIngredientsData } from '@/lib/swr-fetchers'
+import { fetchIngredientsData, fetchIngredientMovements } from '@/lib/swr-fetchers'
 import { formatCurrency, orderCategoriesForDisplay, findMainCategory } from '@/lib/utils'
 import SupplierPaymentFields, {
     EMPTY_SUPPLIER_PAYMENT, validateSupplierPayment, isUnderpaidSplit, underpaidSplitConfirmMessage,
@@ -16,25 +16,52 @@ import SupplierPaymentFields, {
 } from '@/components/admin/SupplierPaymentFields'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
+import DateCell from '@/components/ui/DateCell'
+
+export interface IngredientMovementRow {
+    id: string
+    movement_type: string
+    quantity: number
+    notes: string | null
+    created_at: string
+    ingredients: { id: string; name: string; unit: string } | { id: string; name: string; unit: string }[] | null
+    users: { full_name: string | null } | { full_name: string | null }[] | null
+}
+
+const MOVEMENT_TYPE_LABEL: Record<string, string> = {
+    purchase: 'Purchase',
+    usage: 'Usage',
+    waste: 'Waste / Spoilage',
+    adjustment: 'Adjustment',
+    transfer: 'Transfer',
+}
 
 export default function IngredientsManager({
     initialIngredients,
     restaurantId,
     initialCategories = [],
     initialSuppliers = [],
-    initialBankAccounts = []
+    initialBankAccounts = [],
+    initialMovements = [],
 }: {
     initialIngredients: Ingredient[]
     restaurantId: string
     initialCategories: ExpenseCategory[]
     initialSuppliers: Supplier[]
     initialBankAccounts?: BankAccount[]
+    initialMovements?: IngredientMovementRow[]
 }) {
+    const [viewMode, setViewMode] = useState<'stock' | 'activities'>('stock')
     const { confirm } = useConfirmStore()
     const { data: ingredients = initialIngredients, mutate } = useSWR(
         ['ingredients', restaurantId],
         () => fetchIngredientsData(restaurantId),
         { fallbackData: initialIngredients }
+    )
+    const { data: movements = initialMovements, mutate: mutateMovements } = useSWR(
+        ['ingredient-movements', restaurantId],
+        () => fetchIngredientMovements(restaurantId) as unknown as Promise<IngredientMovementRow[]>,
+        { fallbackData: initialMovements }
     )
 
     // Categories and Suppliers local states (for inline addition)
@@ -55,9 +82,10 @@ export default function IngredientsManager({
     // pattern (quantity/rate compute the total, paying less than the total
     // leaves the rest as a due balance on that supplier).
     const [createPaidAmount, setCreatePaidAmount] = useState('')
+    const [createBillNumber, setCreateBillNumber] = useState('')
     const [createPayment, setCreatePayment] = useState<SupplierPaymentValue>(EMPTY_SUPPLIER_PAYMENT)
     const [moveForm, setMoveForm] = useState({
-        movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: ''
+        movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: '', bill_number: ''
     })
     const [movePayment, setMovePayment] = useState<SupplierPaymentValue>(EMPTY_SUPPLIER_PAYMENT)
     const [saving, setSaving] = useState(false)
@@ -93,6 +121,7 @@ export default function IngredientsManager({
     function resetCreateForm() {
         setForm({ name: '', unit: 'kg', stock_quantity: '', reorder_level: '10', cost_per_unit: '', supplier: '', category_id: '' })
         setCreatePaidAmount('')
+        setCreateBillNumber('')
         setCreatePayment(EMPTY_SUPPLIER_PAYMENT)
         resetInlineSupplierForm()
         resetInlineCategoryForm()
@@ -152,7 +181,7 @@ export default function IngredientsManager({
                 ...payload
             })
             if (result.error) { setSaving(false); toast.error(result.error); return }
-            if (result.data) mutate()
+            if (result.data) { mutate(); mutateMovements() }
 
             if (willBill) {
                 const billRes = await createSupplierBillAction({
@@ -169,6 +198,7 @@ export default function IngredientsManager({
                     cash_portion: createPayment.payment_source === 'cash_qr' ? (parseFloat(createPayment.cash_portion) || 0) : undefined,
                     qr_portion: createPayment.payment_source === 'cash_qr' ? (parseFloat(createPayment.qr_portion) || 0) : undefined,
                     cheque_details: createPayment.payment_source === 'cheque' ? buildChequeDetailsFromSupplierPayment(createPayment) : undefined,
+                    bill_number: createBillNumber.trim() || undefined,
                 })
                 setSaving(false)
                 if (billRes.error) {
@@ -261,13 +291,10 @@ export default function IngredientsManager({
         }
     }
 
-    // Filter suppliers: only show those matching the selected category, or general ones
-    const filteredSuppliers = useMemo(() => {
-        if (!form.category_id) {
-            return suppliers
-        }
-        return suppliers.filter(s => !s.category_id || s.category_id === form.category_id)
-    }, [suppliers, form.category_id])
+    // Every supplier is selectable here — picking one auto-fills the Category
+    // below from that supplier's own category (see the Supplier <Select>
+    // onChange), so the category no longer needs filtering the supplier list.
+    const filteredSuppliers = suppliers
 
     // Group ingredients by category dynamically
     const categorizedIngredients = useMemo(() => {
@@ -313,7 +340,7 @@ export default function IngredientsManager({
     )
 
     const emptyMoveForm = {
-        movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: ''
+        movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: '', bill_number: ''
     }
 
     // Suppliers who serve this ingredient's category — closes the gap where
@@ -417,6 +444,7 @@ export default function IngredientsManager({
                 cash_portion: movePayment.payment_source === 'cash_qr' ? (parseFloat(movePayment.cash_portion) || 0) : undefined,
                 qr_portion: movePayment.payment_source === 'cash_qr' ? (parseFloat(movePayment.qr_portion) || 0) : undefined,
                 cheque_details: movePayment.payment_source === 'cheque' ? buildChequeDetailsFromSupplierPayment(movePayment) : undefined,
+                bill_number: moveForm.bill_number.trim() || undefined,
             })
 
             // Keep cost_per_unit in sync with the latest purchase price so
@@ -430,6 +458,7 @@ export default function IngredientsManager({
             if (billRes.error) {
                 toast.error(`Stock updated, but the supplier bill wasn't recorded: ${billRes.error}`)
                 mutate()
+                mutateMovements()
                 closeStockModal()
                 return
             }
@@ -445,6 +474,7 @@ export default function IngredientsManager({
         }
 
         mutate()
+        mutateMovements()
         closeStockModal()
     }
 
@@ -454,6 +484,7 @@ export default function IngredientsManager({
         const result = await deleteIngredientAction(id)
         if (result.error) { toast.error(result.error); return }
         mutate()
+        mutateMovements()
         toast.success('Deleted')
     }
 
@@ -476,17 +507,37 @@ export default function IngredientsManager({
                 </div>
             )}
 
-            {/* Header Action Buttons */}
-            <div className="flex justify-end items-center gap-3 mb-6">
-                <button onClick={openPicker}
-                    className="flex items-center gap-2 bg-surface text-ink border border-hairline px-6 py-3 rounded-[var(--r-md)] text-sm font-bold shadow-sm hover:bg-surface-muted transition-all focus-ring">
-                    <Plus size={16} /> Add on Stock Item
+            {/* Stock / Inventory Activities toggle */}
+            <div className="grid grid-cols-2 bg-surface border border-hairline rounded-[var(--r-md)] p-1.5 shadow-sm">
+                <button
+                    type="button"
+                    onClick={() => setViewMode('stock')}
+                    className={`flex items-center justify-center gap-2 py-3.5 text-sm font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${viewMode === 'stock' ? 'bg-brand-500 text-white shadow-md' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/40'}`}
+                >
+                    <Boxes size={16} /> Stock
                 </button>
-                <button onClick={() => { setEditingItem(null); setShowAdd(true); }}
-                    className="flex items-center gap-2 bg-brand-500 text-white px-6 py-3 rounded-[var(--r-md)] text-sm font-bold shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all focus-ring">
-                    <PackagePlus size={16} /> Create New Stock Item
+                <button
+                    type="button"
+                    onClick={() => setViewMode('activities')}
+                    className={`flex items-center justify-center gap-2 py-3.5 text-sm font-black uppercase tracking-wider rounded-lg transition-all focus-ring ${viewMode === 'activities' ? 'bg-indigo-600 text-white shadow-md' : 'text-ink-subtle hover:text-ink hover:bg-surface-muted/40'}`}
+                >
+                    <History size={16} /> Inventory Activities
                 </button>
             </div>
+
+            {/* Header Action Buttons */}
+            {viewMode === 'stock' && (
+                <div className="flex justify-end items-center gap-3 mb-6">
+                    <button onClick={openPicker}
+                        className="flex items-center gap-2 bg-surface text-ink border border-hairline px-6 py-3 rounded-[var(--r-md)] text-sm font-bold shadow-sm hover:bg-surface-muted transition-all focus-ring">
+                        <Plus size={16} /> Add on Stock Item
+                    </button>
+                    <button onClick={() => { setEditingItem(null); setShowAdd(true); }}
+                        className="flex items-center gap-2 bg-brand-500 text-white px-6 py-3 rounded-[var(--r-md)] text-sm font-bold shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all focus-ring">
+                        <PackagePlus size={16} /> Create New Stock Item
+                    </button>
+                </div>
+            )}
 
             {/* Add/Edit Stock Modal Popup */}
             {showAdd && (
@@ -586,6 +637,90 @@ export default function IngredientsManager({
                                     />
                                 </div>
                             </div>
+                            {/* Supplier Dropdown and Inline Addition — picking a supplier below
+                                auto-fills the Category with that supplier's own category, so a
+                                manager doesn't have to re-pick the category on every purchase;
+                                the Category select right after it stays fully editable to override. */}
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Supplier</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAddSupplier(!showAddSupplier)}
+                                        className="text-[11px] font-black text-indigo-600 hover:text-indigo-700 transition-colors focus:outline-none"
+                                    >
+                                        {showAddSupplier ? '✕ Cancel' : '+ Add Supplier'}
+                                    </button>
+                                </div>
+
+                                {showAddSupplier ? (
+                                    <div className="bg-surface-muted/30 border border-hairline rounded-[var(--r-md)] p-4 space-y-3 animate-in slide-in-from-top-1 duration-150">
+                                        <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">New Supplier Details</p>
+                                        <input
+                                            type="text"
+                                            placeholder="Supplier Name (e.g. Organic Farm Co)"
+                                            value={newSupplierName}
+                                            onChange={e => setNewSupplierName(e.target.value)}
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Phone Number"
+                                            value={newSupplierPhone}
+                                            onChange={e => setNewSupplierPhone(e.target.value)}
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Address (Optional)"
+                                            value={newSupplierAddress}
+                                            onChange={e => setNewSupplierAddress(e.target.value)}
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
+                                        />
+                                        {form.category_id && (
+                                            <p className="text-[10px] text-ink-muted italic font-bold">
+                                                * This supplier will automatically be linked to Category: {categories.find(c => c.id === form.category_id)?.name}
+                                            </p>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={handleInlineAddSupplier}
+                                            disabled={!newSupplierName.trim() || addingSupplier}
+                                            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-[var(--r-md)] text-[10px] uppercase tracking-wider shadow-sm transition-colors flex items-center justify-center gap-1.5"
+                                        >
+                                            {addingSupplier ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                                            Create Supplier
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <Select
+                                        value={form.supplier}
+                                        onChange={e => {
+                                            const supplierName = e.target.value
+                                            const matched = suppliers.find(s => s.name === supplierName)
+                                            setForm(f => ({
+                                                ...f,
+                                                supplier: supplierName,
+                                                // Only a fallback suggestion for a brand-new/uncategorized
+                                                // item — an item's own established category (already in
+                                                // the field when editing, or already chosen by hand) always
+                                                // wins, since the same item can be bought from suppliers in
+                                                // different categories without the item itself changing what
+                                                // it is. The Category select below stays editable either way.
+                                                category_id: (!f.category_id && matched?.category_id) ? matched.category_id : f.category_id,
+                                            }))
+                                        }}
+                                        className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207l5%205%205-5%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]"
+                                    >
+                                        <option value="">No Supplier</option>
+                                        {filteredSuppliers.map(s => (
+                                            <option key={s.id} value={s.name}>{s.name}</option>
+                                        ))}
+                                        <option value={UNSPECIFIED_SUPPLIER_NAME}>Others (unauthorized / unregistered)</option>
+                                    </Select>
+                                )}
+                            </div>
+
                             {/* Category Dropdown and Inline Addition */}
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
@@ -598,7 +733,7 @@ export default function IngredientsManager({
                                         {showAddCategory ? '✕ Cancel' : '+ Add Category'}
                                     </button>
                                 </div>
-                                
+
                                 {showAddCategory ? (
                                     <div className="bg-surface-muted/30 border border-hairline rounded-[var(--r-md)] p-4 space-y-3 animate-in slide-in-from-top-1 duration-150">
                                         <p className="text-[10px] font-black text-brand-500 uppercase tracking-wider">New Category Details</p>
@@ -644,7 +779,7 @@ export default function IngredientsManager({
                                 ) : (
                                     <Select
                                         value={form.category_id}
-                                        onChange={e => setForm({ ...form, category_id: e.target.value, supplier: '' })}
+                                        onChange={e => setForm({ ...form, category_id: e.target.value })}
                                         searchable
                                         className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207l5%205%205-5%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]"
                                     >
@@ -666,73 +801,6 @@ export default function IngredientsManager({
                                 )}
                             </div>
 
-                            {/* Supplier Dropdown and Inline Addition */}
-                            <div className="space-y-2">
-                                <div className="flex justify-between items-center">
-                                    <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Supplier</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAddSupplier(!showAddSupplier)}
-                                        className="text-[11px] font-black text-indigo-600 hover:text-indigo-700 transition-colors focus:outline-none"
-                                    >
-                                        {showAddSupplier ? '✕ Cancel' : '+ Add Supplier'}
-                                    </button>
-                                </div>
-                                
-                                {showAddSupplier ? (
-                                    <div className="bg-surface-muted/30 border border-hairline rounded-[var(--r-md)] p-4 space-y-3 animate-in slide-in-from-top-1 duration-150">
-                                        <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">New Supplier Details</p>
-                                        <input
-                                            type="text"
-                                            placeholder="Supplier Name (e.g. Organic Farm Co)"
-                                            value={newSupplierName}
-                                            onChange={e => setNewSupplierName(e.target.value)}
-                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
-                                        />
-                                        <input
-                                            type="text"
-                                            placeholder="Phone Number"
-                                            value={newSupplierPhone}
-                                            onChange={e => setNewSupplierPhone(e.target.value)}
-                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
-                                        />
-                                        <input
-                                            type="text"
-                                            placeholder="Address (Optional)"
-                                            value={newSupplierAddress}
-                                            onChange={e => setNewSupplierAddress(e.target.value)}
-                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 p-2.5"
-                                        />
-                                        {form.category_id && (
-                                            <p className="text-[10px] text-ink-muted italic font-bold">
-                                                * This supplier will automatically be linked to Category: {categories.find(c => c.id === form.category_id)?.name}
-                                            </p>
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={handleInlineAddSupplier}
-                                            disabled={!newSupplierName.trim() || addingSupplier}
-                                            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold rounded-[var(--r-md)] text-[10px] uppercase tracking-wider shadow-sm transition-colors flex items-center justify-center gap-1.5"
-                                        >
-                                            {addingSupplier ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                                            Create Supplier
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <Select
-                                        value={form.supplier}
-                                        onChange={e => setForm({ ...form, supplier: e.target.value })}
-                                        className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207l5%205%205-5%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]"
-                                    >
-                                        <option value="">No Supplier</option>
-                                        {filteredSuppliers.map(s => (
-                                            <option key={s.id} value={s.name}>{s.name}</option>
-                                        ))}
-                                        <option value={UNSPECIFIED_SUPPLIER_NAME}>Others (unauthorized / unregistered)</option>
-                                    </Select>
-                                )}
-                            </div>
-
                             {/* Total amount + payment — only meaningful for a brand-new item
                                 actually being bought right now. A supplier is optional: leave
                                 it as "No Supplier" to just log the purchase for your own records. */}
@@ -743,6 +811,16 @@ export default function IngredientsManager({
                                         <span className="font-extrabold text-sm text-ink">
                                             {formatCurrency((parseFloat(form.stock_quantity) || 0) * (parseFloat(form.cost_per_unit) || 0))}
                                         </span>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Supplier&apos;s Bill Number (optional)</label>
+                                        <input
+                                            type="text"
+                                            value={createBillNumber}
+                                            onChange={e => setCreateBillNumber(e.target.value)}
+                                            placeholder="e.g. their invoice/bill reference"
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3"
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Paid Amount (Rs.)</label>
@@ -916,6 +994,14 @@ export default function IngredientsManager({
                                             </div>
 
                                             <div>
+                                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Supplier&apos;s Bill Number (optional)</label>
+                                                <input type="text" value={moveForm.bill_number}
+                                                    onChange={e => setMoveForm({ ...moveForm, bill_number: e.target.value })}
+                                                    placeholder="e.g. their invoice/bill reference"
+                                                    className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3" />
+                                            </div>
+
+                                            <div>
                                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Paid Amount (Rs.)</label>
                                                 <input type="text" inputMode="decimal" value={moveForm.paid_amount}
                                                     onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setMoveForm({ ...moveForm, paid_amount: v }) }}
@@ -955,6 +1041,7 @@ export default function IngredientsManager({
             )}
 
             {/* Stock Table */}
+            {viewMode === 'stock' && (
             <div className="bg-surface rounded-card border border-hairline overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
                 <table className="w-full text-sm">
                     <thead className="bg-surface-muted/30 border-b border-hairline">
@@ -1068,6 +1155,59 @@ export default function IngredientsManager({
                     </tbody>
                 </table>
             </div>
+            )}
+
+            {/* Inventory Activities — who moved stock, when, and on what item.
+                Every purchase, restock, waste/usage entry and adjustment lands
+                here the moment it's recorded, newest first. */}
+            {viewMode === 'activities' && (
+            <div className="bg-surface rounded-card border border-hairline overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
+                <table className="w-full text-sm">
+                    <thead className="bg-surface-muted/30 border-b border-hairline">
+                        <tr>
+                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Date &amp; Time</th>
+                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Item</th>
+                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Type</th>
+                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Quantity</th>
+                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Entered By</th>
+                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-hairline">
+                        {movements.map(m => {
+                            const ing = Array.isArray(m.ingredients) ? m.ingredients[0] : m.ingredients
+                            const performer = Array.isArray(m.users) ? m.users[0] : m.users
+                            // Mirrors addStockMovementAction's own delta rule exactly
+                            // (ingredients/actions.ts) — 'purchase' is the only
+                            // movement type that adds; everything else, including
+                            // 'adjustment', subtracts from stock.
+                            const isAddition = m.movement_type === 'purchase'
+                            return (
+                                <tr key={m.id} className="hover:bg-surface-muted/30 transition-colors">
+                                    <td className="px-5 py-4 text-ink-subtle font-semibold whitespace-nowrap">
+                                        <DateCell value={m.created_at} />
+                                    </td>
+                                    <td className="px-5 py-4 font-extrabold text-ink">{ing?.name || 'Deleted item'}</td>
+                                    <td className="px-5 py-4">
+                                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${isAddition ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                                            {MOVEMENT_TYPE_LABEL[m.movement_type] || m.movement_type}
+                                        </span>
+                                    </td>
+                                    <td className={`px-5 py-4 text-right font-bold tabular-nums ${isAddition ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {isAddition ? '+' : '-'}{m.quantity} <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{ing?.unit || ''}</span>
+                                    </td>
+                                    <td className="px-5 py-4 text-ink-subtle font-semibold">{performer?.full_name || 'Unknown'}</td>
+                                    <td className="px-5 py-4 text-ink-subtle max-w-xs break-words whitespace-normal">{m.notes || <span className="italic">—</span>}</td>
+                                </tr>
+                            )
+                        })}
+                        {movements.length === 0 && (
+                            <tr><td colSpan={6} className="px-5 py-12 text-center text-ink-muted font-bold text-sm">No inventory activity recorded yet.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+            )}
         </div>
     )
 }

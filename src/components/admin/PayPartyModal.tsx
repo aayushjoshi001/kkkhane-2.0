@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Loader2, Check } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, chequeTypeForBankAccount } from '@/lib/utils'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { createVoucherAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction } from '@/app/(admin)/admin/vouchers/actions'
 import VoucherPrintSlip, { type VoucherSlipData } from '@/components/admin/VoucherPrintSlip'
@@ -334,7 +334,17 @@ export default function PayPartyModal({
                                 <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Bank Account *</label>
                                 <Select
                                     value={bankName}
-                                    onChange={e => setBankName(e.target.value)}
+                                    onChange={e => {
+                                        const baName = e.target.value
+                                        setBankName(baName)
+                                        // Picking an account whose ownership was set
+                                        // when it was added (Company → A/C Payee,
+                                        // Personal → Normal) default-selects the
+                                        // matching Cheque Type below.
+                                        const matched = bankAccounts.find(b => b.name === baName)
+                                        const suggested = chequeTypeForBankAccount(matched?.bank_name)
+                                        if (suggested) setChequeType(suggested)
+                                    }}
                                     required
                                     className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
                                 >

@@ -186,7 +186,6 @@ export default function CriticalClient({
                 movement_type: 'purchase',
                 quantity: qty,
                 notes: `Critical stock replenishment`,
-                performed_by: currentUserId
             })
 
             if (moveRes.error) {

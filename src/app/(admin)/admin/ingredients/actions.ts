@@ -80,7 +80,7 @@ export async function createIngredientAction(input: {
     supplier?: string | null
     category_id?: string | null
 }) {
-    await requireRole('manager', 'super_admin')
+    const user = await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
     const { data, error } = await supabase
         .from('ingredients')
@@ -88,6 +88,25 @@ export async function createIngredientAction(input: {
         .select()
         .single()
     if (error) return { error: error.message }
+
+    // A brand-new item's starting stock is set directly on the row rather
+    // than going through addStockMovementAction (no prior quantity to add a
+    // delta to) — log it as its own movement anyway, so "who brought this
+    // item into stock and when" shows up in Inventory Activities the same
+    // as any later restock, instead of the item just silently appearing.
+    if (input.stock_quantity > 0) {
+        const { error: moveErr } = await supabase
+            .from('ingredient_movements')
+            .insert({
+                ingredient_id: data.id,
+                movement_type: 'purchase',
+                quantity: input.stock_quantity,
+                notes: input.supplier ? `Initial stock — supplier: ${input.supplier}` : 'Initial stock on item creation',
+                performed_by: user.id,
+            })
+        if (moveErr) console.error('Failed to log initial stock movement:', moveErr)
+    }
+
     revalidatePath('/admin/ingredients')
     return { data }
 }
@@ -155,15 +174,16 @@ export async function addStockMovementAction(input: {
     movement_type: string
     quantity: number
     notes?: string
-    performed_by?: string | null
 }) {
-    await requireRole('manager', 'super_admin', 'cashier')
+    const user = await requireRole('manager', 'super_admin', 'cashier')
     const supabase = await createAdminClient()
 
-    // Insert movement record
+    // Insert movement record — performed_by always comes from the
+    // authenticated session, never the client, so the Inventory Activities
+    // log can trust who actually entered each movement.
     const { error: moveErr } = await supabase
         .from('ingredient_movements')
-        .insert(input)
+        .insert({ ...input, performed_by: user.id })
     if (moveErr) return { error: moveErr.message }
 
     // Update stock. Applied as a single atomic UPDATE inside the database —

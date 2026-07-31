@@ -4120,6 +4120,7 @@ export default function CashierClient({
                                 hasOpenSession={manualEntryHasOpenSession}
                                 sessionId={manualEntrySessionId}
                                 userRole={userRole}
+                                restaurantId={restaurantId}
                             />
                         </div>
                     </div>

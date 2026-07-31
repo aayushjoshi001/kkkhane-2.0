@@ -54,7 +54,7 @@ export default async function ManualEntryPage() {
             .order('name', { ascending: true }),
         supabase
             .from('ingredients')
-            .select('id, name, unit, stock_quantity')
+            .select('id, name, unit, stock_quantity, category_id')
             .eq('restaurant_id', restaurantId)
             .eq('is_active', true)
             .order('name', { ascending: true }),
@@ -79,6 +79,7 @@ export default async function ManualEntryPage() {
             hasOpenSession={!!openSession}
             sessionId={openSession?.id ?? null}
             userRole={currentUser.role}
+            restaurantId={restaurantId}
         />
     )
 }

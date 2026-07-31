@@ -47,6 +47,7 @@ interface ParsedBillDescription {
     paid_amount?: number
     payment_type?: string
     bank_name?: string
+    bill_number?: string
     cash_portion?: number
     qr_portion?: number
     cheque_status?: 'pending_approval' | 'approved' | 'rejected'
@@ -131,6 +132,7 @@ export async function createSupplierAction(input: {
     pan?: string
     vat?: string
     address?: string
+    category_id?: string | null
 }) {
     let user
     try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
@@ -156,6 +158,7 @@ export async function createSupplierAction(input: {
             phone,
             address: input.address?.trim() || null,
             contact_person: panVatJson, // Store PAN & VAT
+            category_id: input.category_id || null,
             is_active: true,
             created_by: user.id
         })
@@ -179,6 +182,7 @@ export async function updateSupplierAction(id: string, input: {
     pan?: string
     vat?: string
     address?: string
+    category_id?: string | null
 }) {
     let user
     try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
@@ -202,6 +206,7 @@ export async function updateSupplierAction(id: string, input: {
             phone,
             address: input.address?.trim() || null,
             contact_person: panVatJson,
+            category_id: input.category_id || null,
             updated_at: new Date().toISOString()
         })
         .eq('id', id)
@@ -249,6 +254,9 @@ export async function createSupplierBillAction(input: {
     qr_portion?: number
     cheque_details?: ChequeDetailsInput
     ingredient_id?: string
+    // The supplier's own invoice/bill reference number — optional, purely
+    // for cross-checking against their paperwork later.
+    bill_number?: string
 }) {
     let user
     try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
@@ -297,6 +305,7 @@ export async function createSupplierBillAction(input: {
         paid_amount: needsApproval ? 0 : input.paid_amount,
         payment_type: input.payment_source,
         bank_name: input.payment_source !== 'cash' ? (input.bank_name?.trim() || '') : '',
+        bill_number: input.bill_number?.trim() || '',
         ...(input.payment_source === 'cash_qr' ? { cash_portion: input.cash_portion ?? 0, qr_portion: input.qr_portion ?? 0 } : {}),
         ...(needsApproval ? {
             cheque_status: 'pending_approval',

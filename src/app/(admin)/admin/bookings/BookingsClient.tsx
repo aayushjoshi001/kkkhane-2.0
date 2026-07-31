@@ -175,9 +175,18 @@ function ServiceOrderCard({ order, formatDateTime }: { order: BookingBillOrder; 
     )
 }
 
+// Toggling "View History" closed and back open unmounts and remounts this
+// card, which used to mean every re-open refetched the whole bill from
+// scratch — a multi-query server computation — even to look at the exact
+// same stay a second later. Caching it here (module scope, so it survives
+// across mounts and rows) makes a repeat open instant; a background refetch
+// still keeps it from ever going stale for good.
+const bookingBillCache = new Map<string, BookingBill>()
+
 function BookingHistoryCard({ booking }: { booking: Booking }) {
-    const [loading, setLoading] = useState(true)
-    const [bill, setBill] = useState<BookingBill | null>(null)
+    const cached = bookingBillCache.get(booking.id) ?? null
+    const [loading, setLoading] = useState(!cached)
+    const [bill, setBill] = useState<BookingBill | null>(cached)
     const [error, setError] = useState<string | null>(null)
     const { formatDateTime } = useDates()
 
@@ -185,18 +194,19 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
         let isMounted = true
         async function loadBill() {
             try {
-                setLoading(true)
+                if (!bookingBillCache.has(booking.id)) setLoading(true)
                 setError(null)
                 const res = await fetch(`/api/bookings/bill?bookingId=${booking.id}`)
                 const data = await res.json()
                 if (!isMounted) return
                 if (!res.ok) {
-                    setError(data.error || 'Could not load this bill')
+                    if (!bookingBillCache.has(booking.id)) setError(data.error || 'Could not load this bill')
                     return
                 }
+                bookingBillCache.set(booking.id, data.data as BookingBill)
                 setBill(data.data as BookingBill)
             } catch {
-                if (isMounted) setError('Could not load this bill')
+                if (isMounted && !bookingBillCache.has(booking.id)) setError('Could not load this bill')
             } finally {
                 if (isMounted) setLoading(false)
             }

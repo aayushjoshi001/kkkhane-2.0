@@ -273,9 +273,15 @@ export async function computeFolioForStays(
         targetRestaurantIds.push(partnerRestaurantId)
     }
 
-    // Fetch dynamic pricing rules, total rooms, checked-in bookings count, the
-    // stays' own notes (a cashier's session rate lives in there), and features
-    const [roomRes, bookingsCountRes, roomsCountRes, rulesRes, segmentsRes, bookingRowsRes, features] = await Promise.all([
+    // Every one of these depends only on bookingIds/roomIds/hotelId/
+    // targetRestaurantIds/sessionId — all already known at this point — and
+    // not on each other's results. They used to fire in several waves, each
+    // one waiting on the last for no reason; fetching them together turns
+    // most of this function's round trips into one.
+    const [
+        roomRes, bookingsCountRes, roomsCountRes, rulesRes, segmentsRes, bookingRowsRes, features,
+        chargeRowsRes, linkedSessionsRes, extraSessionRes, byBookingRes,
+    ] = await Promise.all([
         supabase
             .from('rooms')
             .select('id, room_number, room_types:type_id(base_price)')
@@ -305,12 +311,37 @@ export async function computeFolioForStays(
             .order('from_ts', { ascending: true }),
         // A rate the desk agreed for this stay only, tagged into the notes at
         // booking time — read per stay, so a group can hold rooms at different
-        // negotiated rates.
+        // negotiated rates. service_charge_override rides along on the same
+        // row fetch instead of a separate query below for it.
         supabase
             .from('bookings')
-            .select('id, notes')
+            .select('id, notes, service_charge_override')
             .in('id', bookingIds),
         getRestaurantFeatures(hotelId),
+        // Manual charges added during the stay (minibar, laundry, …).
+        supabase
+            .from('room_charges')
+            .select('id, amount, description, charge_type')
+            .in('booking_id', bookingIds)
+            .eq('restaurant_id', hotelId)
+            .order('created_at', { ascending: true }),
+        // Sessions linked to these stays, and which room (if any) each one's
+        // table belongs to — needed to tell an in-room QR order apart from an
+        // ordinary dine-in order billed to the stay.
+        supabase
+            .from('sessions')
+            .select('id, booking_id, tables(room_id)')
+            .in('booking_id', bookingIds),
+        sessionId
+            ? supabase.from('sessions').select('id, booking_id, tables(room_id)').eq('id', sessionId).maybeSingle()
+            : Promise.resolve({ data: null }),
+        // Orders keyed directly to these stays (room QR / desk-placed).
+        supabase
+            .from('orders')
+            .select('id, placed_at, booking_id, session_id, order_items(status, quantity, unit_price, station)')
+            .in('restaurant_id', targetRestaurantIds)
+            .in('booking_id', bookingIds)
+            .neq('status', 'cancelled'),
     ])
 
     const roomInfo = new Map(
@@ -442,25 +473,17 @@ export async function computeFolioForStays(
     // override, so a group reads the first of its rooms that has one.
     let serviceChargeOverride = opts.serviceChargeOverride
     if (serviceChargeOverride === undefined) {
-        const { data: storedRows } = await supabase
-            .from('bookings')
-            .select('service_charge_override')
-            .in('id', bookingIds)
-            .not('service_charge_override', 'is', null)
-            .limit(1)
-        const stored = storedRows?.[0]?.service_charge_override
+        // Read off the same bookings fetch that already carries this column
+        // (bookingRowsRes, above) instead of a dedicated query for it.
+        const stored = (bookingRowsRes.data || []).find(
+            (b) => b.service_charge_override !== null && b.service_charge_override !== undefined,
+        )?.service_charge_override
         serviceChargeOverride = stored === undefined || stored === null ? undefined : Number(stored)
     }
 
     // Manual charges added during the stay (minibar, laundry, …), across every
     // room on the bill.
-    const { data: chargeRows } = await supabase
-        .from('room_charges')
-        .select('id, amount, description, charge_type')
-        .in('booking_id', bookingIds)
-        .eq('restaurant_id', hotelId)
-        .order('created_at', { ascending: true })
-    const charges: FolioCharge[] = (chargeRows || []).map((c) => ({
+    const charges: FolioCharge[] = (chargeRowsRes.data || []).map((c) => ({
         id: c.id,
         description: c.description,
         amount: Number(c.amount) || 0,
@@ -481,15 +504,8 @@ export async function computeFolioForStays(
     // below to tell an in-room QR order (service charge on food only) apart from
     // a normal dine-in order that happens to be billed to this stay (no room
     // service charge).
-    const [linkedSessionsRes, extraSessionRes] = await Promise.all([
-        supabase
-            .from('sessions')
-            .select('id, booking_id, tables(room_id)')
-            .in('booking_id', bookingIds),
-        sessionId
-            ? supabase.from('sessions').select('id, booking_id, tables(room_id)').eq('id', sessionId).maybeSingle()
-            : Promise.resolve({ data: null }),
-    ])
+    // linkedSessionsRes/extraSessionRes were already fetched in the big
+    // Promise.all above, alongside everything else that doesn't depend on it.
     const sessionRoomId = new Map<string, string | null>()
     for (const s of linkedSessionsRes.data || []) {
         sessionRoomId.set(s.id as string, ((s.tables as { room_id?: string } | null)?.room_id) ?? null)
@@ -564,13 +580,8 @@ export async function computeFolioForStays(
         }
     }
 
-    const { data: byBooking } = await supabase
-        .from('orders')
-        .select('id, placed_at, booking_id, session_id, order_items(status, quantity, unit_price, station)')
-        .in('restaurant_id', targetRestaurantIds)
-        .in('booking_id', bookingIds)
-        .neq('status', 'cancelled')
-    addOrders(byBooking as never)
+    // byBookingRes was already fetched in the big Promise.all above.
+    addOrders(byBookingRes.data as never)
 
     if (sessionIds.size > 0) {
         const { data: bySession } = await supabase
