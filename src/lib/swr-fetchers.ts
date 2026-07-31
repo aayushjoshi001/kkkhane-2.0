@@ -101,6 +101,19 @@ export const fetchIngredientsData = async (restaurantId: string) => {
     return data || []
 }
 
+// Inventory Activities — ingredient_movements carries no restaurant_id of its
+// own, so it's scoped by filtering through the ingredient it belongs to.
+export const fetchIngredientMovements = async (restaurantId: string) => {
+    const supabase = createClient()
+    const { data } = await supabase
+        .from('ingredient_movements')
+        .select('id, movement_type, quantity, notes, created_at, ingredients!inner(id, name, unit, restaurant_id), users(full_name)')
+        .eq('ingredients.restaurant_id', restaurantId)
+        .order('created_at', { ascending: false })
+        .limit(300)
+    return data || []
+}
+
 export const fetchPricingRules = async (restaurantId: string) => {
     const supabase = createClient()
     const { data } = await supabase.from('pricing_rules').select('*').eq('restaurant_id', restaurantId).order('created_at', { ascending: false })

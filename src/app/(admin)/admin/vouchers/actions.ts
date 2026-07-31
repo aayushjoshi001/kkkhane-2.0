@@ -190,6 +190,68 @@ async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, 
             console.error("Failed to post staff ledger entry:", insertErr)
             throw new Error(`Failed to post staff ledger: ${insertErr.message}`)
         }
+
+        // staff_ledger alone only tracks what's owed to the staff member —
+        // it was never surfaced anywhere as an actual business cost, so
+        // Income & Expenses / Finance Reports have always excluded staff
+        // pay entirely. Also record it as a real expense, tagged to the
+        // staff member's own department when they have one (an expense
+        // category is auto-created for that department the first time it's
+        // needed, mirroring the "Stock Purchases" category above) so cost
+        // naturally breaks down by department without anyone picking a
+        // category by hand — falls back to a shared "Salary / Wage"
+        // category for staff with no department set. This is a reporting
+        // record only: the Day Book entry already posted the real cash
+        // movement, so a failure here is logged, not thrown — it must never
+        // roll back a payment that already succeeded.
+        try {
+            const { data: staffRow } = await supabase
+                .from('users')
+                .select('full_name, departments(name)')
+                .eq('id', voucher.staff_user_id)
+                .maybeSingle()
+
+            const deptRaw = staffRow?.departments as { name?: string } | { name?: string }[] | null | undefined
+            const departmentName = (Array.isArray(deptRaw) ? deptRaw[0]?.name : deptRaw?.name)?.trim()
+            const categoryName = departmentName || 'Salary / Wage'
+
+            const { data: existingCat } = await supabase
+                .from('expense_categories')
+                .select('id')
+                .eq('restaurant_id', user.restaurantId)
+                .eq('name', categoryName)
+                .maybeSingle()
+
+            let categoryId = existingCat?.id
+            if (!categoryId) {
+                const { data: newCat } = await supabase
+                    .from('expense_categories')
+                    .insert({ restaurant_id: user.restaurantId, name: categoryName, created_by: user.id })
+                    .select('id')
+                    .single()
+                categoryId = newCat?.id
+            }
+
+            if (categoryId) {
+                const bankAccountId = await resolveBankAccountId(supabase, user.restaurantId, voucher.bank_name)
+                const { error: expenseErr } = await supabase
+                    .from('expenses')
+                    .insert({
+                        restaurant_id: user.restaurantId,
+                        category_id: categoryId,
+                        day_book_entry_id: dayBookEntryId,
+                        amount: voucher.amount,
+                        description: voucher.particulars,
+                        vendor_name: (staffRow?.full_name as string) || voucher.party_name,
+                        bank_account_id: bankAccountId,
+                        status: 'paid',
+                        created_by: user.id,
+                    })
+                if (expenseErr) console.error('Failed to post staff salary expense record:', expenseErr)
+            }
+        } catch (e) {
+            console.error('Failed to tag staff salary expense to a department category:', e)
+        }
     } else if (voucher.category === 'expenses' && voucher.expense_category_id) {
         const bankAccountId = await resolveBankAccountId(supabase, user.restaurantId, voucher.bank_name)
 

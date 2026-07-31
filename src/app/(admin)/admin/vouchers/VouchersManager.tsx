@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import {
     FileText, Plus, Search, Trash2, Printer, X, Loader2, ArrowUpRight, ArrowDownRight, RefreshCw, Check, AlertCircle, Download
 } from 'lucide-react'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, parseBankAccountOwnership, chequeTypeForBankAccount } from '@/lib/utils'
 import { createVoucherAction, deleteVoucherAction, approveChequeAction, rejectChequeAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction } from './actions'
 import { toast } from 'react-hot-toast'
 import { downloadCsv } from '@/lib/exportCsv'
@@ -187,22 +187,10 @@ export default function VouchersManager({
     // Parse bank account ownership labels reactively
     const parsedBankAccounts = useMemo(() => {
         return bankAccounts.map(b => {
-            const bName = b.bank_name || ''
-            let ownership: 'company' | 'personal' | 'ac_payee' = 'company'
-            let displayName = bName
-            if (bName.startsWith('personal:')) {
-                ownership = 'personal'
-                displayName = bName.split('personal:')[1]
-            } else if (bName.startsWith('company:')) {
-                ownership = 'company'
-                displayName = bName.split('company:')[1]
-            } else if (bName.startsWith('ac_payee:')) {
-                ownership = 'ac_payee'
-                displayName = bName.split('ac_payee:')[1]
-            }
+            const { ownership, displayName } = parseBankAccountOwnership(b.bank_name)
             return {
                 ...b,
-                ownership,
+                ownership: ownership ?? 'company',
                 displayName
             }
         })
@@ -1046,7 +1034,17 @@ export default function VouchersManager({
                                     </label>
                                     <Select
                                         value={bankName}
-                                        onChange={e => setBankName(e.target.value)}
+                                        onChange={e => {
+                                            const baName = e.target.value
+                                            setBankName(baName)
+                                            // Picking an account whose ownership was
+                                            // set when it was added (Company → A/C
+                                            // Payee, Personal → Normal) default-selects
+                                            // the matching Cheque Type below.
+                                            const matched = bankAccounts.find(b => b.name === baName)
+                                            const suggested = chequeTypeForBankAccount(matched?.bank_name)
+                                            if (suggested) setChequeType(suggested)
+                                        }}
                                         required
                                         className="w-full px-3 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
                                     >

@@ -36,6 +36,7 @@ interface Supplier {
     phone: string | null
     address: string | null
     contact_person: string | null // Holds JSON { pan: string, vat: string }
+    category_id: string | null
     created_at: string
 }
 
@@ -81,6 +82,7 @@ export default function SuppliersLedgerManager({
     const [pan, setPan] = useState('')
     const [vat, setVat] = useState('')
     const [address, setAddress] = useState('')
+    const [categoryId, setCategoryId] = useState('')
     const [submitting, setSubmitting] = useState(false)
 
     // View Ledger Statement state
@@ -131,6 +133,7 @@ export default function SuppliersLedgerManager({
     const [billModalOpen, setBillModalOpen] = useState(false)
     const [selectedIngredientId, setSelectedIngredientId] = useState('')
     const [billDesc, setBillDesc] = useState('')
+    const [billNumber, setBillNumber] = useState('')
     const [billQty, setBillQty] = useState('')
     const [billRate, setBillRate] = useState('')
     const [billUnit, setBillUnit] = useState('kg')
@@ -229,6 +232,7 @@ export default function SuppliersLedgerManager({
         setPan('')
         setVat('')
         setAddress('')
+        setCategoryId('')
         setModalOpen('create')
     }
 
@@ -246,6 +250,7 @@ export default function SuppliersLedgerManager({
         setPan(parsed.pan || '')
         setVat(parsed.vat || '')
         setAddress(supplier.address || '')
+        setCategoryId(supplier.category_id || '')
         setModalOpen('edit')
     }
 
@@ -263,7 +268,8 @@ export default function SuppliersLedgerManager({
                     phone: phone.trim(),
                     pan: pan.trim(),
                     vat: vat.trim(),
-                    address: address.trim()
+                    address: address.trim(),
+                    category_id: categoryId || null
                 })
                 if (res.error) {
                     toast.error(res.error)
@@ -278,7 +284,8 @@ export default function SuppliersLedgerManager({
                     phone: phone.trim(),
                     pan: pan.trim(),
                     vat: vat.trim(),
-                    address: address.trim()
+                    address: address.trim(),
+                    category_id: categoryId || null
                 })
                 if (res.error) {
                     toast.error(res.error)
@@ -386,6 +393,7 @@ export default function SuppliersLedgerManager({
                 qr_portion: billPayment.payment_source === 'cash_qr' ? (parseFloat(billPayment.qr_portion) || 0) : undefined,
                 cheque_details: billPayment.payment_source === 'cheque' ? buildChequeDetailsFromSupplierPayment(billPayment) : undefined,
                 ingredient_id: selectedIngredientId || undefined,
+                bill_number: billNumber.trim() || undefined,
             })
 
             if (res.error) {
@@ -400,6 +408,7 @@ export default function SuppliersLedgerManager({
                 setBillModalOpen(false)
                 setSelectedIngredientId('')
                 setBillDesc('')
+                setBillNumber('')
                 setBillQty('')
                 setBillRate('')
                 setBillUnit('kg')
@@ -683,6 +692,7 @@ export default function SuppliersLedgerManager({
     const reportColumns = [
         { key: 'date', label: 'Date', dateStacked: true },
         { key: 'description', label: 'Description' },
+        { key: 'bill_number', label: 'Bill No.' },
         { key: 'quantity', label: 'Qty', align: 'center' as const },
         { key: 'rate', label: 'Rate', align: 'right' as const },
         { key: 'unit', label: 'Unit', align: 'center' as const },
@@ -696,6 +706,7 @@ export default function SuppliersLedgerManager({
         return {
             date: formatDate(e.created_at),
             description: e.parsed.text_desc || e.description,
+            bill_number: !isOb ? (e.parsed.bill_number || '') : '',
             quantity: !isOb && e.parsed.quantity !== null && e.parsed.quantity !== undefined ? e.parsed.quantity : '',
             rate: !isOb && e.parsed.rate !== null && e.parsed.rate !== undefined ? formatCurrency(e.parsed.rate) : '',
             unit: !isOb ? (e.parsed.unit || '') : '',
@@ -955,6 +966,8 @@ export default function SuppliersLedgerManager({
                                     onClick={() => {
                                         setShowNewCatForm(false)
                                         setSelectedIngredientId('')
+                                        setBillCategory(ledgerSupplier.category_id || '')
+                                        setBillNumber('')
                                         setBillModalOpen(true)
                                     }}
                                     className="flex items-center gap-1.5 px-3.5 py-1.5 bg-brand-500 hover:bg-brand-600 text-white font-extrabold rounded-xl text-[11px] shadow-sm transition-colors whitespace-nowrap"
@@ -1016,6 +1029,7 @@ export default function SuppliersLedgerManager({
                                             <tr className="bg-surface-muted border-b border-hairline text-ink-subtle">
                                                 <th className="px-4 py-3 font-bold">Date</th>
                                                 <th className="px-4 py-3 font-bold">Description</th>
+                                                <th className="px-4 py-3 font-bold w-28">Bill No.</th>
                                                 <th className="px-4 py-3 font-bold text-center w-20">Qty</th>
                                                 <th className="px-4 py-3 font-bold text-right w-24">Rate</th>
                                                 <th className="px-4 py-3 font-bold text-center w-16">Unit</th>
@@ -1043,6 +1057,10 @@ export default function SuppliersLedgerManager({
                                                             <Receipt size={13} className="shrink-0 text-brand-500 mt-0.5" />
                                                             <span className="break-words">{e.parsed.text_desc || e.description}</span>
                                                         </button>
+                                                    </td>
+                                                    {/* Bill Number — the supplier's own reference, when given */}
+                                                    <td className="px-4 py-3 text-ink-subtle font-semibold">
+                                                        {e.parsed.bill_number || <span className="text-ink-subtle italic">-</span>}
                                                     </td>
                                                     {/* Product Quantity */}
                                                     <td className="px-4 py-3 text-center font-bold text-ink">
@@ -1213,6 +1231,25 @@ export default function SuppliersLedgerManager({
                                         className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
                                 </div>
+
+                                {/* Category */}
+                                <div>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Category</label>
+                                    <Select
+                                        value={categoryId}
+                                        onChange={e => setCategoryId(e.target.value)}
+                                        searchable
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    >
+                                        <option value="">Uncategorized</option>
+                                        {expenseCategoriesList.map(c => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                    </Select>
+                                    <p className="text-[10px] font-bold text-ink-muted mt-1.5">
+                                        Bills recorded for this supplier will default to this category — you can still pick a different one each time.
+                                    </p>
+                                </div>
                             </div>
 
                             {/* Modal Footer Actions */}
@@ -1342,6 +1379,18 @@ export default function SuppliersLedgerManager({
                                         value={billDesc}
                                         onChange={e => setBillDesc(e.target.value)}
                                         required
+                                        className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                    />
+                                </div>
+
+                                {/* Bill Number */}
+                                <div>
+                                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Supplier&apos;s Bill Number (optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. their invoice/bill reference"
+                                        value={billNumber}
+                                        onChange={e => setBillNumber(e.target.value)}
                                         className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-xl text-sm font-bold text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
                                     />
                                 </div>
@@ -1562,6 +1611,11 @@ export default function SuppliersLedgerManager({
                                 <h3 className="text-lg font-extrabold text-ink truncate">
                                     {selectedSupplierBillDetails.parsed.text_desc || selectedSupplierBillDetails.description}
                                 </h3>
+                                {selectedSupplierBillDetails.parsed.bill_number && (
+                                    <p className="text-[11px] font-semibold text-ink-subtle mt-0.5">
+                                        Bill No. <span className="text-ink font-bold">{selectedSupplierBillDetails.parsed.bill_number}</span>
+                                    </p>
+                                )}
                             </div>
                         </div>
                         <button

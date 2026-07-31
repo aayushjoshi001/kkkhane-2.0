@@ -8,11 +8,11 @@ import {
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import { createVoucherAction, openTodayDayBookSessionAction, getSupplierOutstandingBalanceAction, getStaffCurrentDueAction, getCustomerOutstandingBalanceAction } from '@/app/(admin)/admin/vouchers/actions'
-import { addStockMovementAction } from '@/app/(admin)/admin/ingredients/actions'
+import { addStockMovementAction, createIngredientAction } from '@/app/(admin)/admin/ingredients/actions'
 import { createSupplierBillAction, createSupplierAction } from '@/app/(admin)/admin/suppliers/actions'
 import { createReceivableTransactionAction } from '@/app/(admin)/admin/finance/receivables/actions'
 import type { BankAccount, ExpenseCategory, Supplier } from '@/types/database'
-import { orderCategoriesForDisplay, findMainCategory, buildDescriptionWithName } from '@/lib/utils'
+import { orderCategoriesForDisplay, findMainCategory, buildDescriptionWithName, chequeTypeForBankAccount } from '@/lib/utils'
 import Select from '@/components/ui/Select'
 import { NepaliDateInput } from '@/components/ui/NepaliDateInput'
 import SupplierPaymentFields, {
@@ -24,7 +24,7 @@ import { useConfirmStore } from '@/lib/stores/confirm'
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface StaffMember { id: string; full_name: string }
-interface IngredientItem { id: string; name: string; unit: string; stock_quantity: number }
+interface IngredientItem { id: string; name: string; unit: string; stock_quantity: number; category_id?: string | null }
 
 interface ManualEntryClientProps {
     bankAccounts: BankAccount[]
@@ -36,6 +36,7 @@ interface ManualEntryClientProps {
     hasOpenSession: boolean
     sessionId: string | null
     userRole: string
+    restaurantId: string
 }
 
 type EntryType = 'cash_in' | 'cash_out' | 'bank_transaction' | 'voucher' | 'inventory' | 'supplier_payment' | 'staff_payment' | 'expense_payment' | 'customer_payment'
@@ -151,7 +152,7 @@ const emptyForms = {
     cash_out: { amount: '', description: '', category: 'other', expense_category_id: '', bank_name: '', staff_id: '', supplier_id: '' },
     bank_transaction: { amount: '', description: '', bank_name: '', transaction_type: 'deposit', category: 'other', expense_category_id: '', staff_id: '', supplier_id: '' },
     voucher: { voucher_type: 'receipt', party_name: '', amount: '', particulars: '', payment_mode: 'cash', bank_name: '' },
-    inventory: { ingredient_id: '', movement_type: 'purchase', quantity: '', rate: '', category_id: '', supplier_id: '', paid_amount: '', notes: '' },
+    inventory: { ingredient_id: '', movement_type: 'purchase', quantity: '', rate: '', unit: 'kg', category_id: '', supplier_id: '', bill_number: '', paid_amount: '', notes: '' },
     supplier_payment: { supplier_id: '', amount: '', payment_source: 'cash', bank_name: '', notes: '' },
     staff_payment: { staff_id: '', entry_type: 'salary_payout', amount: '', payment_mode: 'cash', bank_name: '', notes: '' },
     expense_payment: { amount: '', expense_category_id: '', supplier_id: '', payment_mode: 'cash', bank_name: '', description: '' },
@@ -285,19 +286,28 @@ export default function ManualEntryClient({
     suppliers: initialSuppliers,
     staffList,
     expenseCategories,
-    ingredients,
+    ingredients: initialIngredients,
     customerAccounts: initialCustomerAccounts = [],
     hasOpenSession,
     sessionId,
     userRole,
+    restaurantId,
 }: ManualEntryClientProps) {
     const { confirm } = useConfirmStore()
     const [activeType, setActiveType] = useState<EntryType | null>(null)
     const [suppliers, setSuppliersList] = useState<Supplier[]>(initialSuppliers)
+    // Local so a brand-new stock item typed into the Inventory Adjustment
+    // combobox shows up immediately in later searches, no reload needed.
+    const [ingredientsList, setIngredientsList] = useState<IngredientItem[]>(initialIngredients)
     const [customerAccounts, setCustomerAccounts] = useState<any[]>(initialCustomerAccounts)
     const [showSupplierModal, setShowSupplierModal] = useState(false)
-    const [newSupplierForm, setNewSupplierForm] = useState({ name: '', phone: '', pan: '', vat: '', address: '' })
+    const [newSupplierForm, setNewSupplierForm] = useState({ name: '', phone: '', pan: '', vat: '', address: '', category_id: '' })
     const [isSavingSupplier, setIsSavingSupplier] = useState(false)
+    // Ingredient/item combobox: free-text search over existing stock items,
+    // with the option to type a name that doesn't exist yet — it's created as
+    // a new stock item on save instead of requiring a separate trip to Stock.
+    const [ingredientQuery, setIngredientQuery] = useState('')
+    const [showIngredientSuggestions, setShowIngredientSuggestions] = useState(false)
     const [forms, setForms] = useState(emptyForms)
     const [isPending, startTransition] = useTransition()
     const [lastSuccess, setLastSuccess] = useState<{ type: EntryType; label: string } | null>(null)
@@ -328,12 +338,12 @@ export default function ManualEntryClient({
                 // Auto-select the newly added supplier in whatever form is currently open
                 if (activeType === 'cash_out') updateForm('cash_out', 'supplier_id', sObj.id)
                 else if (activeType === 'bank_transaction') updateForm('bank_transaction', 'supplier_id', sObj.id)
-                else if (activeType === 'inventory') updateForm('inventory', 'supplier_id', sObj.id)
+                else if (activeType === 'inventory') handleInventorySupplierSelect(sObj.id, sObj)
                 else if (activeType === 'supplier_payment') updateForm('supplier_payment', 'supplier_id', sObj.id)
                 else if (activeType === 'expense_payment') updateForm('expense_payment', 'supplier_id', sObj.id)
 
                 setShowSupplierModal(false)
-                setNewSupplierForm({ name: '', phone: '', pan: '', vat: '', address: '' })
+                setNewSupplierForm({ name: '', phone: '', pan: '', vat: '', address: '', category_id: '' })
             }
         } catch (err) {
             toast.error('Failed to create supplier')
@@ -377,6 +387,70 @@ export default function ManualEntryClient({
 
     function updateForm<T extends EntryType>(type: T, field: string, value: string) {
         setForms(prev => ({ ...prev, [type]: { ...prev[type], [field]: value } }))
+    }
+
+    // Bank Account field for Voucher/Supplier/Staff/Expense Payment (the
+    // cards that offer Cheque as a payment method) — picking an account
+    // whose ownership was set when it was added (Company → A/C Payee,
+    // Personal → Normal) default-selects the matching Cheque Type in the
+    // shared chequeDetails state, still changeable by hand afterward.
+    function handleBankAccountSelect<T extends EntryType>(type: T, baName: string) {
+        updateForm(type, 'bank_name', baName)
+        const matched = bankAccounts.find(b => b.name === baName)
+        const suggested = chequeTypeForBankAccount(matched?.bank_name)
+        if (suggested) setChequeDetails(prev => ({ ...prev, cheque_type: suggested }))
+    }
+
+    // Case-insensitive: typing the exact existing name (rather than clicking
+    // its suggestion) still resolves to that item instead of creating a
+    // duplicate.
+    const ingredientExactMatch = useMemo(
+        () => ingredientsList.find(i => i.name.toLowerCase() === ingredientQuery.trim().toLowerCase()) || null,
+        [ingredientsList, ingredientQuery],
+    )
+    const ingredientSuggestions = useMemo(() => {
+        const q = ingredientQuery.trim().toLowerCase()
+        const base = q ? ingredientsList.filter(i => i.name.toLowerCase().includes(q)) : ingredientsList
+        return base.slice(0, 30)
+    }, [ingredientsList, ingredientQuery])
+    const isTypingNewIngredient = !forms.inventory.ingredient_id && ingredientQuery.trim().length > 0 && !ingredientExactMatch
+
+    function handleIngredientQueryChange(value: string) {
+        setIngredientQuery(value)
+        setShowIngredientSuggestions(true)
+        // The selected id is only trusted while the text still matches what
+        // was picked — editing it back out of a selected name means "search
+        // again", not "keep the old item".
+        if (forms.inventory.ingredient_id) {
+            const current = ingredientsList.find(i => i.id === forms.inventory.ingredient_id)
+            if (!current || current.name !== value) updateForm('inventory', 'ingredient_id', '')
+        }
+    }
+
+    function selectIngredientSuggestion(ing: IngredientItem) {
+        updateForm('inventory', 'ingredient_id', ing.id)
+        updateForm('inventory', 'unit', ing.unit)
+        // An existing item's own established category always wins — it can
+        // be bought from suppliers in different categories without the item
+        // itself changing what it is, so this overrides whatever a supplier
+        // pick may have defaulted in earlier. Left alone when the item has no
+        // category of its own, so a supplier-provided default isn't wiped.
+        if (ing.category_id) updateForm('inventory', 'category_id', ing.category_id)
+        setIngredientQuery(ing.name)
+        setShowIngredientSuggestions(false)
+    }
+
+    // Picking a supplier defaults the purchase Category to that supplier's
+    // own category (set on the Suppliers page or Quick Add below), but only
+    // as a fallback for a brand-new/uncategorized item — it never overwrites
+    // a category the item already has (picked above, or from editing) or one
+    // chosen by hand. `known` lets the just-created-supplier callback pass
+    // the row directly rather than relying on `suppliers` state, which
+    // hasn't re-rendered with it yet.
+    function handleInventorySupplierSelect(sId: string, known?: Supplier) {
+        updateForm('inventory', 'supplier_id', sId)
+        const matched = known ?? suppliers.find(s => s.id === sId)
+        if (!forms.inventory.category_id && matched?.category_id) updateForm('inventory', 'category_id', matched.category_id)
     }
 
     // Shared by Cash Out and Bank Out's "Expense" + Supplier picker — shows
@@ -740,10 +814,26 @@ export default function ManualEntryClient({
                 } else if (activeType === 'inventory') {
                     const f = forms.inventory
                     const qty = parseFloat(f.quantity)
-                    if (!f.ingredient_id) { toast.error('Select an ingredient'); return }
-                    if (isNaN(qty) || qty <= 0) { toast.error('Enter a valid quantity'); return }
+                    const typedName = ingredientQuery.trim()
 
-                    const selectedIngredient = ingredients.find(i => i.id === f.ingredient_id)
+                    // Typing a name that matches an existing item exactly
+                    // (without clicking its suggestion) still resolves to
+                    // that item instead of creating a duplicate.
+                    let ingredientId = f.ingredient_id
+                    if (!ingredientId && typedName) {
+                        const exact = ingredientsList.find(i => i.name.toLowerCase() === typedName.toLowerCase())
+                        if (exact) ingredientId = exact.id
+                    }
+                    const isNewItem = !ingredientId
+
+                    if (!ingredientId && !typedName) { toast.error('Select or type an ingredient/item name'); return }
+                    if (isNaN(qty) || qty <= 0) { toast.error('Enter a valid quantity'); return }
+                    if (isNewItem && f.movement_type !== 'purchase') {
+                        toast.error('"' + typedName + '" isn\'t in your inventory yet — switch to "Add Stock (Purchase)" to create it, or pick an existing item.')
+                        return
+                    }
+
+                    let selectedIngredient = ingredientsList.find(i => i.id === ingredientId)
                     const rate = parseFloat(f.rate) || 0
                     const willBill = f.movement_type === 'purchase' && rate > 0
                     const total = qty * rate
@@ -764,12 +854,37 @@ export default function ManualEntryClient({
                         }
                     }
 
-                    result = await addStockMovementAction({
-                        ingredient_id: f.ingredient_id,
-                        movement_type: f.movement_type,
-                        quantity: qty,
-                        notes: f.notes || undefined,
-                    })
+                    const supplierForNew = suppliers.find(s => s.id === f.supplier_id)
+
+                    if (isNewItem) {
+                        // Brand-new item — created with its starting stock set
+                        // directly, the same way the Stock page's own "Create New
+                        // Stock Item" does; no separate movement entry for this
+                        // first quantity.
+                        const createRes = await createIngredientAction({
+                            restaurant_id: restaurantId,
+                            name: typedName,
+                            unit: f.unit,
+                            stock_quantity: qty,
+                            reorder_level: 10,
+                            cost_per_unit: rate,
+                            supplier: supplierForNew?.name || null,
+                            category_id: f.category_id || null,
+                        })
+                        if (createRes.error) { toast.error(createRes.error); return }
+                        const newIng = createRes.data as IngredientItem
+                        setIngredientsList(prev => [...prev, newIng].sort((a, b) => a.name.localeCompare(b.name)))
+                        selectedIngredient = newIng
+                        ingredientId = newIng.id
+                        result = { data: newIng }
+                    } else {
+                        result = await addStockMovementAction({
+                            ingredient_id: ingredientId,
+                            movement_type: f.movement_type,
+                            quantity: qty,
+                            notes: f.notes || undefined,
+                        })
+                    }
 
                     // A purchase also records a supplier bill — same pattern as the
                     // Suppliers Ledger's own "Record Bill" — so paying less than the
@@ -785,10 +900,10 @@ export default function ManualEntryClient({
                         const billRes = await createSupplierBillAction({
                             supplier_name: supplierName,
                             category_id: f.category_id,
-                            text_desc: `Restock: ${selectedIngredient?.name || 'ingredient'}`,
+                            text_desc: `${isNewItem ? 'Initial stock' : 'Restock'}: ${selectedIngredient?.name || typedName || 'ingredient'}`,
                             quantity: qty,
                             rate,
-                            unit: selectedIngredient?.unit || 'pcs',
+                            unit: selectedIngredient?.unit || f.unit || 'pcs',
                             amount: total,
                             paid_amount: paidAmount,
                             payment_source: inventoryPayment.payment_source,
@@ -796,6 +911,7 @@ export default function ManualEntryClient({
                             cash_portion: inventoryPayment.payment_source === 'cash_qr' ? (parseFloat(inventoryPayment.cash_portion) || 0) : undefined,
                             qr_portion: inventoryPayment.payment_source === 'cash_qr' ? (parseFloat(inventoryPayment.qr_portion) || 0) : undefined,
                             cheque_details: inventoryPayment.payment_source === 'cheque' ? buildChequeDetailsFromSupplierPayment(inventoryPayment) : undefined,
+                            bill_number: f.bill_number.trim() || undefined,
                         })
                         if (billRes.error) {
                             toast.error(`Stock updated, but the supplier bill wasn't recorded: ${billRes.error}`)
@@ -989,7 +1105,11 @@ export default function ManualEntryClient({
                 }
                 setLastSuccess({ type: activeType, label })
                 setForms(prev => ({ ...prev, [activeType]: emptyForms[activeType] }))
-                if (activeType === 'inventory') setInventoryPayment(EMPTY_SUPPLIER_PAYMENT)
+                if (activeType === 'inventory') {
+                    setInventoryPayment(EMPTY_SUPPLIER_PAYMENT)
+                    setIngredientQuery('')
+                    setShowIngredientSuggestions(false)
+                }
                 setChequeDetails(EMPTY_CHEQUE_DETAILS)
 
             } catch (e) {
@@ -1412,7 +1532,7 @@ export default function ManualEntryClient({
                                                 <SelectField
                                                     label="Bank Account"
                                                     value={forms.voucher.bank_name}
-                                                    onChange={e => updateForm('voucher', 'bank_name', e.target.value)}
+                                                    onChange={e => handleBankAccountSelect('voucher', e.target.value)}
                                                 >
                                                     <option value="">Select bank...</option>
                                                     {bankAccounts.map(ba => (
@@ -1436,18 +1556,52 @@ export default function ManualEntryClient({
                                     {/* ── INVENTORY ── */}
                                     {activeType === 'inventory' && (
                                         <>
-                                            <SelectField
-                                                label="Ingredient / Item"
-                                                value={forms.inventory.ingredient_id}
-                                                onChange={e => updateForm('inventory', 'ingredient_id', e.target.value)}
-                                            >
-                                                <option value="">Select ingredient...</option>
-                                                {ingredients.map(ing => (
-                                                    <option key={ing.id} value={ing.id}>
-                                                        {ing.name} ({ing.unit}) — Stock: {ing.stock_quantity}
-                                                    </option>
-                                                ))}
-                                            </SelectField>
+                                            <div className="space-y-1.5 relative">
+                                                <label className="block text-small font-bold text-ink">Ingredient / Item</label>
+                                                <input
+                                                    type="text"
+                                                    value={ingredientQuery}
+                                                    onChange={e => handleIngredientQueryChange(e.target.value)}
+                                                    onFocus={() => setShowIngredientSuggestions(true)}
+                                                    onBlur={() => setTimeout(() => setShowIngredientSuggestions(false), 150)}
+                                                    placeholder="Type to search stock, or type a new item name"
+                                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm px-3 py-2 border bg-surface text-ink placeholder:text-ink-subtle placeholder:font-normal transition-all"
+                                                />
+                                                {showIngredientSuggestions && (
+                                                    <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-surface border border-hairline rounded-[var(--r-md)] shadow-lg">
+                                                        {ingredientSuggestions.map(ing => (
+                                                            <button
+                                                                type="button"
+                                                                key={ing.id}
+                                                                onMouseDown={() => selectIngredientSuggestion(ing)}
+                                                                className="w-full text-left px-3 py-2 text-sm hover:bg-surface-muted transition-colors flex items-center justify-between gap-2"
+                                                            >
+                                                                <span className="font-semibold text-ink">{ing.name}</span>
+                                                                <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider shrink-0">{ing.unit} · Stock: {ing.stock_quantity}</span>
+                                                            </button>
+                                                        ))}
+                                                        {ingredientSuggestions.length === 0 && (
+                                                            <p className="px-3 py-2 text-xs text-ink-subtle font-semibold">No matching stock items.</p>
+                                                        )}
+                                                        {ingredientQuery.trim() && !ingredientExactMatch && (
+                                                            <div className="px-3 py-2 text-[11px] font-bold text-brand-600 border-t border-hairline bg-brand-50/40">
+                                                                + &quot;{ingredientQuery.trim()}&quot; isn&apos;t in your inventory yet — it&apos;ll be created as a new stock item on save.
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {isTypingNewIngredient && (
+                                                <SelectField
+                                                    label="Unit (new item)"
+                                                    value={forms.inventory.unit}
+                                                    onChange={e => updateForm('inventory', 'unit', e.target.value)}
+                                                >
+                                                    {['kg', 'g', 'L', 'mL', 'pcs', 'bottle', 'packet', 'lbs', 'oz', 'cups', 'tbsp', 'tsp'].map(u => (
+                                                        <option key={u} value={u}>{u}</option>
+                                                    ))}
+                                                </SelectField>
+                                            )}
                                             <SelectField
                                                 label="Adjustment Type"
                                                 value={forms.inventory.movement_type}
@@ -1484,20 +1638,9 @@ export default function ManualEntryClient({
                                                         </p>
                                                     )}
                                                     <SelectField
-                                                        label="Category"
-                                                        value={forms.inventory.category_id}
-                                                        onChange={e => updateForm('inventory', 'category_id', e.target.value)}
-                                                        searchable
-                                                    >
-                                                        <option value="">Select category...</option>
-                                                        {stockCategoryOptions.map(({ category, label }) => (
-                                                            <option key={category.id} value={category.id}>{label}</option>
-                                                        ))}
-                                                    </SelectField>
-                                                    <SelectField
                                                         label="Supplier (optional)"
                                                         value={forms.inventory.supplier_id}
-                                                        onChange={e => updateForm('inventory', 'supplier_id', e.target.value)}
+                                                        onChange={e => handleInventorySupplierSelect(e.target.value)}
                                                         rightElement={
                                                             <button
                                                                 type="button"
@@ -1514,6 +1657,27 @@ export default function ManualEntryClient({
                                                             <option key={s.id} value={s.id}>{s.name}</option>
                                                         ))}
                                                     </SelectField>
+                                                    <SelectField
+                                                        label="Category"
+                                                        value={forms.inventory.category_id}
+                                                        onChange={e => updateForm('inventory', 'category_id', e.target.value)}
+                                                        searchable
+                                                    >
+                                                        <option value="">Select category...</option>
+                                                        {stockCategoryOptions.map(({ category, label }) => (
+                                                            <option key={category.id} value={category.id}>{label}</option>
+                                                        ))}
+                                                    </SelectField>
+                                                    <p className="text-[10px] font-bold text-ink-muted -mt-2">
+                                                        Picking a supplier fills in their usual category above — change it any time.
+                                                    </p>
+                                                    <InputField
+                                                        label="Supplier's Bill Number (optional)"
+                                                        type="text"
+                                                        placeholder="e.g. their invoice/bill reference"
+                                                        value={forms.inventory.bill_number}
+                                                        onChange={e => updateForm('inventory', 'bill_number', e.target.value)}
+                                                    />
                                                     <InputField
                                                         label="Paid Amount (Rs.)"
                                                         type="number"
@@ -1596,7 +1760,7 @@ export default function ManualEntryClient({
                                                 <SelectField
                                                     label="Bank Account"
                                                     value={forms.supplier_payment.bank_name}
-                                                    onChange={e => updateForm('supplier_payment', 'bank_name', e.target.value)}
+                                                    onChange={e => handleBankAccountSelect('supplier_payment', e.target.value)}
                                                 >
                                                     <option value="">Select bank...</option>
                                                     {bankAccounts.map(ba => (
@@ -1671,7 +1835,7 @@ export default function ManualEntryClient({
                                                 <SelectField
                                                     label="Bank Account"
                                                     value={forms.staff_payment.bank_name}
-                                                    onChange={e => updateForm('staff_payment', 'bank_name', e.target.value)}
+                                                    onChange={e => handleBankAccountSelect('staff_payment', e.target.value)}
                                                 >
                                                     <option value="">Select bank...</option>
                                                     {bankAccounts.map(ba => (
@@ -1753,7 +1917,7 @@ export default function ManualEntryClient({
                                                 <SelectField
                                                     label="Bank Account"
                                                     value={forms.expense_payment.bank_name}
-                                                    onChange={e => updateForm('expense_payment', 'bank_name', e.target.value)}
+                                                    onChange={e => handleBankAccountSelect('expense_payment', e.target.value)}
                                                 >
                                                     <option value="">Select bank...</option>
                                                     {bankAccounts.map(ba => (
@@ -1931,6 +2095,20 @@ export default function ManualEntryClient({
                                 onChange={e => setNewSupplierForm(prev => ({ ...prev, address: e.target.value }))}
                                 placeholder="Enter address"
                             />
+                            <SelectField
+                                label="Category"
+                                value={newSupplierForm.category_id}
+                                onChange={e => setNewSupplierForm(prev => ({ ...prev, category_id: e.target.value }))}
+                                searchable
+                            >
+                                <option value="">Uncategorized</option>
+                                {expenseCategoryOptions.map(({ category, label }) => (
+                                    <option key={category.id} value={category.id}>{label}</option>
+                                ))}
+                            </SelectField>
+                            <p className="text-[10px] font-bold text-ink-muted -mt-2">
+                                Bills and stock purchases for this supplier will default to this category from now on.
+                            </p>
                         </div>
                         <div className="px-6 py-4 bg-surface-muted/50 border-t border-hairline flex items-center justify-end gap-3">
                             <button
