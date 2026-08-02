@@ -139,6 +139,11 @@ export const DEFAULT_ON_FEATURES = [
     'printBillEnabled',
     'showInvoiceEnabled',
     'kdsEnabled',
+    // The kitchen gets both halves out of the box: a screen to work from and a
+    // ticket at the pass. They used to be exclusive, so a tenant provisioned
+    // without the keys silently had no auto-print at all and no way to notice —
+    // placing an order simply produced no paper and no error.
+    'kotEnabled',
 ] as const
 
 export type DefaultOnFeature = typeof DEFAULT_ON_FEATURES[number]
@@ -359,6 +364,12 @@ export function buildFeaturesV2(tier: Tier, mode: BusinessMode) {
         geofenceRadiusMeters: 100,
         // Phase 3: customers may request a waiter open their table session.
         selfOrderRequestEnabled: true,
+        // Both halves of the kitchen, on by default. These were absent from
+        // this object entirely, so every restaurant provisioned since launch
+        // stored neither key — and absent kotEnabled reads as off, which is
+        // why a new tenant's KOT never printed until a super admin noticed.
+        kotEnabled: true,
+        kdsEnabled: true,
     }
 }
 

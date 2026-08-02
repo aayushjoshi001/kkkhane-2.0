@@ -140,7 +140,7 @@ export default function SettingsManager({
             manualEntryEnabled: true,
             printBillEnabled: true,
             showInvoiceEnabled: true,
-            kotEnabled: false,
+            kotEnabled: true,
             kdsEnabled: true,
             roomServiceChargeEnabled: false,
             roomServiceChargeRooms: [],
@@ -381,12 +381,9 @@ export default function SettingsManager({
         if (!canEdit) return
         const newValue = !features[key]
         
-        let updatePayload: Partial<Features> = { [key]: newValue }
-        if (key === 'kotEnabled' && newValue) {
-            updatePayload.kdsEnabled = false
-        } else if (key === 'kdsEnabled' && newValue) {
-            updatePayload.kotEnabled = false
-        }
+        // KOT and KDS no longer clear each other: a kitchen can work the board
+        // and still have a ticket at the pass, which is the default now.
+        const updatePayload: Partial<Features> = { [key]: newValue }
 
         const updated = { ...features, ...updatePayload }
         setFeatures(updated)

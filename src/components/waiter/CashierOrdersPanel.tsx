@@ -12,7 +12,7 @@ import { useConfirmStore } from '@/lib/stores/confirm'
 import { useFeatures } from '@/lib/contexts/FeatureContext'
 import { usePrinter } from '@/lib/print/usePrinter'
 import { buildStationTicket } from '@/lib/print/templates/stationTicket'
-import { OUTSTANDING_PRINT_SELECT } from '@/lib/print/printClaims'
+import { OUTSTANDING_PRINT_SELECT, claimForPrinting } from '@/lib/print/printClaims'
 import { itemsForStation, STATION_META, type StationKind } from '@/lib/stations'
 import {
     confirmOrderItems, deleteUnconfirmedOrderItem, cancelOrder,
@@ -211,6 +211,14 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
     // panel receives doesn't carry station/modifier detail needed for a ticket.
     async function printConfirmedItems(order: ActiveOrder, itemIds: string[]) {
         if (!features.kotEnabled || itemIds.length === 0) return
+        // Claim before printing, like every other auto-print path. This used to
+        // print straight out, and confirmOrderItems never stamps kot_printed_at
+        // — so these lines stayed "outstanding" and the 60s catch-up poll in
+        // CashierClient printed the whole ticket a second time. Harmless while
+        // KOT was off for everyone; a duplicate ticket per confirmation now
+        // that it is on by default.
+        const wonIds = await claimForPrinting(supabaseRef.current, itemIds)
+        if (wonIds.length === 0) return // a station board got there first
         const { data: rawItems } = await supabaseRef.current
             .from('order_items')
             .select(`
@@ -219,7 +227,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                 menu_item_variations:menu_item_variation_id ( id, name ),
                 order_item_modifiers ( modifier_name, price_adjustment )
             `)
-            .in('id', itemIds)
+            .in('id', wonIds)
         if (!rawItems || rawItems.length === 0) return
         const items = rawItems as unknown as KitchenOrder['order_items'] & object[]
 
@@ -528,6 +536,7 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                         onCancelOrder={(order) => handleCancelOrder(order)}
                                         onCancelItem={(orderId, itemId, label, maxQty, unitPrice) => handleCancelOrderItem(orderId, itemId, label, maxQty, unitPrice)}
                                         kotEnabled={features.kotEnabled}
+                                        kdsEnabled={features.kdsEnabled ?? true}
                                         reprintingId={reprintingId}
                                         onReprint={(orderId) => handleReprintTickets(orderId)}
                                     />
@@ -768,6 +777,7 @@ function StatusDetail({
     onCancelOrder,
     onCancelItem,
     kotEnabled,
+    kdsEnabled,
     reprintingId,
     onReprint,
 }: {
@@ -783,7 +793,10 @@ function StatusDetail({
     onMarkServed: (orderId: string, itemIds: string[]) => void
     onCancelOrder: (order: AnyOrder) => void
     onCancelItem: (orderId: string, itemId: string, label: string, maxQty: number, unitPrice: number) => void
+    /** Tickets print — gates the reprint affordance only. */
     kotEnabled?: boolean
+    /** A KDS advances items to `ready` — gates the serve-from-the-till flow. */
+    kdsEnabled?: boolean
     reprintingId: string | null
     onReprint: (orderId: string) => void
 }) {
@@ -832,8 +845,10 @@ function StatusDetail({
                             </div>
                         </div>
 
-                        {/* Items checkboxes/serving logic */}
-                        {!kotEnabled && readyIds.length > 0 && (
+                        {/* Items checkboxes/serving logic. Serving from the till
+                            needs a KDS to have moved items to `ready`; whether
+                            tickets also print is a separate question. */}
+                        {kdsEnabled && readyIds.length > 0 && (
                             <button
                                 onClick={toggleAll}
                                 className="flex items-center gap-1.5 text-[11px] font-bold text-ink-subtle hover:text-ink transition-colors"
@@ -845,7 +860,7 @@ function StatusDetail({
 
                         <div className="space-y-1.5">
                             {items.map(item => {
-                                const canServe = !kotEnabled && item.status === 'ready' && item.id
+                                const canServe = kdsEnabled && item.status === 'ready' && item.id
                                 return (
                                     <div key={item.id} className="flex items-center gap-2.5 bg-surface rounded-xl border border-hairline px-3 py-2">
                                         {canServe ? (
@@ -855,7 +870,7 @@ function StatusDetail({
                                         ) : null}
                                         <div className="flex-1 min-w-0">
                                             <p className="text-xs font-bold text-ink truncate">{item.quantity}× {getItemDisplayName(item)}</p>
-                                            {!kotEnabled && <p className="text-[10px] text-ink-subtle capitalize">{item.status}</p>}
+                                            {kdsEnabled && <p className="text-[10px] text-ink-subtle capitalize">{item.status}</p>}
                                         </div>
                                         <span className="text-[11px] font-semibold text-ink-muted tabular-nums shrink-0">
                                             {money((item.unit_price || 0) * item.quantity)}
@@ -874,7 +889,7 @@ function StatusDetail({
                             })}
                         </div>
 
-                        {!kotEnabled && readyIds.length > 0 && (
+                        {kdsEnabled && readyIds.length > 0 && (
                             <button
                                 onClick={() => onMarkServed(order.id, Array.from(selected))}
                                 disabled={isBusy || selected.size === 0}

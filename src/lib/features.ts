@@ -73,9 +73,6 @@ export async function getRestaurantFeatures(restaurantId: string): Promise<Setti
             generateInvoiceEnabled: isIrd ? true : (features.generateInvoiceEnabled ?? true),
             printInvoiceEnabled: isIrd ? true : (features.printInvoiceEnabled ?? true),
             vatEnabled: isIrd ? features.vatEnabled : false,
-            // KOT and KDS are the two halves of one choice — mirrors the same
-            // rule in FeatureContext so both sides agree.
-            kdsEnabled: features.kotEnabled ? false : (features.kdsEnabled ?? true),
         }
     } catch (e) {
         console.error('getRestaurantFeatures error:', e)
@@ -231,6 +228,12 @@ export async function updateFeaturesAction(restaurantId: string, features: Parti
 
         const blocked = Object.keys(features).filter(key => {
             if (!SUBSCRIPTION_FEATURES.includes(key)) return false
+            // Which hardware the kitchen runs on — a screen, a printer, or both
+            // — is an operational choice about the tenant's own kitchen, not a
+            // paid entitlement. Locking it to super admins meant a manager whose
+            // KOT had never been switched on was told "your plan does not
+            // include kotEnabled" and had no way to make tickets print.
+            if (key === 'kotEnabled' || key === 'kdsEnabled') return false
             // Modules are plan-gated: allowed when the tier covers them.
             if ((MODULE_KEYS as readonly string[]).includes(key)) {
                 return !tierIncludesModule(tier, key as ModuleKey)
@@ -243,8 +246,7 @@ export async function updateFeaturesAction(restaurantId: string, features: Parti
                 return !tierIncludesEntitlement(tier, key as TierEntitlement)
             }
             // Everything else on the subscription list stays super-admin only —
-            // irdSync in particular carries tax-filing credentials, and KOT/KDS
-            // decide which physical hardware the kitchen runs on.
+            // irdSync in particular carries tax-filing credentials.
             return true
         })
 

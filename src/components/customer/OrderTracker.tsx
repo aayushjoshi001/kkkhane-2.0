@@ -70,8 +70,14 @@ export default function OrderTracker({
     // Hotels run the kitchen off printed KOT tickets, not this digital tracker —
     // order status here never advances for them, so live tracking is hidden for
     // every order in a hotel-mode restaurant, not just ones billed to a room.
+    //
+    // The test is whether a KDS is advancing the status, NOT whether tickets
+    // print: a kitchen can work the board and print at the pass, and that
+    // kitchen's statuses are live. Keyed off kotEnabled this hid the tracker
+    // from every restaurant the moment auto-print was switched on.
     const businessMode = useBusinessMode()
-    const hideLiveTracking = isHotelRoom || businessMode === 'hotel' || !!features?.kotEnabled
+    const kdsEnabled = features?.kdsEnabled ?? true
+    const hideLiveTracking = isHotelRoom || businessMode === 'hotel' || !kdsEnabled
     const activeShowSuccess = hideLiveTracking ? true : showSuccessScreen
 
     useEffect(() => {

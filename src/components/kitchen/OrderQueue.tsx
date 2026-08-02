@@ -135,7 +135,9 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
     })
     const money = useCurrency()
     const features = useFeatures()
-    const kdsEnabled = !features.kotEnabled && (features.kdsEnabled ?? true)
+    // Independent of kotEnabled: a kitchen printing tickets can still work them
+    // on this screen. Only the KDS flag decides whether the board is interactive.
+    const kdsEnabled = features.kdsEnabled ?? true
     const supabaseRef = useRef(createClient())
     const { print: printKot, networkPrinter } = usePrinter(stationMeta.printerRole)
     // Queued, not a single slot — QZ Tray being down for the whole shift means

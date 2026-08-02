@@ -71,7 +71,8 @@ export default function CashierTableManager({
     const router = useRouter()
     const money = useCurrency()
     const features = useFeatures()
-    const kdsEnabled = !features.kotEnabled && (features.kdsEnabled ?? true)
+    // Live cooking status comes from the KDS, whether or not tickets also print.
+    const kdsEnabled = features.kdsEnabled ?? true
 
     const getTableCookingStatus = (table: TableWithSession) => {
         if (!table.activeSession) return null

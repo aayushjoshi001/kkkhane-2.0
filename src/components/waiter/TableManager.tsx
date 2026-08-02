@@ -64,7 +64,8 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
     const { confirm } = useConfirmStore()
     const router = useRouter()
     const features = useFeatures()
-    const kdsEnabled = !features.kotEnabled && (features.kdsEnabled ?? true)
+    // Live cooking status comes from the KDS, whether or not tickets also print.
+    const kdsEnabled = features.kdsEnabled ?? true
 
     // Split-table (per-seat billing) state — lets a waiter turn a shared table
     // into independent covers (Table 5-1, Table 5-2, ...) that each order and
