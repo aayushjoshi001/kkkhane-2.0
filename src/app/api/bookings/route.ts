@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getOptionalUser } from '@/lib/auth'
 import { postHotelPaymentIncomeAndLedger } from '@/lib/ledger'
 import { nepalInputToISO } from '@/lib/utils'
+import { logAudit } from '@/lib/audit'
 
 /** One room being booked, with the guests going into it. */
 interface RoomRequest {
@@ -421,6 +422,200 @@ export async function POST(req: Request) {
             data: bookings[0],
             group_id: groupId,
             bookings,
+        })
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 })
+    }
+}
+
+/**
+ * Edit active booking details (custom room rate, guest information, KYC, dates, guest mix, parking).
+ */
+export async function PATCH(req: Request) {
+    try {
+        const currentUser = await getOptionalUser()
+        if (!currentUser || !currentUser.restaurantId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+
+        const body = await req.json().catch(() => ({}))
+        const { bookingId, reason } = body
+
+        if (!bookingId || typeof bookingId !== 'string') {
+            return NextResponse.json({ error: 'Missing bookingId' }, { status: 400 })
+        }
+
+        const supabase = await createAdminClient()
+
+        // 1. Fetch existing booking
+        const { data: existing, error: fetchErr } = await supabase
+            .from('bookings')
+            .select('*')
+            .eq('id', bookingId)
+            .eq('restaurant_id', currentUser.restaurantId)
+            .maybeSingle()
+
+        if (fetchErr || !existing) {
+            return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+        }
+
+        if (!['pending', 'checked_in'].includes(existing.status)) {
+            return NextResponse.json(
+                { error: 'Cannot edit a stay that is already closed or cancelled' },
+                { status: 409 }
+            )
+        }
+
+        const updates: Record<string, any> = {}
+
+        // Guest info
+        if (body.guest_name !== undefined) {
+            const name = String(body.guest_name).trim()
+            if (!name) return NextResponse.json({ error: 'Guest name cannot be empty' }, { status: 400 })
+            updates.guest_name = name
+        }
+        if (body.guest_phone !== undefined) {
+            const phone = String(body.guest_phone).trim()
+            if (!phone) return NextResponse.json({ error: 'Guest phone cannot be empty' }, { status: 400 })
+            updates.guest_phone = phone
+        }
+        if (body.guest_email !== undefined) {
+            updates.guest_email = typeof body.guest_email === 'string' && body.guest_email.trim() ? body.guest_email.trim() : null
+        }
+
+        // Guest mix
+        if (body.adult_male !== undefined || body.adult_female !== undefined || body.children !== undefined) {
+            const male = Math.max(0, Math.trunc(Number(body.adult_male ?? existing.adult_male) || 0))
+            const female = Math.max(0, Math.trunc(Number(body.adult_female ?? existing.adult_female) || 0))
+            const children = Math.max(0, Math.trunc(Number(body.children ?? existing.children) || 0))
+            if (male + female < 1) {
+                return NextResponse.json({ error: 'At least one adult guest is required' }, { status: 400 })
+            }
+            updates.adult_male = male
+            updates.adult_female = female
+            updates.children = children
+            updates.adults = male + female
+        }
+
+        // Dates
+        let checkInISO = existing.check_in
+        let checkOutISO = existing.check_out
+        if (body.check_in) {
+            try {
+                checkInISO = nepalInputToISO(body.check_in)
+            } catch {
+                return NextResponse.json({ error: 'Invalid check-in date' }, { status: 400 })
+            }
+        }
+        if (body.check_out) {
+            try {
+                checkOutISO = nepalInputToISO(body.check_out)
+            } catch {
+                return NextResponse.json({ error: 'Invalid check-out date' }, { status: 400 })
+            }
+        }
+        if (new Date(checkOutISO) <= new Date(checkInISO)) {
+            return NextResponse.json({ error: 'Check-out must be after check-in' }, { status: 400 })
+        }
+        updates.check_in = checkInISO
+        updates.check_out = checkOutISO
+
+        // Parking
+        if (body.parking_required !== undefined) {
+            updates.parking_required = body.parking_required === true || body.parking_required === 'true'
+        }
+        if (body.parking_vehicle_no !== undefined) {
+            updates.parking_vehicle_no = typeof body.parking_vehicle_no === 'string' && body.parking_vehicle_no.trim()
+                ? body.parking_vehicle_no.trim().slice(0, 32)
+                : null
+        }
+        if (body.parking_fee !== undefined) {
+            const fee = Math.max(0, Number(body.parking_fee) || 0)
+            if (!Number.isFinite(fee)) return NextResponse.json({ error: 'Invalid parking fee' }, { status: 400 })
+            
+            // Update parking charge in room_charges table instead of non-existent column on bookings
+            await supabase.from('room_charges').delete().eq('booking_id', bookingId).eq('charge_type', 'parking')
+            if (fee > 0) {
+                const vehicleNo = updates.parking_vehicle_no !== undefined ? updates.parking_vehicle_no : existing.parking_vehicle_no
+                await supabase.from('room_charges').insert({
+                    restaurant_id: currentUser.restaurantId,
+                    booking_id: bookingId,
+                    description: vehicleNo ? `Parking (${vehicleNo})` : 'Parking',
+                    amount: fee,
+                    charge_type: 'parking',
+                    charged_by: currentUser.id,
+                })
+            }
+        }
+
+        // Handle Notes (KYC + Custom Rate)
+        let currentNotes = existing.notes || ''
+        let hasNotesChange = false
+
+        if (body.kyc !== undefined) {
+            hasNotesChange = true
+            const kycStr = typeof body.kyc === 'string' ? body.kyc.trim() : ''
+            // Strip existing KYC prefix
+            currentNotes = currentNotes.replace(/^KYC:\s*[^|]*/, '').replace(/^\|\s*/, '').trim()
+            if (kycStr) {
+                currentNotes = `KYC: ${kycStr}${currentNotes ? ' | ' + currentNotes : ''}`
+            }
+        }
+
+        if (body.custom_room_price !== undefined) {
+            hasNotesChange = true
+            const priceNum = Number(body.custom_room_price)
+            const customPrice = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null
+            // Strip existing [CUSTOM_RATE:x]
+            currentNotes = currentNotes.replace(/\[CUSTOM_RATE:[^\]]*\]/g, '').replace(/\|\s*$/, '').trim()
+            if (customPrice) {
+                currentNotes = `${currentNotes ? currentNotes + ' | ' : ''}[CUSTOM_RATE:${customPrice}]`
+            }
+        }
+
+        if (hasNotesChange) {
+            updates.notes = currentNotes || null
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+        }
+
+        // Apply update to booking
+        const { data: updated, error: updateErr } = await supabase
+            .from('bookings')
+            .update(updates)
+            .eq('id', bookingId)
+            .eq('restaurant_id', currentUser.restaurantId)
+            .select()
+            .single()
+
+        if (updateErr) throw updateErr
+
+        // Audit logging
+        void logAudit({
+            restaurantId: currentUser.restaurantId,
+            userId: currentUser.id,
+            action: 'booking_edited',
+            entityType: 'booking',
+            entityId: bookingId,
+            oldValue: {
+                guest_name: existing.guest_name,
+                guest_phone: existing.guest_phone,
+                check_in: existing.check_in,
+                check_out: existing.check_out,
+                notes: existing.notes,
+                parking_fee: existing.parking_fee,
+            },
+            newValue: {
+                ...updates,
+                reason: reason || 'Booking details updated by cashier/admin',
+            },
+        })
+
+        return NextResponse.json({
+            success: true,
+            data: updated,
         })
     } catch (e: any) {
         return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 })
