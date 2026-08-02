@@ -227,19 +227,33 @@ async function KpiCardsSection({ restaurantId, money, isHotel = false }: { resta
         sessionsCountRes,
         todayOrdersRes,
         activeShiftCountRes,
+        todayBookingsRes,
     ] = await Promise.all([
         adminSupabase.from('orders').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
         adminSupabase.from('sessions').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('status', 'active'),
-        adminSupabase.from('orders').select('total_amount, status').eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
+        adminSupabase.from('orders').select('total_amount, status, payment_status').eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
         adminSupabase.from('staff_shifts').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).is('clock_out', null),
+        isHotel
+            ? adminSupabase
+                .from('bookings')
+                .select('total_amount')
+                .eq('restaurant_id', restaurantId)
+                .or(`and(bill_settled_at.gte.${today.toISOString()}),and(bill_settled_at.is.null,checked_out_at.gte.${today.toISOString()})`)
+            : Promise.resolve({ data: [] }),
     ])
 
     const totalOrdersToday = ordersCountRes.count || 0
     const activeSessionCount = sessionsCountRes.count || 0
     const todayOrders = todayOrdersRes.data || []
+    const todayBookings = (todayBookingsRes.data || []) as { total_amount: number }[]
     const activeShiftCount = activeShiftCountRes.count || 0
 
-    const totalRevenueToday = todayOrders.filter(o => o.status === 'delivered').reduce((s, o) => s + (o.total_amount || 0), 0)
+    const ordersRevenue = todayOrders
+        .filter(o => o.payment_status === 'paid' || o.status === 'delivered' || o.status === 'completed')
+        .reduce((s, o) => s + (o.total_amount || 0), 0)
+    const roomRevenueToday = todayBookings.reduce((s, b) => s + (Number(b.total_amount) || 0), 0)
+
+    const totalRevenueToday = ordersRevenue + roomRevenueToday
 
     if (isHotel) {
         let occupiedRooms = 0
