@@ -432,6 +432,18 @@ export async function POST(req: Request) {
                 Number(cash_paid) || 0, Number(qr_paid) || 0, creditAmount,
             )
 
+            const priorPaidNoInvoice = members.reduce((s, m) => s + (Number(m.paid_amount) || 0), 0)
+            const returnToGuestNoInvoice = round2(priorPaidNoInvoice + settledNow - authoritativeTotal)
+            if (returnToGuestNoInvoice > 0) {
+                const { postFinancialTransaction } = await import('@/lib/ledger')
+                await postFinancialTransaction(supabase, { restaurantId: booking.restaurant_id, id: currentUser.id }, {
+                    type: 'cash_out',
+                    amount: returnToGuestNoInvoice,
+                    category: 'refund',
+                    description: `Return to Guest (Refund): ${booking.guest_name || 'Guest'}`,
+                })
+            }
+
             return NextResponse.json({
                 success: true,
                 total: authoritativeTotal,
