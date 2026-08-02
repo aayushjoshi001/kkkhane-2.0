@@ -257,6 +257,74 @@ export async function attachCreatorNames<T extends { created_by?: string | null 
     return rows.map(r => ({ ...r, created_by_name: r.created_by ? (nameById.get(r.created_by) ?? null) : null }))
 }
 
+export interface CashierBreakdownRow {
+    id: string
+    name: string
+    cash_in: number
+    cash_out: number
+    qr_in: number
+    qr_out: number
+    bank_in: number
+    bank_out: number
+    total_in: number
+    total_out: number
+}
+
+/**
+ * Groups a session's (or range's) day_book_entries by who posted them
+ * (`created_by`), splitting `bank_in`/`bank_out` further into QR
+ * (`category === 'qr_payment'`) vs. other bank movement — so the Day Book
+ * summary can show "cashier X collected this much cash, this much QR, this
+ * much other bank" for a business day (open-to-close) or a date range.
+ * Entries with no `created_by` are grouped under 'Unknown' rather than
+ * dropped, since unattributed money still needs to reconcile.
+ */
+export function computeCashierBreakdown<T extends {
+    type: DayBookEntryType
+    category: string
+    amount: number | string
+    created_by?: string | null
+    created_by_name?: string | null
+}>(entries: T[]): CashierBreakdownRow[] {
+    const rows = new Map<string, CashierBreakdownRow>()
+
+    for (const e of entries) {
+        const id = e.created_by || 'unknown'
+        const name = e.created_by_name || 'Unknown'
+        let row = rows.get(id)
+        if (!row) {
+            row = { id, name, cash_in: 0, cash_out: 0, qr_in: 0, qr_out: 0, bank_in: 0, bank_out: 0, total_in: 0, total_out: 0 }
+            rows.set(id, row)
+        }
+
+        const amount = Number(e.amount) || 0
+        const isQr = e.category === 'qr_payment'
+
+        switch (e.type) {
+            case 'cash_in':
+                row.cash_in += amount
+                row.total_in += amount
+                break
+            case 'cash_out':
+                row.cash_out += amount
+                row.total_out += amount
+                break
+            case 'bank_in':
+                if (isQr) row.qr_in += amount
+                else row.bank_in += amount
+                row.total_in += amount
+                break
+            case 'bank_out':
+                if (isQr) row.qr_out += amount
+                else row.bank_out += amount
+                row.total_out += amount
+                break
+        }
+    }
+
+    return [...rows.values()].sort((a, b) => b.total_in - a.total_in)
+}
+
 export interface DayBookRangeTotals {
     opening_cash_balance: number
     opening_bank_balance: number
@@ -272,6 +340,7 @@ export interface DayBookRangeResult {
     sessions: DayBookSession[]
     entries: (DayBookEntry & { session_date: string; created_by_name: string | null })[]
     totals: DayBookRangeTotals
+    byCashier: CashierBreakdownRow[]
 }
 
 /**
@@ -358,6 +427,7 @@ export async function computeDayBookRange(
             closing_cash_balance: openingCashBalance + totalCashIn - totalCashOut,
             closing_bank_balance: openingBankBalance + totalBankIn - totalBankOut,
         },
+        byCashier: computeCashierBreakdown(entries),
     }
 }
 

@@ -46,6 +46,8 @@ interface Expense {
     description: string
     vendor_name: string | null
     created_at: string
+    created_by?: string | null
+    created_by_name?: string | null
     expense_categories: { name: string } | null
     bank_accounts: { name: string } | null
 }
@@ -564,6 +566,7 @@ export default function SuppliersLedgerManager({
             bank_accounts?: {
                 name: string
             }
+            created_by_name?: string | null
             isPaymentRow?: boolean
         }> = []
 
@@ -588,7 +591,8 @@ export default function SuppliersLedgerManager({
                     paid_amount: initialPaid,
                     payment_type: initialPaid === 0 ? 'UNPAID' : parsed.payment_type || 'cash',
                 },
-                bank_accounts: b.bank_accounts ? { name: b.bank_accounts.name } : undefined
+                bank_accounts: b.bank_accounts ? { name: b.bank_accounts.name } : undefined,
+                created_by_name: b.created_by_name || null
             })
         })
 
@@ -600,6 +604,7 @@ export default function SuppliersLedgerManager({
             totalAmount: number
             paymentMode: string
             bankName: string
+            createdByName: string | null
         }> = {}
 
         settlements.forEach(s => {
@@ -622,7 +627,8 @@ export default function SuppliersLedgerManager({
                     description: `Payment Voucher (${voucherNo}) - ${parsedDbDesc.particulars || 'Supplier Payment'}`,
                     totalAmount: 0,
                     paymentMode: parsedDbDesc.payment_mode || (dbEntry.type?.includes('cash') ? 'cash' : 'bank'),
-                    bankName: parsedDbDesc.bank_name || dbEntry.bank_name || ''
+                    bankName: parsedDbDesc.bank_name || dbEntry.bank_name || '',
+                    createdByName: dbEntry.users?.full_name || null
                 }
             }
             groupedSettlements[entryId].totalAmount += Number(s.amount)
@@ -646,6 +652,7 @@ export default function SuppliersLedgerManager({
                     payment_type: gs.paymentMode,
                     bank_name: gs.bankName || ''
                 },
+                created_by_name: gs.createdByName,
                 isPaymentRow: true
             })
         })
@@ -699,6 +706,7 @@ export default function SuppliersLedgerManager({
         { key: 'amount', label: 'Amount', align: 'right' as const },
         { key: 'paid_amount', label: 'Paid Amount', align: 'right' as const },
         { key: 'payment_type', label: 'Payment Type' },
+        { key: 'added_by', label: 'Added By' },
         { key: 'running_balance', label: 'Running Balance', align: 'right' as const },
     ]
     const reportRows = supplierLedgerEntries.map(e => {
@@ -716,6 +724,7 @@ export default function SuppliersLedgerManager({
                 ? 'UNPAID'
                 : `${e.owed > 0 ? 'Partial - ' : ''}${paymentTypeLabel(e.parsed, e.bank_accounts?.name)}` +
                   (e.parsed.payment_type === 'cash_qr' ? ` (Cash: ${formatCurrency(e.parsed.cash_portion ?? 0)}, QR: ${formatCurrency(e.parsed.qr_portion ?? 0)})` : ''),
+            added_by: e.created_by_name || 'Unknown',
             running_balance: formatCurrency(e.runningBalance),
         }
     })
@@ -1036,6 +1045,7 @@ export default function SuppliersLedgerManager({
                                                 <th className="px-4 py-3 font-bold text-right w-28">Amount</th>
                                                 <th className="px-4 py-3 font-bold text-right w-28">Paid Amount</th>
                                                 <th className="px-4 py-3 font-bold text-center w-28">Payment Type</th>
+                                                <th className="px-4 py-3 font-bold w-28">Added By</th>
                                                 <th className="px-4 py-3 font-bold text-right w-32 bg-surface-muted/50">Running Balance</th>
                                             </tr>
                                         </thead>
@@ -1126,6 +1136,10 @@ export default function SuppliersLedgerManager({
                                                                 QR: {formatCurrency(e.parsed.qr_portion ?? 0)}
                                                             </div>
                                                         )}
+                                                    </td>
+                                                    {/* Added By */}
+                                                    <td className="px-4 py-3 font-semibold text-ink-subtle">
+                                                        {e.created_by_name || 'Unknown'}
                                                     </td>
                                                     {/* Running Balance */}
                                                     <td className={`px-4 py-3 text-right font-black bg-surface-muted/30 ${e.runningBalance > 0 ? 'text-rose-600' : 'text-ink'}`}>

@@ -5,11 +5,12 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
     TrendingUp, TrendingDown, Wallet, Landmark, AlertCircle, Download, Printer, BookOpen,
-    ChevronLeft, ChevronRight, Loader2,
+    ChevronLeft, ChevronRight, Loader2, Users,
 } from 'lucide-react'
 import type { DayBookSession, DayBookEntry } from '@/types/database'
+import type { CashierBreakdownRow } from '@/lib/ledger'
 import { downloadCsv, downloadExcel } from '@/lib/exportCsv'
-import { downloadPdf } from '@/lib/exportPdf'
+import { downloadPdf, type PdfColumn } from '@/lib/exportPdf'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { useDates } from '@/lib/contexts/CalendarContext'
 import { formatDateParts, type Calendar } from '@/lib/calendar'
@@ -45,12 +46,14 @@ export interface DayBookRangeProp {
     sessions: DayBookSession[]
     entries: (DayBookEntry & { session_date: string; created_by_name: string | null })[]
     totals: DayBookRangeTotals
+    byCashier: CashierBreakdownRow[]
 }
 
 interface DayBookClientProps {
     session: DayBookSession | null
     entries: (DayBookEntry & { created_by_name: string | null })[]
     totals: DayBookTotals
+    byCashier: CashierBreakdownRow[]
     todayDate: string   // YYYY-MM-DD
     /** The day on screen. Equals the session's own date, which can trail today. */
     selectedDate: string
@@ -104,6 +107,166 @@ function entryDateStr(iso: string, calendar: Calendar) {
 const formatDescription = formatDayBookDescription
 
 const isSourceCash = isDayBookSourceCash
+
+function netFmt(n: number) {
+    return (n >= 0 ? '' : '-') + fmt(Math.abs(n))
+}
+
+/**
+ * Per-cashier cash/QR/bank breakdown — who collected or paid out how much,
+ * for the session (open-to-close) or range on screen. Shared by both the
+ * single-day and range views since the shape (`CashierBreakdownRow[]`) is
+ * identical either way. "Net Cash/QR to Collect" is what that cashier is
+ * still holding (in − out) — what should physically come back at close, not
+ * a running gross total.
+ */
+function CashierBreakdownPanel({ rows, subtitle }: { rows: CashierBreakdownRow[]; subtitle: string }) {
+    if (rows.length === 0) return null
+
+    const totals = rows.reduce((acc, r) => ({
+        cash_in: acc.cash_in + r.cash_in, cash_out: acc.cash_out + r.cash_out,
+        qr_in: acc.qr_in + r.qr_in, qr_out: acc.qr_out + r.qr_out,
+        bank_in: acc.bank_in + r.bank_in, bank_out: acc.bank_out + r.bank_out,
+        total_in: acc.total_in + r.total_in, total_out: acc.total_out + r.total_out,
+    }), { cash_in: 0, cash_out: 0, qr_in: 0, qr_out: 0, bank_in: 0, bank_out: 0, total_in: 0, total_out: 0 })
+
+    return (
+        <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-hairline flex items-center gap-2">
+                <Users size={16} className="text-ink-subtle" />
+                <div>
+                    <h3 className="font-extrabold text-ink">Cashier-wise Breakdown</h3>
+                    <p className="text-xs text-ink-subtle mt-0.5">{subtitle}</p>
+                </div>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr className="bg-surface-muted border-b border-hairline">
+                            <th className="px-4 py-3 font-bold text-ink-subtle">Cashier</th>
+                            <th className="px-4 py-3 font-bold text-ink-subtle text-right">Cash In</th>
+                            <th className="px-4 py-3 font-bold text-ink-subtle text-right">Cash Out</th>
+                            <th className="px-4 py-3 font-bold text-ink-subtle text-right bg-surface-muted/50">Net Cash to Collect</th>
+                            <th className="px-4 py-3 font-bold text-ink-subtle text-right">QR In</th>
+                            <th className="px-4 py-3 font-bold text-ink-subtle text-right">QR Out</th>
+                            <th className="px-4 py-3 font-bold text-ink-subtle text-right bg-surface-muted/50">Net QR to Collect</th>
+                            <th className="px-4 py-3 font-bold text-ink-subtle text-right">Other Bank In</th>
+                            <th className="px-4 py-3 font-bold text-ink-subtle text-right">Other Bank Out</th>
+                            <th className="px-4 py-3 font-bold text-ink-subtle text-right bg-surface-muted/50">Net Collected</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-hairline">
+                        {rows.map(r => {
+                            const netCash = r.cash_in - r.cash_out
+                            const netQr = r.qr_in - r.qr_out
+                            return (
+                                <tr key={r.id} className="hover:bg-surface-muted transition-colors">
+                                    <td className="px-4 py-3 font-bold text-ink">{r.name}</td>
+                                    <td className="px-4 py-3 text-right font-semibold text-emerald-600">{r.cash_in > 0 ? '+' + fmt(r.cash_in) : '—'}</td>
+                                    <td className="px-4 py-3 text-right font-semibold text-rose-600">{r.cash_out > 0 ? '-' + fmt(r.cash_out) : '—'}</td>
+                                    <td className={`px-4 py-3 text-right font-black bg-surface-muted/30 ${netCash >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{netFmt(netCash)}</td>
+                                    <td className="px-4 py-3 text-right font-semibold text-emerald-600">{r.qr_in > 0 ? '+' + fmt(r.qr_in) : '—'}</td>
+                                    <td className="px-4 py-3 text-right font-semibold text-rose-600">{r.qr_out > 0 ? '-' + fmt(r.qr_out) : '—'}</td>
+                                    <td className={`px-4 py-3 text-right font-black bg-surface-muted/30 ${netQr >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{netFmt(netQr)}</td>
+                                    <td className="px-4 py-3 text-right font-semibold text-emerald-600">{r.bank_in > 0 ? '+' + fmt(r.bank_in) : '—'}</td>
+                                    <td className="px-4 py-3 text-right font-semibold text-rose-600">{r.bank_out > 0 ? '-' + fmt(r.bank_out) : '—'}</td>
+                                    <td className={`px-4 py-3 text-right font-black bg-surface-muted/30 ${r.total_in - r.total_out >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {netFmt(r.total_in - r.total_out)}
+                                    </td>
+                                </tr>
+                            )
+                        })}
+                    </tbody>
+                    {rows.length > 1 && (() => {
+                        const netCash = totals.cash_in - totals.cash_out
+                        const netQr = totals.qr_in - totals.qr_out
+                        return (
+                            <tfoot>
+                                <tr className="border-t-2 border-hairline bg-surface-muted/60">
+                                    <td className="px-4 py-3 font-black text-ink">All Cashiers</td>
+                                    <td className="px-4 py-3 text-right font-black text-emerald-600">{totals.cash_in > 0 ? '+' + fmt(totals.cash_in) : '—'}</td>
+                                    <td className="px-4 py-3 text-right font-black text-rose-600">{totals.cash_out > 0 ? '-' + fmt(totals.cash_out) : '—'}</td>
+                                    <td className={`px-4 py-3 text-right font-black ${netCash >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{netFmt(netCash)}</td>
+                                    <td className="px-4 py-3 text-right font-black text-emerald-600">{totals.qr_in > 0 ? '+' + fmt(totals.qr_in) : '—'}</td>
+                                    <td className="px-4 py-3 text-right font-black text-rose-600">{totals.qr_out > 0 ? '-' + fmt(totals.qr_out) : '—'}</td>
+                                    <td className={`px-4 py-3 text-right font-black ${netQr >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{netFmt(netQr)}</td>
+                                    <td className="px-4 py-3 text-right font-black text-emerald-600">{totals.bank_in > 0 ? '+' + fmt(totals.bank_in) : '—'}</td>
+                                    <td className="px-4 py-3 text-right font-black text-rose-600">{totals.bank_out > 0 ? '-' + fmt(totals.bank_out) : '—'}</td>
+                                    <td className={`px-4 py-3 text-right font-black ${totals.total_in - totals.total_out >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {netFmt(totals.total_in - totals.total_out)}
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        )
+                    })()}
+                </table>
+            </div>
+        </div>
+    )
+}
+
+// Same column layout the on-screen Cashier-wise Breakdown table uses — kept
+// as one row per cashier (not stacked description/amount lines) so the
+// export reads exactly like the screen.
+const CASHIER_BREAKDOWN_COLUMNS: PdfColumn[] = [
+    { key: 'cashier', label: 'Cashier' },
+    { key: 'cash_in', label: 'Cash In', align: 'right' },
+    { key: 'cash_out', label: 'Cash Out', align: 'right' },
+    { key: 'net_cash', label: 'Net Cash to Collect', align: 'right' },
+    { key: 'qr_in', label: 'QR In', align: 'right' },
+    { key: 'qr_out', label: 'QR Out', align: 'right' },
+    { key: 'net_qr', label: 'Net QR to Collect', align: 'right' },
+    { key: 'bank_in', label: 'Other Bank In', align: 'right' },
+    { key: 'bank_out', label: 'Other Bank Out', align: 'right' },
+    { key: 'net_total', label: 'Net Collected', align: 'right' },
+]
+
+function cashierBreakdownRow(r: { name: string; cash_in: number; cash_out: number; qr_in: number; qr_out: number; bank_in: number; bank_out: number; total_in: number; total_out: number }) {
+    const netCash = r.cash_in - r.cash_out
+    const netQr = r.qr_in - r.qr_out
+    return {
+        cashier: r.name,
+        cash_in: r.cash_in > 0 ? '+' + fmt(r.cash_in) : '—',
+        cash_out: r.cash_out > 0 ? '-' + fmt(r.cash_out) : '—',
+        net_cash: netFmt(netCash),
+        qr_in: r.qr_in > 0 ? '+' + fmt(r.qr_in) : '—',
+        qr_out: r.qr_out > 0 ? '-' + fmt(r.qr_out) : '—',
+        net_qr: netFmt(netQr),
+        bank_in: r.bank_in > 0 ? '+' + fmt(r.bank_in) : '—',
+        bank_out: r.bank_out > 0 ? '-' + fmt(r.bank_out) : '—',
+        net_total: netFmt(r.total_in - r.total_out),
+    }
+}
+
+/**
+ * Builds the Cashier-wise Breakdown as its own table section — same shape
+ * exporters draw as a second table (PDF) or a second `<table>`/CSV block
+ * (Excel/CSV) rather than flattening it into the main statement's rows, so
+ * the export matches the on-screen table (one row per cashier) instead of
+ * reading as a vertical list.
+ */
+function cashierBreakdownSection(rows: CashierBreakdownRow[]): { title: string; columns: PdfColumn[]; rows: Record<string, string>[]; totalsRow?: Record<string, string> } | null {
+    if (rows.length === 0) return null
+
+    const totalsRow = rows.length > 1 ? cashierBreakdownRow({
+        name: 'All Cashiers',
+        cash_in: rows.reduce((s, r) => s + r.cash_in, 0),
+        cash_out: rows.reduce((s, r) => s + r.cash_out, 0),
+        qr_in: rows.reduce((s, r) => s + r.qr_in, 0),
+        qr_out: rows.reduce((s, r) => s + r.qr_out, 0),
+        bank_in: rows.reduce((s, r) => s + r.bank_in, 0),
+        bank_out: rows.reduce((s, r) => s + r.bank_out, 0),
+        total_in: rows.reduce((s, r) => s + r.total_in, 0),
+        total_out: rows.reduce((s, r) => s + r.total_out, 0),
+    }) : undefined
+
+    return {
+        title: 'Cashier-wise Breakdown',
+        columns: CASHIER_BREAKDOWN_COLUMNS,
+        rows: rows.map(cashierBreakdownRow),
+        totalsRow,
+    }
+}
 
 /**
  * The multi-day counterpart to the single-session view below — one combined
@@ -184,9 +347,10 @@ export function DayBookRangeView({ range }: { range: DayBookRangeProp }) {
     const flatRows = [...statementRows, closingRow]
     const fileName = `day-book-${range.from}-to-${range.to}`
     const exportSubtitle = `${fromLabel} to ${toLabel}  |  Entries: ${range.entries.length}  |  In: ${fmt(totalMoneyIn)}  |  Out: ${fmt(totalMoneyOut)}`
+    const cashierSection = cashierBreakdownSection(range.byCashier)
 
-    const handleExportCsv = () => downloadCsv(fileName, reportColumns, flatRows)
-    const handleExportExcel = () => downloadExcel(fileName, reportColumns, flatRows)
+    const handleExportCsv = () => downloadCsv(fileName, reportColumns, flatRows, cashierSection ? [cashierSection] : undefined)
+    const handleExportExcel = () => downloadExcel(fileName, reportColumns, flatRows, cashierSection ? [cashierSection] : undefined)
     const handleExportPdf = () => downloadPdf(
         fileName,
         'Day Book Statement',
@@ -194,6 +358,7 @@ export function DayBookRangeView({ range }: { range: DayBookRangeProp }) {
         reportColumns.map(c => ({ key: c.key, label: c.label, align: c.align })),
         statementRows,
         closingRow,
+        cashierSection ? [cashierSection] : undefined,
     )
 
     return (
@@ -401,11 +566,13 @@ export function DayBookRangeView({ range }: { range: DayBookRangeProp }) {
                     </div>
                 </div>
             </div>
+
+            <CashierBreakdownPanel rows={range.byCashier} subtitle={`Who collected/paid what, ${fromLabel} to ${toLabel}`} />
         </div>
     )
 }
 
-export default function DayBookClient({ session, entries, totals, todayDate, selectedDate }: DayBookClientProps) {
+export default function DayBookClient({ session, entries, totals, byCashier, todayDate, selectedDate }: DayBookClientProps) {
     const [ledgerTab, setLedgerTab] = useState<'in' | 'out'>('in')
     const router = useRouter()
     const [navigating, startNavigating] = useTransition()
@@ -497,13 +664,14 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
     const statementRows = [...entryRows, ...summaryRows]
     const fileName = `day-book-${selectedDate}`
     const exportSubtitle = `${dateLabel}  |  Entries: ${entries.length}  |  In: ${fmt(totals.total_money_in)}  |  Out: ${fmt(totals.total_money_out)}`
+    const cashierSection = cashierBreakdownSection(byCashier)
 
     // CSV and Excel have no footer of their own, so the closing balance is the
     // last row there.
     const flatRows = [...statementRows, closingRow]
 
-    const handleExportCsv   = () => downloadCsv(fileName, reportColumns, flatRows)
-    const handleExportExcel = () => downloadExcel(fileName, reportColumns, flatRows)
+    const handleExportCsv   = () => downloadCsv(fileName, reportColumns, flatRows, cashierSection ? [cashierSection] : undefined)
+    const handleExportExcel = () => downloadExcel(fileName, reportColumns, flatRows, cashierSection ? [cashierSection] : undefined)
     const handleExportPdf   = () => downloadPdf(
         fileName,
         'Day Book Statement',
@@ -511,6 +679,7 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
         reportColumns.map(c => ({ key: c.key, label: c.label, align: c.align })),
         statementRows,
         closingRow,
+        cashierSection ? [cashierSection] : undefined,
     )
 
     return (
@@ -834,6 +1003,8 @@ export default function DayBookClient({ session, entries, totals, todayDate, sel
                             </div>
                         </div>
                     </div>
+
+                    <CashierBreakdownPanel rows={byCashier} subtitle={`Who collected/paid what, from business open to close on ${dateLabel}`} />
                 </>
             )}
         </div>

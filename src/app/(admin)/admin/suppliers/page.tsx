@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import SuppliersLedgerManager from './SuppliersLedgerManager'
+import { attachCreatorNames } from '@/lib/ledger'
 
 import { getRestaurantFeatures } from '@/lib/features'
 
@@ -53,10 +54,12 @@ export default async function SuppliersLedgerPage() {
             .order('name', { ascending: true })
     ])
 
+    const expensesWithCreator = await attachCreatorNames(supabase, expenses || [])
+
     return (
         <SuppliersLedgerManager
             initialSuppliers={suppliers || []}
-            expenses={expenses || []}
+            expenses={expensesWithCreator}
             expenseCategories={expenseCategories || []}
             bankAccounts={bankAccounts || []}
             ingredients={ingredients || []}
