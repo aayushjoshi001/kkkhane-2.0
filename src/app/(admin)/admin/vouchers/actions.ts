@@ -43,7 +43,7 @@ interface PostLedgerEntryResult {
 // voucher_supplier_settlements for reversibility instead.
 async function postLedgerEntry(supabase: SupabaseClient, user: CurrentUserType, dayBookEntryId: string, voucher: {
     voucher_type: 'receipt' | 'payment'
-    category?: 'suppliers' | 'staff' | 'expenses' | 'stock' | 'other'
+    category?: 'suppliers' | 'staff' | 'expenses' | 'stock' | 'other' | 'cash_transfer'
     supplier_id?: string
     staff_user_id?: string
     staff_entry_type?: StaffLedgerEntryType
@@ -288,7 +288,11 @@ export async function createVoucherAction(input: {
     particulars: string
     reference_no?: string // Phone Number
     receiver_name?: string
-    category?: 'suppliers' | 'staff' | 'expenses' | 'stock' | 'other'
+    // 'cash_transfer' is Manual Entry's "Bank to Hotel Cash" — a self-transfer
+    // with no outstanding-balance ledger to touch, so postLedgerEntry no-ops
+    // for it same as 'other'; approveChequeAction gives it its own extra step
+    // (pairing a cash_in) once the cheque clears.
+    category?: 'suppliers' | 'staff' | 'expenses' | 'stock' | 'other' | 'cash_transfer'
     supplier_id?: string
     staff_user_id?: string
     staff_entry_type?: StaffLedgerEntryType
@@ -459,6 +463,14 @@ export async function approveChequeAction(id: string) {
             return { error: 'This cheque is not pending approval.' }
         }
 
+        // A cheque isn't payable before its own date — the bank would bounce
+        // it — so a post-dated cheque can't be approved early no matter how
+        // eager anyone is to clear the queue.
+        const chequeDate = parsed.cheque_details?.cheque_date
+        if (chequeDate && chequeDate > getNstDateString()) {
+            return { error: `This cheque is dated ${chequeDate} and cannot be approved before then.` }
+        }
+
         // Update values
         parsed.status = 'approved'
         const updatedDesc = JSON.stringify(parsed)
@@ -498,6 +510,26 @@ export async function approveChequeAction(id: string) {
                 .update({ amount: 0.01, description: entry.description })
                 .eq('id', id)
             return { error: e instanceof Error ? e.message : 'Failed to post voucher ledger entry.' }
+        }
+
+        // Bank to Hotel Cash: the bank_out side just posted above (the entry
+        // itself); pair it with the matching cash_in now that the cheque has
+        // actually cleared — mirrors the instant QR path's auto-pairing in
+        // Manual Entry. Best-effort, same as every other auto-pair in this
+        // app: the cheque itself is already approved and shouldn't be undone
+        // over a failure to post its cash side.
+        if (parsed.category === 'cash_transfer') {
+            try {
+                await postFinancialTransaction(supabase, user, {
+                    type: 'cash_in',
+                    amount: parsed.amount,
+                    description: `Cash Withdrawal: ${parsed.particulars}`,
+                    category: 'withdrawal',
+                    bankName: parsed.bank_name,
+                })
+            } catch (e) {
+                console.error('Failed to auto-pair cash for approved cash-transfer cheque:', e)
+            }
         }
 
         revalidatePath(PATH)
@@ -716,4 +748,59 @@ export async function getCustomerOutstandingBalanceAction(accountId: string) {
     })
 
     return { data: Math.max(balance, 0) }
+}
+
+/**
+ * Same balance lookup as getCustomerOutstandingBalanceAction, but by name/
+ * phone instead of an account id — for billing, where the cashier has typed
+ * a customer's details and nothing else, before any account is necessarily
+ * on file. Read-only: unlike findOrCreateCustomerCreditAccount, this never
+ * creates an account just because someone checked whether one exists.
+ */
+export async function getCustomerOutstandingBalanceByContactAction(input: { name?: string; phone?: string }) {
+    let user
+    try { user = await requireManager() } catch { return { error: 'Unauthorized' } }
+
+    const name = input.name?.trim()
+    const phone = input.phone?.trim()
+    if (!name && !phone) return { data: 0, accountId: null }
+
+    const supabase = await createAdminClient()
+
+    let account: { id: string } | null = null
+    if (phone) {
+        const { data } = await supabase
+            .from('customer_credit_accounts')
+            .select('id')
+            .eq('restaurant_id', user.restaurantId)
+            .eq('customer_phone', phone)
+            .maybeSingle()
+        account = data
+    }
+    if (!account && name) {
+        const { data } = await supabase
+            .from('customer_credit_accounts')
+            .select('id')
+            .eq('restaurant_id', user.restaurantId)
+            .eq('customer_name', name)
+            .maybeSingle()
+        account = data
+    }
+    if (!account) return { data: 0, accountId: null }
+
+    const { data: txns, error } = await supabase
+        .from('receivable_transactions')
+        .select('type, amount')
+        .eq('customer_credit_account_id', account.id)
+        .eq('restaurant_id', user.restaurantId)
+
+    if (error || !txns) return { error: 'Failed to fetch transactions' }
+
+    let balance = 0
+    txns.forEach(t => {
+        if (t.type === 'payment') balance -= Number(t.amount)
+        else balance += Number(t.amount)
+    })
+
+    return { data: Math.max(balance, 0), accountId: account.id }
 }

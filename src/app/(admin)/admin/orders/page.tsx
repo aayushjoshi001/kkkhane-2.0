@@ -22,7 +22,7 @@ export default async function AdminOrdersPage() {
             subtotal_amount, service_charge_amount, tax_amount, tip_amount, discount_amount,
             payment_method, confirmed_at, ready_at, delivered_at, paid_at, cancellation_reason,
             cancellation_kind, cancellation_reason_code, refund_reason, refund_reason_code,
-            order_type, customer_name, customer_phone, delivery_address, cashier_id,
+            order_type, customer_name, customer_phone, delivery_address, cashier_id, booking_id,
             sessions ( seat_number, opened_by, tables ( label ), bookings:booking_id ( guest_name, rooms ( room_number ) ) ),
             order_items (
                 id, quantity, unit_price, special_request, status,
@@ -43,7 +43,7 @@ export default async function AdminOrdersPage() {
                 subtotal_amount, service_charge_amount, tax_amount, tip_amount, discount_amount,
                 payment_method, confirmed_at, ready_at, delivered_at, paid_at, cancellation_reason,
             cancellation_kind, cancellation_reason_code, refund_reason, refund_reason_code,
-                order_type, customer_name, customer_phone, delivery_address, cashier_id,
+                order_type, customer_name, customer_phone, delivery_address, cashier_id, booking_id,
                 sessions ( seat_number, opened_by, tables ( label ) ),
                 order_items (
                     id, quantity, unit_price, special_request, status,
@@ -73,9 +73,28 @@ export default async function AdminOrdersPage() {
         }
     }
 
+    // How each order was actually settled — checkout draws cash first then QR
+    // (see /api/orders/checkout and /api/tables/checkout), writing one
+    // payment_verifications row per order for whichever pool covered it in
+    // full; a paid order with no row here was settled on customer credit.
+    const orderIds = (orders || []).map(o => o.id)
+    const verificationMap = new Map<string, { payment_method: string; amount: number; staff_verified_at: string | null }>()
+    if (orderIds.length > 0) {
+        const { data: verifications } = await adminSupabase
+            .from('payment_verifications')
+            .select('order_id, amount, payment_method, staff_verified_at')
+            .in('order_id', orderIds)
+            .eq('staff_verified', true)
+        for (const v of verifications || []) {
+            if (v.order_id) verificationMap.set(v.order_id, { payment_method: v.payment_method, amount: v.amount, staff_verified_at: v.staff_verified_at })
+        }
+    }
+
     const ordersWithStaffNames = (orders || []).map(o => ({
         ...o,
-        staff_name: (o.sessions?.opened_by ? staffNameMap.get(o.sessions.opened_by) : null) || (o.cashier_id ? staffNameMap.get(o.cashier_id) : null) || null
+        staff_name: (o.sessions?.opened_by ? staffNameMap.get(o.sessions.opened_by) : null) || (o.cashier_id ? staffNameMap.get(o.cashier_id) : null) || null,
+        cashier_name: (o.cashier_id ? staffNameMap.get(o.cashier_id) : null) || null,
+        payment_verification: verificationMap.get(o.id) || null,
     }))
 
     return (

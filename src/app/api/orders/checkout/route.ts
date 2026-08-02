@@ -2,8 +2,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
-import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
-import { findOrCreateCustomerCreditAccount, postCreditCharge, settleLoyalty } from '@/lib/customerCredit'
+import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense, postFinancialTransaction } from '@/lib/ledger'
+import { findOrCreateCustomerCreditAccount, postCreditCharge, postCreditRepayment, settleLoyalty } from '@/lib/customerCredit'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
 import { assertBusinessOpen } from '@/lib/auth/businessGuard'
 
@@ -37,6 +37,7 @@ export async function POST(req: Request) {
         const {
             order_id, cash_paid, qr_paid, credit_amount, qr_code_id,
             discount_amount, discount_reason, customer_name, customer_phone,
+            previous_due_amount,
         } = body
 
         if (!order_id) {
@@ -70,6 +71,18 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Customer name and phone are required for credit' }, { status: 400 })
         }
 
+        // "Add previous due to this bill" — collects an old balance alongside
+        // the current order in one transaction. Only real money can retire a
+        // debt, so it has to come out of cash/QR, never out of new credit
+        // (that would just be borrowing to pay off the same borrowing).
+        const previousDueAmount = round2(Number(previous_due_amount) || 0)
+        if (previousDueAmount < 0) {
+            return NextResponse.json({ error: 'previous_due_amount cannot be negative' }, { status: 400 })
+        }
+        if (previousDueAmount > cashPaid + qrPaid + 0.01) {
+            return NextResponse.json({ error: 'Previous due must be covered by cash or QR, not credit' }, { status: 400 })
+        }
+
         const supabase = await createAdminClient()
 
         const { data: restaurant } = await supabase
@@ -101,6 +114,12 @@ export async function POST(req: Request) {
         const isDelivery = order.order_type === 'delivery'
         const orderLabel = `${isDelivery ? 'Delivery' : 'Takeaway'} Order #${order.id.slice(0, 8).toUpperCase()}`
 
+        const effectiveCustomerName = customerName || order.customer_name || ''
+        const effectiveCustomerPhone = customerPhone || order.customer_phone || ''
+        if (previousDueAmount > 0 && (!effectiveCustomerName || !effectiveCustomerPhone)) {
+            return NextResponse.json({ error: 'Customer name and phone are required to collect a previous due' }, { status: 400 })
+        }
+
         // Authoritative bill: the order's own total_amount, already correctly
         // tax/promo/loyalty-adjusted from placement time — never re-derived
         // from raw line items here (same rule as tables/checkout).
@@ -109,11 +128,25 @@ export async function POST(req: Request) {
         if (discountAmount > subtotal) {
             return NextResponse.json({ error: 'Discount cannot exceed the order total' }, { status: 400 })
         }
-        const authoritativeTotal = round2(subtotal - discountAmount)
+        // This order's own sale amount — used for the tax/IRD invoice and for
+        // recognizing income, neither of which should see the previous-due
+        // top-up (that money was already recognized as income back when the
+        // original credit charge was posted).
+        const orderTotal = round2(subtotal - discountAmount)
+        // What actually has to be collected right now, across cash/QR/credit.
+        const authoritativeTotal = round2(orderTotal + previousDueAmount)
 
         if (isInvoiceEnabled && Math.abs(cashPaid + qrPaid + creditAmount - authoritativeTotal) > 0.01) {
             return NextResponse.json({ error: 'Cash + QR + Credit must add up to the total' }, { status: 400 })
         }
+
+        // Previous due is drawn off cash/QR first (whatever's left funds the
+        // order itself), matching the same fixed draw-down order the checkout
+        // already uses elsewhere (cash pool before QR pool).
+        const dueFromCash = round2(Math.min(cashPaid, previousDueAmount))
+        const dueFromQr = round2(Math.min(qrPaid, previousDueAmount - dueFromCash))
+        const cashForOrder = round2(cashPaid - dueFromCash)
+        const qrForOrder = round2(qrPaid - dueFromQr)
 
         // 1. Atomically claim the order — only one concurrent request can flip
         // it from unpaid to paid, so a double-click or retry can't post income
@@ -147,7 +180,7 @@ export async function POST(req: Request) {
             .neq('status', 'cancelled')
             .eq('needs_confirmation', false)
 
-        const method = resolveMethod(cashPaid, qrPaid, subtotal)
+        const method = resolveMethod(cashForOrder, qrForOrder, subtotal)
         if (method) {
             await supabase.from('payment_verifications').insert({
                 restaurant_id: currentUser.restaurantId,
@@ -161,12 +194,16 @@ export async function POST(req: Request) {
             })
         }
 
-        // 2. Post the actual money collected / owed.
+        // 2. Post the actual money collected / owed. Only the order's own
+        // portion (cashForOrder/qrForOrder) counts as new sales income — the
+        // previous-due portion is posted separately below as a plain Day Book
+        // movement plus a receivable_transactions payment, never as income
+        // (that income was already recognized when the due was first charged).
         if (isInvoiceEnabled) {
-            if (cashPaid > 0) {
+            if (cashForOrder > 0) {
                 await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
                     guestName: customerName || order.customer_name || 'Walk-in Guest',
-                    amount: cashPaid,
+                    amount: cashForOrder,
                     paymentMethod: 'cash',
                     isAdvance: false,
                     incomeCategoryName: 'Restaurant Sales',
@@ -174,10 +211,10 @@ export async function POST(req: Request) {
                     description: `${orderLabel} settled (Cash)`,
                 })
             }
-            if (qrPaid > 0) {
+            if (qrForOrder > 0) {
                 await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
                     guestName: customerName || order.customer_name || 'Walk-in Guest',
-                    amount: qrPaid,
+                    amount: qrForOrder,
                     paymentMethod: 'qr_digital',
                     isAdvance: false,
                     qrCodeId: qr_code_id || null,
@@ -185,6 +222,39 @@ export async function POST(req: Request) {
                     dayBookCategory: 'order_payment',
                     description: `${orderLabel} settled (QR/Digital)`,
                 })
+            }
+            if (previousDueAmount > 0) {
+                const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
+                    name: effectiveCustomerName,
+                    phone: effectiveCustomerPhone,
+                })
+                if ('error' in account) {
+                    console.error('Failed to resolve customer credit account for previous-due collection:', account.error)
+                } else {
+                    await postCreditRepayment(supabase, currentUser.restaurantId, currentUser.id, {
+                        customerCreditAccountId: account.id,
+                        amount: previousDueAmount,
+                        description: `Previous due collected with ${orderLabel} (${effectiveCustomerName})`,
+                    })
+                    if (dueFromCash > 0) {
+                        await postFinancialTransaction(supabase, { id: currentUser.id, restaurantId: currentUser.restaurantId }, {
+                            type: 'cash_in',
+                            amount: dueFromCash,
+                            description: `Previous due collected: ${effectiveCustomerName} (${orderLabel})`,
+                            category: 'order_payment',
+                            requireOpenSession: false,
+                        })
+                    }
+                    if (dueFromQr > 0) {
+                        await postFinancialTransaction(supabase, { id: currentUser.id, restaurantId: currentUser.restaurantId }, {
+                            type: 'bank_in',
+                            amount: dueFromQr,
+                            description: `Previous due collected: ${effectiveCustomerName} (${orderLabel})`,
+                            category: 'order_payment',
+                            requireOpenSession: false,
+                        })
+                    }
+                }
             }
             if (creditAmount > 0) {
                 const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
@@ -217,7 +287,7 @@ export async function POST(req: Request) {
             await settleLoyalty(supabase, currentUser.restaurantId, currentUser.id, {
                 name: customerName || order.customer_name || 'Walk-in Guest',
                 phone: customerPhone || order.customer_phone || '',
-                earnPoints: Math.round((cashPaid + qrPaid) * 0.05),
+                earnPoints: Math.round((cashForOrder + qrForOrder) * 0.05),
                 redeemPoints: 0,
                 earnDescription: `Earned from ${orderLabel}`,
                 redeemDescription: '',
@@ -234,18 +304,21 @@ export async function POST(req: Request) {
                 subtotal,
                 discount_amount: discountAmount,
                 discount_reason: discountAmount > 0 ? discountReason : null,
-                total: authoritativeTotal,
+                total: orderTotal,
                 cash_paid: cashPaid,
                 qr_paid: qrPaid,
                 credit_amount: creditAmount,
-                customer_name: creditAmount > 0 ? customerName : null,
-                customer_phone: creditAmount > 0 ? customerPhone : null,
+                previous_due_amount: previousDueAmount,
+                customer_name: creditAmount > 0 || previousDueAmount > 0 ? effectiveCustomerName : null,
+                customer_phone: creditAmount > 0 || previousDueAmount > 0 ? effectiveCustomerPhone : null,
             },
         })
 
-        // Trigger IRD CBMS Synchronization
+        // Trigger IRD CBMS Synchronization — the order's own sale amount only;
+        // the previous-due top-up isn't a new taxable sale, it's collection of
+        // an old balance already invoiced when the due was first charged.
         const isVatRegistered = !!restaurant?.vat_registered
-        const totalAmount = Number(authoritativeTotal) || 0
+        const totalAmount = Number(orderTotal) || 0
         const discountVal = Number(discountAmount) || 0
         const vatVal = isVatRegistered ? (totalAmount - (totalAmount / 1.13)) : 0
         const taxableVal = totalAmount - vatVal

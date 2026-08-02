@@ -52,7 +52,18 @@ export type AdminOrder = {
     customer_phone: string | null
     delivery_address: string | null
     cashier_id?: string | null
+    /** Set when this order is billed to a hotel room folio instead of settled
+     *  directly — the room-linked case the manager doesn't need a standalone
+     *  collection breakdown for, since payment happens at hotel checkout. */
+    booking_id?: string | null
     staff_name?: string | null
+    /** Who actually took the payment (from cashier_id) — distinct from
+     *  staff_name, which favors who opened the table session. */
+    cashier_name?: string | null
+    /** How this order was actually settled, resolved from payment_verifications
+     *  at checkout time. Null on an unpaid order, or a paid one settled fully
+     *  on customer credit (no cash/QR pool covered it). */
+    payment_verification?: { payment_method: string; amount: number; staff_verified_at: string | null } | null
     sessions: { seat_number: number | null; opened_by?: string | null; tables: { label: string } | null; bookings?: { guest_name: string | null; rooms: { room_number: string } | null } | null } | null
     bookings?: { guest_name: string | null; rooms: { room_number: string } | null } | null
     order_items: AdminOrderItem[]
