@@ -13,7 +13,8 @@ import { useFileDrop } from '@/lib/hooks/useFileDrop'
 import {
     addCategoryAction, updateCategoryAction, deleteCategoryAction,
     addItemAction, updateItemAction, deleteItemAction,
-    getItemRecipeAction
+    getItemRecipeAction, getItemModifiersAction,
+    type ModifierGroupInput
 } from '@/app/(admin)/admin/menu/actions'
 import { createIngredientAction } from '@/app/(admin)/admin/ingredients/actions'
 import { convertToStockUnit } from '@/lib/conversions'
@@ -143,6 +144,13 @@ export default function MenuManager({
     // Item Variations editor. Custom variations (Small/Large, Chicken/Veg/...)
     // instead get a per-row half toggle further down, directly in itemVariations.
     const [simpleHalfPlateOn, setSimpleHalfPlateOn] = useState(false)
+    // Add-on groups ("Spice level", "Extras"). `priceText` is the same
+    // typed-text-vs-parsed-number split the variation rows use — a price
+    // adjustment can be negative here (a "no cheese" discount), so the input
+    // accepts a leading minus that Number() would otherwise eat mid-typing.
+    const [modifierGroups, setModifierGroups] = useState<(Omit<ModifierGroupInput, 'modifiers'> & {
+        modifiers: (ModifierGroupInput['modifiers'][number] & { priceText?: string })[]
+    })[]>([])
 
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [imageUploading, setImageUploading] = useState(false)
@@ -315,6 +323,8 @@ export default function MenuManager({
                 setSimpleHalfPlateOn(false)
             }
             setCostDraft(item.estimated_cost_price != null ? String(item.estimated_cost_price) : '')
+            const modRes = await getItemModifiersAction(item.id)
+            setModifierGroups(modRes.data ?? [])
             const res = await getItemRecipeAction(item.id)
             if (res.data) {
                 setRecipe(res.data.map(r => {
@@ -344,8 +354,46 @@ export default function MenuManager({
             setItemVariations([])
             setRecipe([])
             setSimpleHalfPlateOn(false)
+            setModifierGroups([])
         }
         setIsItemModalOpen(true)
+    }
+
+    // --- Add-on handlers ---
+    const addModifierGroup = () => {
+        setModifierGroups(prev => [...prev, {
+            name: '',
+            min_selections: 0,
+            max_selections: 1,
+            sort_order: prev.length,
+            modifiers: [{ name: '', price_adjustment: 0, is_available: true, sort_order: 0 }],
+        }])
+    }
+
+    const updateModifierGroup = (gIdx: number, patch: Partial<ModifierGroupInput>) => {
+        setModifierGroups(prev => prev.map((g, i) => i === gIdx ? { ...g, ...patch } : g))
+    }
+
+    const removeModifierGroup = (gIdx: number) => {
+        setModifierGroups(prev => prev.filter((_, i) => i !== gIdx).map((g, i) => ({ ...g, sort_order: i })))
+    }
+
+    const addModifier = (gIdx: number) => {
+        setModifierGroups(prev => prev.map((g, i) => i === gIdx
+            ? { ...g, modifiers: [...g.modifiers, { name: '', price_adjustment: 0, is_available: true, sort_order: g.modifiers.length }] }
+            : g))
+    }
+
+    const updateModifier = (gIdx: number, mIdx: number, patch: Partial<ModifierGroupInput['modifiers'][number] & { priceText?: string }>) => {
+        setModifierGroups(prev => prev.map((g, i) => i === gIdx
+            ? { ...g, modifiers: g.modifiers.map((m, j) => j === mIdx ? { ...m, ...patch } : m) }
+            : g))
+    }
+
+    const removeModifier = (gIdx: number, mIdx: number) => {
+        setModifierGroups(prev => prev.map((g, i) => i === gIdx
+            ? { ...g, modifiers: g.modifiers.filter((_, j) => j !== mIdx).map((m, j) => ({ ...m, sort_order: j })) }
+            : g))
     }
 
     // Turning custom Item Variations on/off. If a simple Half Plate pair was
@@ -415,6 +463,49 @@ export default function MenuManager({
             ]
         }
 
+        // Add-ons. An empty group is dropped rather than rejected — a manager who
+        // opened one and changed their mind shouldn't be blocked from saving the
+        // item. Anything with real content is validated properly.
+        const modifierPayload: ModifierGroupInput[] = []
+        for (const g of modifierGroups) {
+            const options = g.modifiers.filter(m => m.name.trim())
+            if (!g.name.trim() && options.length === 0) continue
+            if (!g.name.trim()) {
+                toast.error('Every add-on group needs a name')
+                return
+            }
+            if (options.length === 0) {
+                toast.error(`"${g.name.trim()}" needs at least one option`)
+                return
+            }
+            const names = options.map(m => m.name.toLowerCase().trim())
+            if (new Set(names).size !== names.length) {
+                toast.error(`Option names must be unique within "${g.name.trim()}"`)
+                return
+            }
+            // max_selections is what the customer UI enforces when it caps a
+            // group's checkboxes, and min_selections is what blocks Add to Cart.
+            // min > max would make the item impossible to order at all.
+            if (g.min_selections > options.length) {
+                toast.error(`"${g.name.trim()}" requires ${g.min_selections} choices but only has ${options.length}`)
+                return
+            }
+            if (g.max_selections < g.min_selections) {
+                toast.error(`"${g.name.trim()}" has a maximum lower than its minimum`)
+                return
+            }
+            modifierPayload.push({
+                ...g,
+                name: g.name.trim(),
+                modifiers: options.map(({ priceText: _priceText, ...m }, i) => ({
+                    ...m,
+                    name: m.name.trim(),
+                    price_adjustment: Number(m.price_adjustment) || 0,
+                    sort_order: i,
+                })),
+            })
+        }
+
         setIsSubmitting(true)
 
         const payload = {
@@ -427,7 +518,7 @@ export default function MenuManager({
             .map(r => ({ ...r, quantity_needed: Number(r.quantity_needed) }))
 
         if (editingItem) {
-            const res = await updateItemAction(editingItem.id, payload, variationsPayload, validRecipe)
+            const res = await updateItemAction(editingItem.id, payload, variationsPayload, validRecipe, modifierPayload)
             if (res.success) {
                 mutate()
                 toast.success('Item updated')
@@ -436,7 +527,7 @@ export default function MenuManager({
                 toast.error(res.error || 'Failed to update item')
             }
         } else {
-            const res = await addItemAction(payload, variationsPayload, validRecipe)
+            const res = await addItemAction(payload, variationsPayload, validRecipe, modifierPayload)
             if (res.data) {
                 mutate()
                 toast.success('Item added')
@@ -1234,6 +1325,145 @@ export default function MenuManager({
                                             <Plus size={16} /> Add Option
                                         </button>
                                     </div>
+                                )}
+                            </div>
+
+                            {/* Add-ons Section */}
+                            <div className="border-t border-hairline pt-5 mt-3">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div>
+                                        <span className="text-small font-bold text-ink block">Add-ons &amp; Options</span>
+                                        <span className="text-xs text-ink-subtle">e.g. Spice level, Extra cheese, No onions</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={addModifierGroup}
+                                        className="flex items-center gap-1.5 text-xs font-bold text-brand-500 hover:text-brand-600 transition-colors px-2 py-1 rounded-md hover:bg-brand-50"
+                                    >
+                                        <Plus size={14} /> Add Group
+                                    </button>
+                                </div>
+
+                                {modifierGroups.length > 0 ? (
+                                    <div className="space-y-3 mt-4">
+                                        {modifierGroups.map((group, gIdx) => {
+                                            const optionCount = group.modifiers.filter(m => m.name.trim()).length
+                                            const isRequired = group.min_selections > 0
+                                            return (
+                                                <div key={gIdx} className="bg-surface-muted/30 p-3.5 rounded-[var(--r-lg)] border border-hairline shadow-inner space-y-3">
+                                                    <div className="flex gap-2 items-start">
+                                                        <input
+                                                            type="text"
+                                                            value={group.name}
+                                                            onChange={e => updateModifierGroup(gIdx, { name: e.target.value })}
+                                                            placeholder="Group name (e.g. Spice level)"
+                                                            className="flex-1 min-w-0 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-2 border bg-surface text-ink transition-all font-bold"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeModifierGroup(gIdx)}
+                                                            className="p-2 text-ink-subtle hover:text-danger-fg hover:bg-danger-bg rounded-[var(--r-md)] shrink-0 transition-colors"
+                                                            aria-label="Remove group"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Required / how many. min_selections > 0 is what makes the
+                                                        customer's Add to Cart wait for a choice. */}
+                                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                                        <label className="flex items-center gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isRequired}
+                                                                onChange={e => updateModifierGroup(gIdx, { min_selections: e.target.checked ? 1 : 0 })}
+                                                                className="rounded border-hairline text-brand-500 focus:ring-brand-500/20 w-4 h-4 bg-surface transition-colors"
+                                                            />
+                                                            <span className="text-xs font-bold text-ink-subtle">Required</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2">
+                                                            <span className="text-xs font-bold text-ink-subtle">Max choices</span>
+                                                            <input
+                                                                type="number"
+                                                                min={1}
+                                                                max={Math.max(1, optionCount)}
+                                                                value={group.max_selections}
+                                                                onChange={e => updateModifierGroup(gIdx, { max_selections: Math.max(1, Number(e.target.value) || 1) })}
+                                                                className="w-16 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 text-sm p-1.5 border bg-surface text-ink transition-all tabular-nums"
+                                                            />
+                                                        </label>
+                                                        <span className="text-[11px] text-ink-subtle">
+                                                            {group.max_selections > 1 ? 'Customer may pick several' : 'Customer picks one'}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        {group.modifiers.map((mod, mIdx) => (
+                                                            <div key={mIdx} className="flex gap-2 items-center bg-surface p-2 rounded-[var(--r-md)] border border-hairline shadow-sm">
+                                                                <input
+                                                                    type="text"
+                                                                    value={mod.name}
+                                                                    onChange={e => updateModifier(gIdx, mIdx, { name: e.target.value })}
+                                                                    placeholder="Option (e.g. Extra hot)"
+                                                                    className="flex-1 min-w-0 border-hairline rounded-[var(--r-md)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-2 border bg-surface text-ink transition-all"
+                                                                />
+                                                                <div className="relative w-28 shrink-0">
+                                                                    <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                                                                        <span className="text-ink-subtle text-xs font-medium">Rs.</span>
+                                                                    </div>
+                                                                    <input
+                                                                        type="text"
+                                                                        inputMode="decimal"
+                                                                        value={mod.priceText ?? (mod.price_adjustment === 0 ? '' : String(mod.price_adjustment))}
+                                                                        onChange={e => {
+                                                                            const val = e.target.value
+                                                                            // Leading minus allowed: a "no cheese" option can take money off.
+                                                                            if (/^-?\d*\.?\d*$/.test(val)) {
+                                                                                updateModifier(gIdx, mIdx, {
+                                                                                    price_adjustment: val === '' || val === '-' ? 0 : Number(val),
+                                                                                    priceText: val,
+                                                                                })
+                                                                            }
+                                                                        }}
+                                                                        placeholder="0"
+                                                                        className="w-full pl-8 border-hairline rounded-[var(--r-md)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-2 border bg-surface text-ink transition-all tabular-nums"
+                                                                    />
+                                                                </div>
+                                                                <label className="flex items-center gap-1.5 shrink-0" title="Uncheck to hide this option from the menu without deleting it">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={mod.is_available}
+                                                                        onChange={e => updateModifier(gIdx, mIdx, { is_available: e.target.checked })}
+                                                                        className="rounded border-hairline text-brand-500 focus:ring-brand-500/20 w-4 h-4 bg-surface transition-colors"
+                                                                    />
+                                                                    <span className="text-[11px] font-bold text-ink-subtle hidden sm:inline">On</span>
+                                                                </label>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeModifier(gIdx, mIdx)}
+                                                                    className="p-1.5 text-ink-subtle hover:text-danger-fg hover:bg-danger-bg rounded-[var(--r-md)] shrink-0 transition-colors"
+                                                                    aria-label="Remove option"
+                                                                >
+                                                                    <X size={14} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => addModifier(gIdx)}
+                                                            className="w-full py-2 border-2 border-dashed border-hairline text-ink-subtle hover:text-brand-500 hover:border-brand-400 hover:bg-brand-50 rounded-[var(--r-md)] text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-surface focus-ring"
+                                                        >
+                                                            <Plus size={14} /> Add Option
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-ink-subtle bg-surface-muted/30 border border-hairline border-dashed rounded-[var(--r-lg)] p-3 text-center">
+                                        No add-ons. Guests will order this item as-is.
+                                    </p>
                                 )}
                             </div>
 

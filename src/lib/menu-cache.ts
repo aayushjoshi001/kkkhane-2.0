@@ -57,14 +57,26 @@ async function fetchMenuDataFromDb(restaurantId: string) {
         const rawComboItems = comboItemsRes.status === 'fulfilled' ? comboItemsRes.value.data || [] : []
         const rawPairings = pairingsRes.status === 'fulfilled' ? pairingsRes.value.data || [] : []
 
+        // Archived groups/options are retired but kept so past bills still name
+        // what they charged for (see 20260802100000_menu_modifier_archival) —
+        // they must never reach a menu. A group left with no live options is
+        // dropped too, otherwise the customer sees a heading with nothing under it.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const menuItems = (rawMenuItems || []).map((item: Record<string, any>) => ({
             ...item,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            modifier_groups: (item.menu_item_modifier_groups || []).map((g: Record<string, any>) => ({
-                ...g,
-                modifiers: g.menu_item_modifiers || [],
-            })),
+            modifier_groups: (item.menu_item_modifier_groups || [])
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .filter((g: Record<string, any>) => !g.is_archived)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .map((g: Record<string, any>) => ({
+                    ...g,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    modifiers: (g.menu_item_modifiers || []).filter((m: Record<string, any>) => !m.is_archived),
+                }))
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .filter((g: Record<string, any>) => g.modifiers.length > 0)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .sort((a: Record<string, any>, b: Record<string, any>) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
         })) as MenuItem[]
 
         const translations = (rawTranslations || []) as { language_code: string; entity_type: string; entity_id: string; translated_text: string }[]

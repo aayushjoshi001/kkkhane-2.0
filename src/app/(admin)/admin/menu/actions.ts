@@ -77,10 +77,220 @@ export async function deleteCategoryAction(id: string) {
     return { success: true }
 }
 
+/** One add-on group ("Spice level", "Extras") and its options, as the editor sends it. */
+export type ModifierGroupInput = {
+    id?: string
+    name: string
+    min_selections: number
+    max_selections: number
+    sort_order: number
+    modifiers: {
+        id?: string
+        name: string
+        price_adjustment: number
+        is_available: boolean
+        sort_order: number
+    }[]
+}
+
+/**
+ * Reconciles the stored add-on groups for one menu item against what the editor
+ * submitted, in the same insert/update/delete shape the variation sync uses.
+ *
+ * The delete half is the fiddly part. order_item_modifiers.modifier_id is
+ * ON DELETE RESTRICT, so an option that has ever been ordered cannot be
+ * removed — and because a group cascades into its options, deleting such a
+ * group fails outright. Anything with order history is therefore archived
+ * instead of deleted; anything without is deleted for real, so correcting a
+ * typo leaves nothing behind.
+ *
+ * Returns an error string only for failures worth surfacing — a partially
+ * applied sync is reported rather than silently swallowed.
+ */
+async function syncModifierGroups(
+    supabase: Awaited<ReturnType<typeof createAdminClient>>,
+    menuItemId: string,
+    groups: ModifierGroupInput[]
+): Promise<string | null> {
+    const { data: existingGroups, error: fetchError } = await supabase
+        .from('menu_item_modifier_groups')
+        .select('id, menu_item_modifiers ( id )')
+        .eq('menu_item_id', menuItemId)
+        .eq('is_archived', false)
+
+    if (fetchError) return fetchError.message
+
+    const existing = (existingGroups || []) as { id: string; menu_item_modifiers: { id: string }[] | null }[]
+    const incomingGroupIds = new Set(groups.filter(g => g.id).map(g => g.id!))
+
+    // --- Removals -------------------------------------------------------
+    const removedGroups = existing.filter(g => !incomingGroupIds.has(g.id))
+    if (removedGroups.length > 0) {
+        const removedModifierIds = removedGroups.flatMap(g => (g.menu_item_modifiers || []).map(m => m.id))
+        const orderedIds = await modifierIdsWithOrderHistory(supabase, removedModifierIds)
+
+        // A group is only safe to hard-delete when none of its options were ever
+        // ordered; the cascade into menu_item_modifiers would otherwise trip the
+        // RESTRICT and roll the whole delete back.
+        const groupsToArchive = removedGroups.filter(g =>
+            (g.menu_item_modifiers || []).some(m => orderedIds.has(m.id))
+        )
+        const groupsToDelete = removedGroups.filter(g => !groupsToArchive.includes(g))
+
+        if (groupsToDelete.length > 0) {
+            await supabase.from('menu_item_modifier_groups').delete().in('id', groupsToDelete.map(g => g.id))
+        }
+        if (groupsToArchive.length > 0) {
+            await supabase
+                .from('menu_item_modifier_groups')
+                .update({ is_archived: true })
+                .in('id', groupsToArchive.map(g => g.id))
+        }
+    }
+
+    // --- Inserts & updates ----------------------------------------------
+    for (const group of groups) {
+        let groupId = group.id
+        const groupRow = {
+            menu_item_id: menuItemId,
+            name: group.name.trim(),
+            min_selections: group.min_selections,
+            max_selections: group.max_selections,
+            sort_order: group.sort_order,
+        }
+
+        if (groupId) {
+            const { error } = await supabase.from('menu_item_modifier_groups').update(groupRow).eq('id', groupId)
+            if (error) return error.message
+        } else {
+            const { data, error } = await supabase
+                .from('menu_item_modifier_groups')
+                .insert(groupRow)
+                .select('id')
+                .single()
+            if (error) return error.message
+            groupId = data.id
+        }
+
+        const optionError = await syncModifiers(supabase, groupId!, group.modifiers)
+        if (optionError) return optionError
+    }
+
+    return null
+}
+
+/** The options inside one group — same hard-delete-or-archive rule as the group itself. */
+async function syncModifiers(
+    supabase: Awaited<ReturnType<typeof createAdminClient>>,
+    groupId: string,
+    modifiers: ModifierGroupInput['modifiers']
+): Promise<string | null> {
+    const { data: existing, error: fetchError } = await supabase
+        .from('menu_item_modifiers')
+        .select('id')
+        .eq('group_id', groupId)
+        .eq('is_archived', false)
+
+    if (fetchError) return fetchError.message
+
+    const incomingIds = new Set(modifiers.filter(m => m.id).map(m => m.id!))
+    const removedIds = (existing || []).map(m => m.id).filter(id => !incomingIds.has(id))
+
+    if (removedIds.length > 0) {
+        const orderedIds = await modifierIdsWithOrderHistory(supabase, removedIds)
+        const toDelete = removedIds.filter(id => !orderedIds.has(id))
+        const toArchive = removedIds.filter(id => orderedIds.has(id))
+
+        if (toDelete.length > 0) {
+            await supabase.from('menu_item_modifiers').delete().in('id', toDelete)
+        }
+        if (toArchive.length > 0) {
+            // Archived *and* unavailable: the customer menu filters on
+            // is_available, so this stays hidden even on a stale cache read.
+            await supabase
+                .from('menu_item_modifiers')
+                .update({ is_archived: true, is_available: false })
+                .in('id', toArchive)
+        }
+    }
+
+    for (const mod of modifiers) {
+        const row = {
+            group_id: groupId,
+            name: mod.name.trim(),
+            price_adjustment: Number(mod.price_adjustment) || 0,
+            is_available: mod.is_available,
+            sort_order: mod.sort_order,
+        }
+        if (mod.id) {
+            const { error } = await supabase.from('menu_item_modifiers').update(row).eq('id', mod.id)
+            if (error) return error.message
+        } else {
+            const { error } = await supabase.from('menu_item_modifiers').insert(row)
+            if (error) return error.message
+        }
+    }
+
+    return null
+}
+
+/** Which of these option ids appear on a past order — i.e. cannot be deleted. */
+async function modifierIdsWithOrderHistory(
+    supabase: Awaited<ReturnType<typeof createAdminClient>>,
+    modifierIds: string[]
+): Promise<Set<string>> {
+    if (modifierIds.length === 0) return new Set()
+    const { data, error } = await supabase
+        .from('order_item_modifiers')
+        .select('modifier_id')
+        .in('modifier_id', modifierIds)
+
+    // On a read failure, assume every option has history: archiving something
+    // that could have been deleted is recoverable, a failed delete is not.
+    if (error) return new Set(modifierIds)
+    return new Set((data || []).map(r => r.modifier_id as string))
+}
+
+/** Groups + options for the edit modal, archived rows excluded. */
+export async function getItemModifiersAction(menuItemId: string) {
+    await requireRole('manager', 'super_admin')
+    const supabase = await createAdminClient()
+
+    const { data, error } = await supabase
+        .from('menu_item_modifier_groups')
+        .select('id, name, min_selections, max_selections, sort_order, menu_item_modifiers ( id, name, price_adjustment, is_available, sort_order, is_archived )')
+        .eq('menu_item_id', menuItemId)
+        .eq('is_archived', false)
+        .order('sort_order', { ascending: true })
+
+    if (error) return { error: error.message }
+
+    const groups = (data || []).map(g => ({
+        id: g.id,
+        name: g.name,
+        min_selections: g.min_selections,
+        max_selections: g.max_selections,
+        sort_order: g.sort_order,
+        modifiers: ((g.menu_item_modifiers || []) as { id: string; name: string; price_adjustment: number; is_available: boolean; sort_order: number; is_archived: boolean }[])
+            .filter(m => !m.is_archived)
+            .sort((a, b) => a.sort_order - b.sort_order)
+            .map(m => ({
+                id: m.id,
+                name: m.name,
+                price_adjustment: Number(m.price_adjustment),
+                is_available: m.is_available,
+                sort_order: m.sort_order,
+            })),
+    }))
+
+    return { data: groups }
+}
+
 export async function addItemAction(
     item: Record<string, unknown>,
     variations?: { name: string; price: number; is_available?: boolean; image_url?: string | null }[],
-    recipe?: { ingredient_id: string; quantity_needed: number; variation_name?: string | null }[]
+    recipe?: { ingredient_id: string; quantity_needed: number; variation_name?: string | null }[],
+    modifierGroups?: ModifierGroupInput[]
 ) {
     await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
@@ -179,6 +389,18 @@ export async function addItemAction(
         }
     }
 
+    // 3. Add-on groups. Nothing here has order history yet, so the sync can only
+    //    insert — but it still runs through the same path so the two save routes
+    //    can never drift apart.
+    if (modifierGroups && modifierGroups.length > 0) {
+        const modifierError = await syncModifierGroups(supabase, data.id, modifierGroups)
+        if (modifierError) {
+            console.error('Failed to save add-ons:', modifierError)
+            await rollbackItem()
+            return { error: `Failed to save add-ons: ${modifierError}` }
+        }
+    }
+
     await invalidateCache(`menu-data:${restaurantId}`)
     revalidateTag(`menu-data-${restaurantId}`, 'max')
     revalidatePath('/admin/menu')
@@ -189,7 +411,8 @@ export async function updateItemAction(
     id: string,
     updates: Record<string, unknown>,
     variations?: { id?: string; name: string; price: number; is_available?: boolean; image_url?: string | null }[],
-    recipe?: { ingredient_id: string; quantity_needed: number; variation_id?: string | null; variation_name?: string | null }[]
+    recipe?: { ingredient_id: string; quantity_needed: number; variation_id?: string | null; variation_name?: string | null }[],
+    modifierGroups?: ModifierGroupInput[]
 ) {
     await requireRole('manager', 'super_admin')
     const supabase = await createAdminClient()
@@ -335,6 +558,17 @@ export async function updateItemAction(
                 }
                 return { error: `Failed to save recipe: ${recipeError.message}` }
             }
+        }
+    }
+
+    // 3. Sync add-on groups. Undefined means "the editor didn't send them"
+    //    (a caller that only patches a field), which must not wipe them —
+    //    an empty array is the explicit "remove them all".
+    if (modifierGroups) {
+        const modifierError = await syncModifierGroups(supabase, id, modifierGroups)
+        if (modifierError) {
+            console.error('Failed to save add-ons:', modifierError)
+            return { error: `Failed to save add-ons: ${modifierError}` }
         }
     }
 
