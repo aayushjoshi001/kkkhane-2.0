@@ -5,6 +5,7 @@ import { useCurrency } from '@/lib/contexts/FeatureContext'
 import { getItemDisplayName, orderInvoiceNumber } from '@/lib/utils'
 import { useDates } from '@/lib/contexts/CalendarContext'
 import type { AdminOrder } from '@/app/(admin)/admin/orders/OrdersClient'
+import { reasonLabel } from '@/lib/voidReasons'
 import { Clock, MapPin, Phone, Receipt, User, Utensils, X } from 'lucide-react'
 
 const STATUS_TONE: Record<string, string> = {
@@ -201,10 +202,27 @@ export default function OrderDetailModal({
                     </div>
                 )}
 
-                {order.cancellation_reason && (
-                    <div className="p-4 rounded-2xl bg-danger-bg/40 border border-danger-bg">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-danger-fg">Cancellation reason</p>
-                        <p className="text-sm text-ink mt-1">{order.cancellation_reason}</p>
+                {/* A comp is a decision, not a fault — it gets its own colour so a
+                    manager scanning the history can tell the two apart at a glance. */}
+                {order.cancellation_reason && (() => {
+                    const isComp = order.cancellation_kind === 'comp'
+                    return (
+                        <div className={`p-4 rounded-2xl border ${isComp ? 'bg-emerald-50 border-emerald-200' : 'bg-danger-bg/40 border-danger-bg'}`}>
+                            <p className={`text-[10px] font-bold uppercase tracking-wider ${isComp ? 'text-emerald-700' : 'text-danger-fg'}`}>
+                                {isComp ? 'Complimentary' : 'Cancellation'}
+                                {order.cancellation_reason_code ? ` — ${reasonLabel(order.cancellation_reason_code)}` : ' reason'}
+                            </p>
+                            <p className="text-sm text-ink mt-1">{order.cancellation_reason}</p>
+                        </div>
+                    )
+                })()}
+
+                {order.refund_reason && (
+                    <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                            Refund{order.refund_reason_code ? ` — ${reasonLabel(order.refund_reason_code)}` : ''}
+                        </p>
+                        <p className="text-sm text-amber-900 mt-1">{order.refund_reason}</p>
                     </div>
                 )}
             </div>

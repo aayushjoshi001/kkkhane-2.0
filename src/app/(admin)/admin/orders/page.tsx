@@ -21,6 +21,7 @@ export default async function AdminOrdersPage() {
             id, status, payment_status, total_amount, refunded_amount, placed_at, customer_note,
             subtotal_amount, service_charge_amount, tax_amount, tip_amount, discount_amount,
             payment_method, confirmed_at, ready_at, delivered_at, paid_at, cancellation_reason,
+            cancellation_kind, cancellation_reason_code, refund_reason, refund_reason_code,
             order_type, customer_name, customer_phone, delivery_address, cashier_id,
             sessions ( seat_number, opened_by, tables ( label ), bookings:booking_id ( guest_name, rooms ( room_number ) ) ),
             order_items (
@@ -41,6 +42,7 @@ export default async function AdminOrdersPage() {
                 id, status, payment_status, total_amount, refunded_amount, placed_at, customer_note,
                 subtotal_amount, service_charge_amount, tax_amount, tip_amount, discount_amount,
                 payment_method, confirmed_at, ready_at, delivered_at, paid_at, cancellation_reason,
+            cancellation_kind, cancellation_reason_code, refund_reason, refund_reason_code,
                 order_type, customer_name, customer_phone, delivery_address, cashier_id,
                 sessions ( seat_number, opened_by, tables ( label ) ),
                 order_items (

@@ -42,6 +42,11 @@ export type AdminOrder = {
     delivered_at: string | null
     paid_at: string | null
     cancellation_reason: string | null
+    /** 'void' | 'comp' — see lib/voidReasons.ts. Null on orders that were never cancelled. */
+    cancellation_kind: string | null
+    cancellation_reason_code: string | null
+    refund_reason: string | null
+    refund_reason_code: string | null
     order_type: string | null
     customer_name: string | null
     customer_phone: string | null

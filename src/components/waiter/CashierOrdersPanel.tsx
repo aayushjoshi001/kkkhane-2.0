@@ -20,6 +20,8 @@ import {
 } from '@/app/(staff)/waiter/order-actions'
 import { getItemDisplayName } from '@/lib/utils'
 import { formatTime } from '@/lib/calendar'
+import ReasonPicker from '@/components/shared/ReasonPicker'
+import type { CancellationKind } from '@/lib/voidReasons'
 import { tableLabel, type ActiveOrder, type UnpaidOrder } from './CashierClient'
 import type { KitchenOrder } from '@/components/kitchen/OrderQueue'
 
@@ -89,6 +91,9 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
     } | null>(null)
     const [cancelQty, setCancelQty] = useState(1)
     const [cancelReasonInput, setCancelReasonInput] = useState('')
+    // Void vs comp, and the structured code, for the single-item dialog.
+    const [cancelItemKind, setCancelItemKind] = useState<CancellationKind>('void')
+    const [cancelItemCode, setCancelItemCode] = useState<string | null>(null)
 
     useEffect(() => {
         setMounted(true)
@@ -100,6 +105,9 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
     const [busyId, setBusyId] = useState<string | null>(null)
     const [reprintingId, setReprintingId] = useState<string | null>(null)
     const [cancelReason, setCancelReason] = useState('')
+    // Same pair as the item dialog, for the whole-order cancel footer.
+    const [cancelOrderKind, setCancelOrderKind] = useState<CancellationKind>('void')
+    const [cancelOrderCode, setCancelOrderCode] = useState<string | null>(null)
     const confirmRowRefs = useRef<Record<string, HTMLDivElement | null>>({})
     const statusRowRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -351,30 +359,36 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
     }
 
     async function handleCancelOrder(order: AnyOrder) {
+        if (!cancelOrderCode) { toast.error('Pick a reason first'); return }
         const timeStr = formatTime(order.placed_at)
         const itemsSummary = (order.order_items || []).map(i => `${i.quantity}x ${getItemDisplayName(i)}`).join(', ')
+        const isComp = cancelOrderKind === 'comp'
         const ok = await confirm({
-            title: 'Cancel this particular order?',
-            message: `This removes only the specific order placed at ${timeStr} (${itemsSummary}) from ${locationLabel(order, splitSessionIds)}'s bill, and logs its value as an Order Cancellation expense. Other orders on this bill are untouched. This cannot be undone.`,
-            confirmText: 'Cancel Order',
+            title: isComp ? 'Comp this whole order?' : 'Cancel this particular order?',
+            message: `This removes only the specific order placed at ${timeStr} (${itemsSummary}) from ${locationLabel(order, splitSessionIds)}'s bill, and logs its value as ${isComp ? 'a Complimentary & Staff Meals' : 'an Order Cancellation'} expense. Other orders on this bill are untouched. This cannot be undone.`,
+            confirmText: isComp ? 'Comp Order' : 'Cancel Order',
             isDestructive: true,
         })
         if (!ok) return
         setBusyId(order.id)
-        const res = await cancelOrder(order.id, cancelReason)
+        const res = await cancelOrder(order.id, cancelReason, cancelOrderKind, cancelOrderCode)
         setBusyId(null)
         if (res.error) { toast.error(res.error); return }
         setCancelReason('')
+        setCancelOrderCode(null)
+        setCancelOrderKind('void')
         setExpandedStatusId(null)
         if (onCancelOrder) {
             onCancelOrder(order.id)
         }
-        toast.success('Order cancelled')
+        toast.success(isComp ? 'Order comped' : 'Order cancelled')
     }
 
     function handleCancelOrderItem(orderId: string, itemId: string, label: string, maxQty: number, unitPrice: number) {
         setCancelQty(1)
         setCancelReasonInput('')
+        setCancelItemKind('void')
+        setCancelItemCode(null)
         setCancelItemModal({ orderId, itemId, label, maxQty, unitPrice })
     }
 
@@ -506,6 +520,10 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                         busyId={busyId}
                                         cancelReason={cancelReason}
                                         onReasonChange={setCancelReason}
+                                        cancelKind={cancelOrderKind}
+                                        onKindChange={setCancelOrderKind}
+                                        cancelCode={cancelOrderCode}
+                                        onCodeChange={setCancelOrderCode}
                                         onMarkServed={(orderId, ids) => handleMarkServed(orderId, ids)}
                                         onCancelOrder={(order) => handleCancelOrder(order)}
                                         onCancelItem={(orderId, itemId, label, maxQty, unitPrice) => handleCancelOrderItem(orderId, itemId, label, maxQty, unitPrice)}
@@ -524,8 +542,13 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-surface w-full max-w-sm rounded-[24px] shadow-2xl border border-hairline p-6 space-y-4 animate-in zoom-in-95 duration-150">
                         <div>
-                            <h3 className="text-lg font-black text-ink">Cancel Item</h3>
-                            <p className="text-xs text-ink-subtle mt-0.5">Select plates of <span className="font-bold text-ink">{cancelItemModal.label}</span> to cancel:</p>
+                            <h3 className="text-lg font-black text-ink">
+                                {cancelItemKind === 'comp' ? 'Comp Item' : 'Cancel Item'}
+                            </h3>
+                            <p className="text-xs text-ink-subtle mt-0.5">
+                                Select plates of <span className="font-bold text-ink">{cancelItemModal.label}</span> to
+                                {cancelItemKind === 'comp' ? ' give free:' : ' cancel:'}
+                            </p>
                         </div>
 
                         {/* Quantity Counter */}
@@ -559,16 +582,20 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                                 <span className="tabular-nums">{money(cancelItemModal.unitPrice * cancelQty)}</span>
                             </div>
                             <p className="text-[10px] text-ink-subtle leading-relaxed pt-1 border-t border-brand-200/30 dark:border-brand-900/20">
-                                This action is logged as stock waste and cannot be undone.
+                                {cancelItemKind === 'comp'
+                                    ? 'This is logged as a complimentary item, separate from wastage, and cannot be undone.'
+                                    : 'This action is logged as stock waste and cannot be undone.'}
                             </p>
                         </div>
 
-                        <input
-                            type="text"
-                            value={cancelReasonInput}
-                            onChange={e => setCancelReasonInput(e.target.value)}
-                            placeholder="Cancellation reason (optional)"
-                            className="w-full px-3 py-2.5 border border-hairline rounded-xl text-xs font-semibold bg-surface placeholder:text-ink-subtle focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
+                        <ReasonPicker
+                            context={cancelItemKind}
+                            onKindChange={setCancelItemKind}
+                            code={cancelItemCode}
+                            onCodeChange={setCancelItemCode}
+                            note={cancelReasonInput}
+                            onNoteChange={setCancelReasonInput}
+                            notePlaceholder="Add detail (optional)"
                         />
 
                         <div className="flex gap-2.5 pt-1">
@@ -581,22 +608,25 @@ export default function CashierOrdersPanel({ active, unpaid, splitSessionIds, mo
                             </button>
                             <button
                                 type="button"
+                                disabled={!cancelItemCode}
                                 onClick={async () => {
                                     const { orderId, itemId, label } = cancelItemModal
+                                    const kind = cancelItemKind
                                     setBusyId(orderId)
                                     setCancelItemModal(null)
-                                    const res = await cancelOrderItem(orderId, itemId, cancelQty, cancelReasonInput)
+                                    const res = await cancelOrderItem(orderId, itemId, cancelQty, cancelReasonInput, kind, cancelItemCode)
                                     setBusyId(null)
                                     if (res.error) { toast.error(res.error); return }
                                     setCancelReasonInput('')
+                                    setCancelItemCode(null)
                                     if (onCancelOrderItem) {
                                         onCancelOrderItem(orderId, itemId, cancelQty)
                                     }
-                                    toast.success(`${cancelQty}x ${label} cancelled`)
+                                    toast.success(`${cancelQty}x ${label} ${kind === 'comp' ? 'comped' : 'cancelled'}`)
                                 }}
-                                className="flex-1 px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs shadow-sm transition-all"
+                                className="flex-1 px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Cancel {cancelQty} Plate{cancelQty !== 1 ? 's' : ''}
+                                {cancelItemKind === 'comp' ? 'Comp' : 'Cancel'} {cancelQty} Plate{cancelQty !== 1 ? 's' : ''}
                             </button>
                         </div>
                     </div>
@@ -730,6 +760,10 @@ function StatusDetail({
     busyId,
     cancelReason,
     onReasonChange,
+    cancelKind,
+    onKindChange,
+    cancelCode,
+    onCodeChange,
     onMarkServed,
     onCancelOrder,
     onCancelItem,
@@ -742,6 +776,10 @@ function StatusDetail({
     busyId: string | null
     cancelReason: string
     onReasonChange: (v: string) => void
+    cancelKind: CancellationKind
+    onKindChange: (k: CancellationKind) => void
+    cancelCode: string | null
+    onCodeChange: (c: string | null) => void
     onMarkServed: (orderId: string, itemIds: string[]) => void
     onCancelOrder: (order: AnyOrder) => void
     onCancelItem: (orderId: string, itemId: string, label: string, maxQty: number, unitPrice: number) => void
@@ -784,11 +822,12 @@ function StatusDetail({
                                 )}
                                 <button
                                     onClick={() => onCancelOrder(order)}
-                                    disabled={isBusy}
-                                    className="text-red-500 hover:text-red-700 font-extrabold transition-colors flex items-center gap-1.5"
+                                    disabled={isBusy || !cancelCode}
+                                    title={!cancelCode ? 'Pick a reason below first' : undefined}
+                                    className="text-red-500 hover:text-red-700 font-extrabold transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                     <XCircle size={12} />
-                                    Cancel Order
+                                    {cancelKind === 'comp' ? 'Comp Order' : 'Cancel Order'}
                                 </button>
                             </div>
                         </div>
@@ -849,14 +888,17 @@ function StatusDetail({
                 )
             })}
 
-            {/* Cancel Reason footer input (shared or order level) */}
-            <div className="pt-3 space-y-2">
-                <input
-                    type="text"
-                    value={cancelReason}
-                    onChange={e => onReasonChange(e.target.value)}
-                    placeholder="Cancellation reason (optional)"
-                    className="w-full px-3 py-2 border border-hairline rounded-xl text-xs font-semibold bg-surface placeholder:text-ink-subtle focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
+            {/* Reason footer, shared by every Cancel Order button above — picked
+                before pressing one, since the action itself is irreversible. */}
+            <div className="pt-3">
+                <ReasonPicker
+                    context={cancelKind}
+                    onKindChange={onKindChange}
+                    code={cancelCode}
+                    onCodeChange={onCodeChange}
+                    note={cancelReason}
+                    onNoteChange={onReasonChange}
+                    notePlaceholder="Add detail (optional)"
                 />
             </div>
         </div>

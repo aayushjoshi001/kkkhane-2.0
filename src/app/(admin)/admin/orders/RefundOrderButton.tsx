@@ -5,6 +5,8 @@ import { RotateCcw, Loader2 } from 'lucide-react'
 import { refundOrderAction } from './actions'
 import { toast } from 'react-hot-toast'
 import { useCurrency } from '@/lib/contexts/FeatureContext'
+import ReasonPicker from '@/components/shared/ReasonPicker'
+import { reasonLabel } from '@/lib/voidReasons'
 
 export default function RefundOrderButton({
     orderId,
@@ -20,6 +22,7 @@ export default function RefundOrderButton({
     const [open, setOpen] = useState(false)
     const money = useCurrency()
     const [reason, setReason] = useState('')
+    const [reasonCode, setReasonCode] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
     const [amountStr, setAmountStr] = useState('')
 
@@ -32,10 +35,12 @@ export default function RefundOrderButton({
     const amountValid = parsedAmount > 0 && parsedAmount <= maxRefundable
 
     async function handleSubmit() {
-        if (!reason.trim()) { toast.error('Please enter a reason.'); return }
+        if (!reasonCode) { toast.error('Please pick a reason.'); return }
         if (!amountValid) { toast.error(`Enter an amount between 1 and ${maxRefundable}.`); return }
         setLoading(true)
-        const res = await refundOrderAction(orderId, reason, parsedAmount)
+        // The action still requires non-empty text; when the manager only picked
+        // a code, the code's own label is the reason.
+        const res = await refundOrderAction(orderId, reason.trim() || reasonLabel(reasonCode), parsedAmount, reasonCode)
         setLoading(false)
         if (res.error) {
             toast.error(res.error)
@@ -43,6 +48,7 @@ export default function RefundOrderButton({
             toast.success(res.partial ? `Partial refund of ${money(parsedAmount)} recorded` : `Order ${label.toLowerCase()}ed`)
             setOpen(false)
             setReason('')
+            setReasonCode(null)
             setAmountStr('')
         }
     }
@@ -88,21 +94,19 @@ export default function RefundOrderButton({
                             </div>
                         )}
 
-                        <div>
-                            <label className="block text-small font-bold text-ink mb-1.5">Reason</label>
-                            <textarea
-                                value={reason}
-                                onChange={(e) => setReason(e.target.value)}
-                                placeholder="e.g. wrong item delivered, customer complaint…"
-                                className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all resize-none"
-                                rows={3}
-                                maxLength={200}
-                            />
-                        </div>
+                        <ReasonPicker
+                            context="refund"
+                            code={reasonCode}
+                            onCodeChange={setReasonCode}
+                            note={reason}
+                            onNoteChange={setReason}
+                            notePlaceholder="Add detail (optional)"
+                            disabled={loading}
+                        />
 
                         <div className="flex gap-3 justify-end pt-2 border-t border-hairline mt-2">
                             <button
-                                onClick={() => { setOpen(false); setReason(''); setAmountStr('') }}
+                                onClick={() => { setOpen(false); setReason(''); setReasonCode(null); setAmountStr('') }}
                                 className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:shadow-md transition-all focus-ring"
                                 disabled={loading}
                             >
@@ -110,7 +114,7 @@ export default function RefundOrderButton({
                             </button>
                             <button
                                 onClick={handleSubmit}
-                                disabled={loading || !reason.trim()}
+                                disabled={loading || !reasonCode}
                                 className="px-5 py-2.5 text-sm font-bold text-white bg-danger-fg rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(239,68,68,0.25)] hover:shadow-[0_6px_16px_rgba(239,68,68,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2 focus-ring"
                             >
                                 {loading && <Loader2 size={16} className="animate-spin" />}

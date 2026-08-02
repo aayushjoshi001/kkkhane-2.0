@@ -8,6 +8,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { addDays, getNstDateString } from './timezone'
 import { DayBookEntry, DayBookEntryCategory, DayBookEntryType, DayBookSession } from '@/types/database'
+import { CANCELLATION_EXPENSE_CATEGORY, reasonLabel, type CancellationKind } from './voidReasons'
 
 export interface LedgerUser {
     id: string
@@ -690,44 +691,63 @@ export async function postBargainDiscountExpense(
 // than just silently disappearing from the room/table's bill. Mirrors
 // postBargainDiscountExpense: no cash left the drawer, so this never touches
 // the Day Book, and the category is found-or-created lazily per restaurant.
+//
+// A comp posts here too, but to its own category. Both are food that left the
+// kitchen and was never paid for, so both belong on the expense ledger — but
+// rolling them together makes the wastage figure meaningless, since a staff
+// meal is a planned cost and a kitchen error is not. See lib/voidReasons.ts.
 export async function postOrderCancellationExpense(
     supabase: SupabaseClient,
     restaurantId: string,
     userId: string | null,
-    input: { orderId: string; locationLabel: string; amount: number }
+    input: {
+        orderId: string
+        locationLabel: string
+        amount: number
+        kind?: CancellationKind
+        reasonCode?: string | null
+    }
 ): Promise<{ success: boolean; error?: string }> {
     if (input.amount <= 0) return { success: true }
+
+    const kind: CancellationKind = input.kind ?? 'void'
+    const categoryName = CANCELLATION_EXPENSE_CATEGORY[kind]
 
     let categoryId: string | undefined
     const { data: existingCategory } = await supabase
         .from('expense_categories')
         .select('id')
         .eq('restaurant_id', restaurantId)
-        .eq('name', 'Order Cancellation')
+        .eq('name', categoryName)
         .maybeSingle()
 
     categoryId = existingCategory?.id
     if (!categoryId) {
         const { data: newCategory } = await supabase
             .from('expense_categories')
-            .insert({ restaurant_id: restaurantId, name: 'Order Cancellation' })
+            .insert({ restaurant_id: restaurantId, name: categoryName })
             .select('id')
             .single()
         categoryId = newCategory?.id
     }
-    if (!categoryId) return { success: false, error: 'Failed to find/create Order Cancellation category' }
+    if (!categoryId) return { success: false, error: `Failed to find/create ${categoryName} category` }
+
+    // The reason rides along in the description so the expense line is legible
+    // on its own, without joining back to the order it came from.
+    const reasonSuffix = input.reasonCode ? ` — ${reasonLabel(input.reasonCode)}` : ''
+    const verb = kind === 'comp' ? 'Complimentary' : 'Order cancelled'
 
     const { error } = await supabase.from('expenses').insert({
         restaurant_id: restaurantId,
         category_id: categoryId,
         amount: input.amount,
-        description: `Order cancelled (${input.locationLabel}) — order #${input.orderId.slice(0, 8).toUpperCase()}`,
+        description: `${verb} (${input.locationLabel}) — order #${input.orderId.slice(0, 8).toUpperCase()}${reasonSuffix}`,
         status: 'paid',
         created_by: userId || null
     })
 
     if (error) {
-        console.error('Failed to post order cancellation expense:', error)
+        console.error(`Failed to post ${kind} expense:`, error)
         return { success: false, error: error.message }
     }
     return { success: true }

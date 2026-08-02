@@ -5,11 +5,13 @@ import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { logAudit } from '@/lib/audit'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
+import { isValidReasonCode } from '@/lib/voidReasons'
 
 export async function refundOrderAction(
     orderId: string,
     reason: string,
-    refundAmount?: number
+    refundAmount?: number,
+    reasonCode?: string | null
 ): Promise<{ error?: string; success?: boolean; partial?: boolean }> {
     const currentUser = await requireRole('manager', 'super_admin')
 
@@ -17,9 +19,11 @@ export async function refundOrderAction(
 
     const supabase = await createAdminClient()
 
+    const cleanCode = isValidReasonCode('refund', reasonCode) ? reasonCode! : null
+
     const { data: order, error: fetchError } = await supabase
         .from('orders')
-        .select('id, restaurant_id, total_amount, payment_status, status, refunded_amount, customer_note')
+        .select('id, restaurant_id, total_amount, payment_status, status, refunded_amount, refund_reason')
         .eq('id', orderId)
         .single()
 
@@ -47,14 +51,23 @@ export async function refundOrderAction(
     const notePrefix = isFullRefund ? '[REFUNDED]' : `[PARTIAL REFUND Rs.${amount}]`
     const newPaymentStatus = isFullRefund ? 'refunded' : order.payment_status
 
+    // The reason used to be appended to customer_note — a guest-written,
+    // guest-visible field — which mixed staff-only audit text into the order and
+    // left it unreadable after a second partial refund. It has its own column
+    // now; successive refunds still append, so the full history survives.
+    const newRefundReason = order.refund_reason
+        ? `${order.refund_reason} | ${notePrefix} ${reason.trim()}`
+        : `${notePrefix} ${reason.trim()}`
+
     const { error: updateError } = await supabase
         .from('orders')
         .update({
             payment_status: newPaymentStatus,
             refunded_amount: newRefundedTotal,
-            customer_note: order.customer_note
-                ? `${order.customer_note} | ${notePrefix} ${reason}`
-                : `${notePrefix} ${reason}`,
+            refund_reason: newRefundReason.slice(0, 1000),
+            // Latest code wins: a partial refund for one cause followed by
+            // another for a different cause should read as the most recent.
+            refund_reason_code: cleanCode,
         })
         .eq('id', orderId)
 
@@ -93,7 +106,7 @@ export async function refundOrderAction(
         entityType: 'order',
         entityId: orderId,
         oldValue: { payment_status: order.payment_status, refunded_amount: alreadyRefunded },
-        newValue: { payment_status: newPaymentStatus, refunded_amount: newRefundedTotal, reason, partial: !isFullRefund },
+        newValue: { payment_status: newPaymentStatus, refunded_amount: newRefundedTotal, reason, reasonCode: cleanCode, partial: !isFullRefund },
     })
 
     revalidatePath('/admin/orders')

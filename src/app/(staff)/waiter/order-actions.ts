@@ -9,6 +9,7 @@ import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 import { checkAndAlertLowStock } from '@/app/(admin)/admin/ingredients/actions'
 import { postOrderCancellationExpense } from '@/lib/ledger'
 import { getKOTSourceLabel } from '@/lib/utils'
+import { isValidReasonCode, reasonLabel, type CancellationKind } from '@/lib/voidReasons'
 import type { OrderStatus, OrderItemStatus } from '@/types/database'
 
 /**
@@ -719,12 +720,19 @@ export async function deleteUnconfirmedOrderItem(
  */
 export async function cancelOrder(
     orderId: string,
-    reason: string
+    reason: string,
+    kind: CancellationKind = 'void',
+    reasonCode?: string | null
 ): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
     const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
     const supabase = await createAdminClient()
 
-    const cleanReason = (reason || '').trim().slice(0, 200) || 'Cancelled by cashier'
+    // An unrecognised code is dropped rather than rejected: a stale client
+    // sending a retired code must not block the cancel, but it must not write
+    // a value that later poisons a group-by either.
+    const cleanCode = isValidReasonCode(kind, reasonCode) ? reasonCode! : null
+    const cleanReason = (reason || '').trim().slice(0, 200)
+        || (cleanCode ? reasonLabel(cleanCode) : kind === 'comp' ? 'Complimentary' : 'Cancelled by cashier')
 
     const { data: order, error: fetchError } = await supabase
         .from('orders')
@@ -743,15 +751,29 @@ export async function cancelOrder(
 
     const { error: updateError } = await supabase
         .from('orders')
-        .update({ status: 'cancelled', cancellation_reason: cleanReason })
+        .update({
+            status: 'cancelled',
+            cancellation_reason: cleanReason,
+            cancellation_kind: kind,
+            cancellation_reason_code: cleanCode,
+        })
         .eq('id', orderId)
         .neq('status', 'cancelled')
 
     if (updateError) return { error: updateError.message }
 
+    // The same kind/code is stamped on every line, so an item-level void report
+    // sees whole-order cancels too rather than only the one-plate ones.
     await supabase
         .from('order_items')
-        .update({ status: 'cancelled' })
+        .update({
+            status: 'cancelled',
+            cancellation_kind: kind,
+            cancellation_reason: cleanReason,
+            cancellation_reason_code: cleanCode,
+            cancelled_by: currentUser.id,
+            cancelled_at: new Date().toISOString(),
+        })
         .eq('order_id', orderId)
         .neq('status', 'cancelled')
 
@@ -762,6 +784,8 @@ export async function cancelOrder(
             orderId,
             locationLabel,
             amount,
+            kind,
+            reasonCode: cleanCode,
         })
         if (!expenseResult.success) {
             console.error('[cancelOrder] failed to post cancellation expense:', expenseResult.error)
@@ -774,7 +798,7 @@ export async function cancelOrder(
         action: 'order_cancelled',
         entityType: 'order',
         entityId: orderId,
-        newValue: { reason: cleanReason, amount },
+        newValue: { reason: cleanReason, reasonCode: cleanCode, kind, amount },
     })
 
     if (order.session_id) {
@@ -806,12 +830,16 @@ export async function cancelOrderItem(
     orderId: string,
     itemId: string,
     cancelQuantity: number,
-    reason: string
+    reason: string,
+    kind: CancellationKind = 'void',
+    reasonCode?: string | null
 ): Promise<{ success?: boolean; error?: string; conflict?: boolean }> {
     const currentUser = await requireRole('cashier', 'waiter', 'manager', 'super_admin')
     const supabase = await createAdminClient()
 
-    const cleanReason = (reason || '').trim().slice(0, 200) || 'Item cancelled by cashier'
+    const cleanCode = isValidReasonCode(kind, reasonCode) ? reasonCode! : null
+    const cleanReason = (reason || '').trim().slice(0, 200)
+        || (cleanCode ? reasonLabel(cleanCode) : kind === 'comp' ? 'Complimentary' : 'Item cancelled by cashier')
 
     const { data: item, error: itemError } = await supabase
         .from('order_items')
@@ -843,11 +871,19 @@ export async function cancelOrderItem(
         total_amount: number
     }
 
+    const cancelStamp = {
+        cancellation_kind: kind,
+        cancellation_reason: cleanReason,
+        cancellation_reason_code: cleanCode,
+        cancelled_by: currentUser.id,
+        cancelled_at: new Date().toISOString(),
+    }
+
     if (cancelQuantity === item.quantity) {
         // Full cancellation of the item
         const { error: updateError } = await supabase
             .from('order_items')
-            .update({ status: 'cancelled' })
+            .update({ status: 'cancelled', ...cancelStamp })
             .eq('id', itemId)
             .neq('status', 'cancelled')
 
@@ -872,7 +908,11 @@ export async function cancelOrderItem(
                 special_request: item.special_request,
                 needs_confirmation: false,
                 status: 'cancelled',
-                station: item.station
+                station: item.station,
+                // The stamp goes on the split-off cancelled row, not the
+                // original — that one survives with a reduced quantity and is
+                // still live on the bill.
+                ...cancelStamp,
             })
 
         if (insertError) return { error: insertError.message }
@@ -932,14 +972,21 @@ export async function cancelOrderItem(
     // Only post a cancellation expense for kitchen items that were already being prepared.
     // Bar/beverage items (station === 'bar') are not tracked as food cost, so cancelling
     // them should never appear on the expense ledger.
+    //
+    // A comp is the exception to "already being prepared": it is given away
+    // precisely because it was made and served, and its cost is real whatever
+    // the line's status says.
     const isBarItem = item.station === 'bar'
     const wasAlreadyBeingPrepared = item.status !== 'pending'
-    if (!isBarItem && wasAlreadyBeingPrepared) {
-        const locationLabel = `${parentOrder.id.slice(0, 8).toUpperCase()} (Item Cancelled)`
+    if (!isBarItem && (wasAlreadyBeingPrepared || kind === 'comp')) {
+        const suffix = kind === 'comp' ? 'Item Comped' : 'Item Cancelled'
+        const locationLabel = `${parentOrder.id.slice(0, 8).toUpperCase()} (${suffix})`
         const expenseResult = await postOrderCancellationExpense(supabase, parentOrder.restaurant_id, currentUser.id, {
             orderId,
             locationLabel,
             amount: itemTotal,
+            kind,
+            reasonCode: cleanCode,
         })
         if (!expenseResult.success) {
             console.error('[cancelOrderItem] failed to post cancellation expense:', expenseResult.error)
@@ -952,7 +999,7 @@ export async function cancelOrderItem(
         action: 'order_item_removed',
         entityType: 'order_item',
         entityId: itemId,
-        newValue: { orderId, reason: cleanReason, amount: itemTotal, cancelQuantity },
+        newValue: { orderId, reason: cleanReason, reasonCode: cleanCode, kind, amount: itemTotal, cancelQuantity },
     })
 
     if (parentOrder.session_id) {
