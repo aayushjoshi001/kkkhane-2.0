@@ -525,6 +525,8 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         serviceChargeByPerson: toPersonAmountList(sumByPerson(serviceChargeRows), nameById),
     }
 
+    const totalDiscounts = round2(discountRows.reduce((s, r) => s + r.amount, 0))
+
     // 10. Upsert into database
     const { data: result, error: upsertError } = await supabase
         .from('eod_reports')

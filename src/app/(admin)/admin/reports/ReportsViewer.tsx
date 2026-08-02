@@ -62,6 +62,9 @@ function timeLabel(iso: string | null) {
 /** Flattens a report + its parsed notes into metric/value rows for CSV,
  *  Excel and PDF export — every section on screen gets a row here too. */
 function buildDetailRows(r: EodReport, notes: EodReportNotes): { metric: string; value: string }[] {
+    const discountTotal = (r.total_discounts && r.total_discounts > 0) ? r.total_discounts : notes.discountByPerson.reduce((s, p) => s + p.amount, 0)
+    const serviceChargeTotal = notes.paymentBreakdown?.service_charge ?? notes.serviceChargeByPerson.reduce((s, p) => s + p.amount, 0)
+
     const rows: { metric: string; value: string }[] = [
         { metric: 'Report Date', value: r.report_date },
         { metric: 'Business Day Opened', value: timeLabel(notes.sessionOpenedAt) || 'N/A' },
@@ -71,7 +74,8 @@ function buildDetailRows(r: EodReport, notes: EodReportNotes): { metric: string;
         { metric: 'Restaurant Sales', value: fmt(notes.restaurantSales) },
         { metric: 'Room Sales', value: fmt(notes.roomSales) },
         { metric: 'Tax Collected', value: fmt(r.total_tax) },
-        { metric: 'Discounts', value: fmt(r.total_discounts) },
+        { metric: 'Discounts', value: fmt(discountTotal) },
+        { metric: 'Service Charge', value: fmt(serviceChargeTotal) },
         { metric: 'Average Order Value', value: fmt(r.avg_order_value) },
         { metric: 'Total Customers', value: String(notes.uniqueCustomers) },
         { metric: 'COGS', value: fmt(r.total_cogs) },
@@ -265,35 +269,42 @@ export default function ReportsViewer({ initialReports, restaurantId }: {
                                     </div>
 
                                     {/* Operational & Financial Stats Grid */}
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-6 text-sm bg-surface p-4 sm:p-6 rounded-[var(--r-md)] border border-hairline shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                                        <Stat label="Gross Revenue" value={fmt(r.total_revenue)} />
-                                        <Stat label="Net Revenue" value={fmt(r.net_revenue)} />
-                                        <Stat label="Restaurant Sales" value={fmt(notes.restaurantSales)} />
-                                        <Stat label="Room Sales" value={fmt(notes.roomSales)} />
-                                        <Stat label="Tax" value={fmt(r.total_tax)} />
-                                        <Stat label="Discounts" value={fmt(r.total_discounts)} />
-                                        <Stat label="COGS" value={fmt(r.total_cogs)} />
-                                        <Stat label="Gross Profit" value={fmt(r.gross_profit)} />
-                                        <Stat label="Total Expense" value={fmt(notes.totalExpense)} />
-                                        <Stat label="Total Income" value={fmt(notes.totalIncomeEntries)} />
-                                        <Stat label="Avg Order Spend" value={fmt(r.avg_order_value)} />
-                                        <Stat label="Total Customers" value={String(notes.uniqueCustomers)} />
-                                        <Stat label="Most Rush Hour" value={notes.rushHour} />
-                                        <Stat label="Tips" value={fmt(r.total_tips)} />
-                                        <Stat label="Voids" value={String(r.total_voids)} />
-                                        <Stat label="Refunds" value={String(r.total_refunds)} />
-                                        <Stat label="Cancelled Orders" value={String(r.total_cancelled)} />
-                                        <Stat label="Cancellation Cost" value={fmt(r.total_cancellation_cost)} />
-                                        <div>
-                                            <p className="text-ink-subtle text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">Unverified Payments</p>
-                                            <p className={`font-extrabold mt-1 tabular-nums ${(r.unverified_orders ?? 0) > 0 ? 'text-danger-fg' : 'text-ink'}`}>
-                                                {r.unverified_orders ?? 0}
-                                                {(r.unverified_orders ?? 0) > 0 && (
-                                                    <span className="ml-2 text-[10px] bg-danger-bg/30 border border-danger-bg text-danger-fg px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">⚠ investigate</span>
-                                                )}
-                                            </p>
-                                        </div>
-                                    </div>
+                                    {(() => {
+                                        const discountTotal = (r.total_discounts && r.total_discounts > 0) ? r.total_discounts : notes.discountByPerson.reduce((s, p) => s + p.amount, 0)
+                                        const serviceChargeTotal = notes.paymentBreakdown?.service_charge ?? notes.serviceChargeByPerson.reduce((s, p) => s + p.amount, 0)
+                                        return (
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-6 text-sm bg-surface p-4 sm:p-6 rounded-[var(--r-md)] border border-hairline shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+                                                <Stat label="Gross Revenue" value={fmt(r.total_revenue)} />
+                                                <Stat label="Net Revenue" value={fmt(r.net_revenue)} />
+                                                <Stat label="Restaurant Sales" value={fmt(notes.restaurantSales)} />
+                                                <Stat label="Room Sales" value={fmt(notes.roomSales)} />
+                                                <Stat label="Tax" value={fmt(r.total_tax)} />
+                                                <Stat label="Discounts" value={fmt(discountTotal)} />
+                                                <Stat label="Service Charge" value={fmt(serviceChargeTotal)} />
+                                                <Stat label="COGS" value={fmt(r.total_cogs)} />
+                                                <Stat label="Gross Profit" value={fmt(r.gross_profit)} />
+                                                <Stat label="Total Expense" value={fmt(notes.totalExpense)} />
+                                                <Stat label="Total Income" value={fmt(notes.totalIncomeEntries)} />
+                                                <Stat label="Avg Order Spend" value={fmt(r.avg_order_value)} />
+                                                <Stat label="Total Customers" value={String(notes.uniqueCustomers)} />
+                                                <Stat label="Most Rush Hour" value={notes.rushHour} />
+                                                <Stat label="Tips" value={fmt(r.total_tips)} />
+                                                <Stat label="Voids" value={String(r.total_voids)} />
+                                                <Stat label="Refunds" value={String(r.total_refunds)} />
+                                                <Stat label="Cancelled Orders" value={String(r.total_cancelled)} />
+                                                <Stat label="Cancellation Cost" value={fmt(r.total_cancellation_cost)} />
+                                                <div>
+                                                    <p className="text-ink-subtle text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">Unverified Payments</p>
+                                                    <p className={`font-extrabold mt-1 tabular-nums ${(r.unverified_orders ?? 0) > 0 ? 'text-danger-fg' : 'text-ink'}`}>
+                                                        {r.unverified_orders ?? 0}
+                                                        {(r.unverified_orders ?? 0) > 0 && (
+                                                            <span className="ml-2 text-[10px] bg-danger-bg/30 border border-danger-bg text-danger-fg px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">⚠ investigate</span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )
+                                    })()}
 
                                     {/* Who collected how much */}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
