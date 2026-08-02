@@ -224,7 +224,7 @@ export default function CriticalClient({
             // Remove from low stock list if quantity is now above reorder
             setLowStockList(prev => prev.map(i => {
                 if (i.id === purchasingItem.id) {
-                    return { ...i, stock_quantity: Number(i.stock_quantity) + qty }
+                    return { ...i, stock_quantity: Math.max(0, Number(i.stock_quantity)) + qty }
                 }
                 return i
             }).filter(i => i.reorder_level !== null && Number(i.stock_quantity) <= Number(i.reorder_level)))
