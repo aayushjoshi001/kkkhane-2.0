@@ -7,6 +7,19 @@ export interface PdfColumn {
 }
 
 /**
+ * An additional table drawn after the main one, in the same document — e.g.
+ * a per-cashier breakdown following a day's transaction statement. Kept
+ * optional everywhere it's threaded through so every existing single-table
+ * caller is unaffected.
+ */
+export interface PdfSection {
+    title?: string
+    columns: PdfColumn[]
+    rows: Record<string, any>[]
+    totalsRow?: Record<string, any>
+}
+
+/**
  * Calculates proportional column widths based on column contents/types
  * so description/detail columns get more space while date/numeric columns remain compact.
  */
@@ -34,57 +47,68 @@ function calculateColumnWidths(columns: PdfColumn[], contentWidth: number): numb
 }
 
 /**
- * Builds a clean, non-overlapping tabular PDF report in A4 size and returns the
- * jsPDF document — shared by `downloadPdf` (single-file save) and callers that
- * need the raw bytes instead, e.g. bundling several reports into one zip.
+ * Draws one table (optional section title, header, rows, optional totals
+ * footer) onto `doc` starting at `startY`, paginating as needed. Returns the
+ * y position just below what it drew, so a caller can chain another table
+ * (or another `drawTable` call for a second section) right after it.
  */
-export function buildPdfDoc(
-    title: string,
-    subtitle: string,
+function drawTable(
+    doc: jsPDF,
+    startY: number,
     columns: PdfColumn[],
     rows: Record<string, any>[],
-    totalsRow?: Record<string, any>
-): jsPDF {
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
-    const margin = 12
-    const pageWidth = doc.internal.pageSize.getWidth()
-    const pageHeight = doc.internal.pageSize.getHeight()
-    const contentWidth = pageWidth - (margin * 2) // 186mm
-    const maxPageY = pageHeight - 15
+    totalsRow: Record<string, any> | undefined,
+    margin: number,
+    contentWidth: number,
+    maxPageY: number,
+    sectionTitle?: string
+): number {
+    let y = startY
 
-    let y = margin + 5
-
-    // 1. Draw Title
-    doc.setFont('Helvetica', 'bold')
-    doc.setFontSize(15)
-    doc.setTextColor(17, 24, 39)
-    doc.text(title, margin, y)
-    y += 6
-
-    // 2. Draw Subtitle (wrapped if long)
-    if (subtitle) {
-        doc.setFont('Helvetica', 'normal')
-        doc.setFontSize(8.5)
-        doc.setTextColor(100, 116, 139)
-        const subLines = doc.splitTextToSize(subtitle, contentWidth)
-        doc.text(subLines, margin, y)
-        y += subLines.length * 4 + 3
-    } else {
-        y += 2
+    if (sectionTitle) {
+        if (y + 10 > maxPageY) {
+            doc.addPage()
+            y = margin + 5
+        }
+        doc.setFont('Helvetica', 'bold')
+        doc.setFontSize(10.5)
+        doc.setTextColor(17, 24, 39)
+        doc.text(sectionTitle, margin, y)
+        y += 6
     }
 
-    // 3. Compute Column Widths
     const colWidths = calculateColumnWidths(columns, contentWidth)
     const padding = 1.5
 
+    // A wide table (many narrow columns, e.g. a per-cashier breakdown) needs
+    // smaller text so labels wrap into fewer lines instead of spilling past
+    // their column into the next one. Both the header and body scale down
+    // together so the two stay visually consistent.
+    const scale = columns.length > 9 ? 0.72 : columns.length > 7 ? 0.85 : columns.length > 5 ? 0.94 : 1
+    const headerFontSize = 8 * scale
+    const bodyFontSize = 7.5 * scale
+    const bodyLineSpacing = 3.2 * scale
+    const headerLineSpacing = 3.4 * scale
+
+    // Wraps every header label to its own column width (same approach as the
+    // body cells below) so a long label like "Net Cash to Collect" breaks
+    // onto a second line rather than overlapping the next column's header.
     const drawHeader = (currentY: number): number => {
         doc.setFont('Helvetica', 'bold')
-        doc.setFontSize(8)
+        doc.setFontSize(headerFontSize)
         doc.setTextColor(31, 41, 55)
 
-        // Draw header background line
+        const headerCellLines: string[][] = columns.map((col, idx) => {
+            const availableWidth = colWidths[idx] - (padding * 2)
+            return doc.splitTextToSize(col.label, availableWidth)
+        })
+        const maxLines = Math.max(1, ...headerCellLines.map(l => l.length))
+        const headerBlockHeight = maxLines * headerLineSpacing + 3.5
+
+        // Draw header background line, sized to fit however many lines the
+        // longest wrapped label needs.
         doc.setFillColor(243, 244, 246)
-        doc.rect(margin, currentY - 3.5, contentWidth, 7, 'F')
+        doc.rect(margin, currentY - 3.5, contentWidth, headerBlockHeight, 'F')
 
         let x = margin
         columns.forEach((col, idx) => {
@@ -94,23 +118,28 @@ export function buildPdfDoc(
             if (align === 'right') drawX = x + width - padding
             else if (align === 'center') drawX = x + width / 2
 
-            doc.text(col.label, drawX, currentY, { align })
+            let textY = currentY
+            headerCellLines[idx].forEach(line => {
+                doc.text(line, drawX, textY, { align })
+                textY += headerLineSpacing
+            })
             x += width
         })
 
+        const ruleY = currentY - 3.5 + headerBlockHeight
         doc.setLineWidth(0.3)
         doc.setDrawColor(209, 213, 219)
-        doc.line(margin, currentY + 2.5, margin + contentWidth, currentY + 2.5)
+        doc.line(margin, ruleY, margin + contentWidth, ruleY)
 
-        return currentY + 6.5
+        return ruleY + 3
     }
 
     // Draw Initial Header
     y = drawHeader(y)
 
-    // 4. Draw Rows
+    // Draw Rows
     doc.setFont('Helvetica', 'normal')
-    doc.setFontSize(7.5)
+    doc.setFontSize(bodyFontSize)
     doc.setTextColor(55, 65, 81)
     doc.setLineWidth(0.1)
     doc.setDrawColor(229, 231, 235)
@@ -125,7 +154,7 @@ export function buildPdfDoc(
         })
 
         const maxLines = Math.max(1, ...cellWrappedLines.map(l => l.length))
-        const lineSpacing = 3.2
+        const lineSpacing = bodyLineSpacing
         const computedRowHeight = maxLines * lineSpacing + 3
 
         // Pagination Check
@@ -134,7 +163,7 @@ export function buildPdfDoc(
             y = margin + 5
             y = drawHeader(y)
             doc.setFont('Helvetica', 'normal')
-            doc.setFontSize(7.5)
+            doc.setFontSize(bodyFontSize)
             doc.setTextColor(55, 65, 81)
         }
 
@@ -170,7 +199,7 @@ export function buildPdfDoc(
         doc.line(margin, y - 2.5, margin + contentWidth, y - 2.5)
     })
 
-    // 5. Draw Totals Row (if present)
+    // Draw Totals Row (if present)
     if (totalsRow) {
         const totalCellLines: string[][] = columns.map((col, idx) => {
             const rawVal = totalsRow[col.key]
@@ -179,7 +208,7 @@ export function buildPdfDoc(
             return doc.splitTextToSize(val, availableWidth)
         })
         const maxLines = Math.max(1, ...totalCellLines.map(l => l.length))
-        const computedRowHeight = maxLines * 3.5 + 4
+        const computedRowHeight = maxLines * headerLineSpacing + 4
 
         if (y + computedRowHeight > maxPageY) {
             doc.addPage()
@@ -188,7 +217,7 @@ export function buildPdfDoc(
         }
 
         doc.setFont('Helvetica', 'bold')
-        doc.setFontSize(8)
+        doc.setFontSize(headerFontSize)
         doc.setTextColor(17, 24, 39)
 
         // Top double line for totals
@@ -209,13 +238,70 @@ export function buildPdfDoc(
             let textY = y + 2.5
             lines.forEach(line => {
                 doc.text(line, drawX, textY, { align })
-                textY += 3.5
+                textY += headerLineSpacing
             })
             x += width
         })
 
         y += computedRowHeight
         doc.line(margin, y - 1, margin + contentWidth, y - 1)
+    }
+
+    return y
+}
+
+/**
+ * Builds a clean, non-overlapping tabular PDF report in A4 size and returns the
+ * jsPDF document — shared by `downloadPdf` (single-file save) and callers that
+ * need the raw bytes instead, e.g. bundling several reports into one zip.
+ *
+ * `extraSections`, when given, draws further tables (each with its own
+ * column set and optional totals row) beneath the main one in the same
+ * document — e.g. a per-cashier breakdown following a day's statement.
+ */
+export function buildPdfDoc(
+    title: string,
+    subtitle: string,
+    columns: PdfColumn[],
+    rows: Record<string, any>[],
+    totalsRow?: Record<string, any>,
+    extraSections?: PdfSection[]
+): jsPDF {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+    const margin = 12
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const contentWidth = pageWidth - (margin * 2) // 186mm
+    const maxPageY = pageHeight - 15
+
+    let y = margin + 5
+
+    // 1. Draw Title
+    doc.setFont('Helvetica', 'bold')
+    doc.setFontSize(15)
+    doc.setTextColor(17, 24, 39)
+    doc.text(title, margin, y)
+    y += 6
+
+    // 2. Draw Subtitle (wrapped if long)
+    if (subtitle) {
+        doc.setFont('Helvetica', 'normal')
+        doc.setFontSize(8.5)
+        doc.setTextColor(100, 116, 139)
+        const subLines = doc.splitTextToSize(subtitle, contentWidth)
+        doc.text(subLines, margin, y)
+        y += subLines.length * 4 + 3
+    } else {
+        y += 2
+    }
+
+    // 3. Draw the main table
+    y = drawTable(doc, y, columns, rows, totalsRow, margin, contentWidth, maxPageY)
+
+    // 4. Draw any extra sections (e.g. a per-cashier breakdown) below it
+    for (const section of extraSections ?? []) {
+        y += 8
+        y = drawTable(doc, y, section.columns, section.rows, section.totalsRow, margin, contentWidth, maxPageY, section.title)
     }
 
     return doc
@@ -230,8 +316,9 @@ export function downloadPdf(
     subtitle: string,
     columns: PdfColumn[],
     rows: Record<string, any>[],
-    totalsRow?: Record<string, any>
+    totalsRow?: Record<string, any>,
+    extraSections?: PdfSection[]
 ): void {
-    const doc = buildPdfDoc(title, subtitle, columns, rows, totalsRow)
+    const doc = buildPdfDoc(title, subtitle, columns, rows, totalsRow, extraSections)
     doc.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`)
 }

@@ -649,7 +649,7 @@ export async function getSupplierSettlementsAction(expenseIds: string[]) {
     const supabase = await createAdminClient()
     const { data, error } = await supabase
         .from('voucher_supplier_settlements')
-        .select('*, day_book_entries(*)')
+        .select('*, day_book_entries(*, users(full_name))')
         .in('expense_id', expenseIds)
         .order('created_at', { ascending: true })
 

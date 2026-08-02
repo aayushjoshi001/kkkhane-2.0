@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import DayBookClient, { DayBookRangeView } from './DayBookClient'
 import type { DayBookEntry, DayBookSession } from '@/types/database'
 import { getNstDateString } from '@/lib/timezone'
-import { resolveActiveDayBookSession, computeDayBookRange, attachCreatorNames } from '@/lib/ledger'
+import { resolveActiveDayBookSession, computeDayBookRange, attachCreatorNames, computeCashierBreakdown } from '@/lib/ledger'
 
 import { getRestaurantFeatures } from '@/lib/features'
 
@@ -117,11 +117,14 @@ export default async function DayBookPage({
         opening_bank_balance: openingBankBal,
     }
 
+    const byCashier = computeCashierBreakdown(entries)
+
     return (
         <DayBookClient
             session={session ?? null}
             entries={entries}
             totals={totals}
+            byCashier={byCashier}
             todayDate={todayDate}
             selectedDate={selectedDate}
         />
