@@ -28,10 +28,18 @@
 -- receipts, reads back — which mixed staff-only audit text into guest-facing
 -- content and made the note unparseable after two refunds.
 
-CREATE TYPE "public"."cancellation_kind" AS ENUM (
-    'void',   -- cancelled: a mistake, a change of mind, an item sent back
-    'comp'    -- deliberately given free: staff meal, service recovery, tasting
-);
+-- Guarded because CREATE TYPE has no IF NOT EXISTS: every other statement in
+-- this file is re-runnable, and one that isn't would fail a replay of the whole
+-- migration on a database that already has the type.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'cancellation_kind') THEN
+        CREATE TYPE "public"."cancellation_kind" AS ENUM (
+            'void',   -- cancelled: a mistake, a change of mind, an item sent back
+            'comp'    -- deliberately given free: staff meal, service recovery, tasting
+        );
+    END IF;
+END $$;
 
 ALTER TABLE "public"."orders"
     ADD COLUMN IF NOT EXISTS "cancellation_kind" "public"."cancellation_kind",
@@ -65,8 +73,22 @@ CREATE INDEX IF NOT EXISTS "order_items_cancellation_idx"
     ON "public"."order_items" USING "btree" ("cancelled_at" DESC)
     WHERE "cancellation_kind" IS NOT NULL;
 
--- orders grants columns to anon individually (the customer order tracker reads
--- a handful of them). None of the above is guest-facing: a comp reason names
--- staff, and the refund reason is internal. Granting nothing is what keeps them
--- server-side, so this is a note rather than a statement — do not add anon
--- grants for these columns.
+-- Anon exposure — the two tables differ, and it is worth being exact:
+--
+--   orders      anon has NO table-level SELECT, only per-column grants (the
+--               customer order tracker reads a handful). New columns are
+--               therefore private by default, which is what we want:
+--               refund_reason is internal. Do not add anon grants for them.
+--
+--   order_items anon DOES hold a table-level SELECT, so the five columns added
+--               above are readable by anon for whatever rows RLS lets through
+--               (a guest's own order). That is inherited, not introduced here —
+--               the table already exposes chef_id, claimed_by and
+--               special_request the same way — but cancellation_reason is
+--               staff-written free text, which is a genuinely new kind of
+--               content on that surface. Staff should assume a guest can read
+--               what they type there.
+--
+-- Tightening it means revoking the table-level SELECT and re-granting the
+-- columns the guest flows actually need, which touches live guest-facing reads
+-- and does not belong in this migration.
