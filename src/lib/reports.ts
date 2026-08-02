@@ -155,7 +155,7 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     const totalRevenue = paidOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0)
     const totalTax = paidOrders.reduce((sum, o) => sum + (o.tax_amount || 0), 0)
     const totalTips = paidOrders.reduce((sum, o) => sum + (o.tip_amount || 0), 0)
-    const totalDiscounts = paidOrders.reduce((sum, o) => sum + (o.discount_amount || 0), 0)
+    let totalDiscounts = paidOrders.reduce((sum, o) => sum + (o.discount_amount || 0), 0)
     const netRevenue = totalRevenue - totalTax
     const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
 
@@ -534,7 +534,7 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         serviceChargeByPerson: toPersonAmountList(sumByPerson(serviceChargeRows), nameById),
     }
 
-    const totalDiscounts = round2(discountRows.reduce((s, r) => s + r.amount, 0))
+    totalDiscounts = round2(discountRows.reduce((s, r) => s + r.amount, 0))
 
     // 10. Upsert into database
     const { data: result, error: upsertError } = await supabase
