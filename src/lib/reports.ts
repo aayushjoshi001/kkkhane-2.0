@@ -411,7 +411,11 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     }
 
     const bookings = (settledBookings || []) as { id: string; total_amount: number; room_id: string | null; rooms: { room_number?: string; room_type?: string } | { room_number?: string; room_type?: string }[] | null }[]
-    const roomSales = round2(bookings.reduce((s, b) => s + (Number(b.total_amount) || 0), 0))
+    const roomBookingsSales = round2(bookings.reduce((s, b) => s + (Number(b.total_amount) || 0), 0))
+    const roomOrders = paidOrders.filter(o => isOrderLinkedToRoom(o))
+    const roomOrdersSales = round2(roomOrders.reduce((s, o) => s + (o.total_amount || 0), 0))
+    const roomSales = round2(roomBookingsSales + roomOrdersSales)
+
     const tableOrders = paidOrders.filter(o => !isOrderLinkedToRoom(o))
     const restaurantSales = round2(tableOrders.reduce((s, o) => s + (o.total_amount || 0), 0))
 
