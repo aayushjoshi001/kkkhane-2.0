@@ -138,7 +138,7 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     // 2. Fetch all orders for this window (only the columns the aggregation needs)
     const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, total_amount, tax_amount, tip_amount, discount_amount, service_charge_amount, payment_status, status, session_id, placed_at, cashier_id')
+        .select('id, total_amount, tax_amount, tip_amount, discount_amount, service_charge_amount, payment_status, status, session_id, placed_at, cashier_id, booking_id, sessions(table_id, tables:table_id(room_id))')
         .eq('restaurant_id', restaurantId)
         .gte('placed_at', start)
         .lte('placed_at', end)
@@ -446,9 +446,18 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         .map(o => ({ person: o.cashier_id, amount: o.service_charge_amount }))
 
     // ── Restaurant vs. room sales, and top 5 rooms ──────────────────────────
+    const isOrderLinkedToRoom = (o: any): boolean => {
+        if (o.booking_id) return true
+        const sess = Array.isArray(o.sessions) ? o.sessions[0] : o.sessions
+        if (!sess) return false
+        const tbl = Array.isArray(sess.tables) ? sess.tables[0] : sess.tables
+        return !!tbl?.room_id
+    }
+
     const bookings = (settledBookings || []) as { id: string; total_amount: number; room_id: string | null; rooms: { room_number?: string; room_type?: string } | { room_number?: string; room_type?: string }[] | null }[]
     const roomSales = round2(bookings.reduce((s, b) => s + (Number(b.total_amount) || 0), 0))
-    const restaurantSales = round2(totalRevenue)
+    const tableOrders = paidOrders.filter(o => !isOrderLinkedToRoom(o))
+    const restaurantSales = round2(tableOrders.reduce((s, o) => s + (o.total_amount || 0), 0))
 
     const roomAgg = new Map<string, { roomNumber: string; roomType: string | null; bookings: number; revenue: number }>()
     for (const b of bookings) {

@@ -272,12 +272,18 @@ export default function ReportsViewer({ initialReports, restaurantId }: {
                                     {(() => {
                                         const discountTotal = (r.total_discounts && r.total_discounts > 0) ? r.total_discounts : notes.discountByPerson.reduce((s, p) => s + p.amount, 0)
                                         const serviceChargeTotal = notes.paymentBreakdown?.service_charge ?? notes.serviceChargeByPerson.reduce((s, p) => s + p.amount, 0)
+                                        const rawRestSales = notes.restaurantSales ?? 0
+                                        const roomSalesVal = notes.roomSales ?? 0
+                                        const restSalesVal = (rawRestSales === r.total_revenue && roomSalesVal > 0)
+                                            ? Math.max(0, rawRestSales - roomSalesVal)
+                                            : rawRestSales
+
                                         return (
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-6 text-sm bg-surface p-4 sm:p-6 rounded-[var(--r-md)] border border-hairline shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
                                                 <Stat label="Gross Revenue" value={fmt(r.total_revenue)} />
                                                 <Stat label="Net Revenue" value={fmt(r.net_revenue)} />
-                                                <Stat label="Restaurant Sales" value={fmt(notes.restaurantSales)} />
-                                                <Stat label="Room Sales" value={fmt(notes.roomSales)} />
+                                                <Stat label="Restaurant Sales" value={fmt(restSalesVal)} />
+                                                <Stat label="Room Sales" value={fmt(roomSalesVal)} />
                                                 <Stat label="Tax" value={fmt(r.total_tax)} />
                                                 <Stat label="Discounts" value={fmt(discountTotal)} />
                                                 <Stat label="Service Charge" value={fmt(serviceChargeTotal)} />
