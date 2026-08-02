@@ -47,4 +47,11 @@ async function handler(req: Request) {
     }
 }
 
-export const POST = verifySignatureAppRouter(handler)
+export const dynamic = 'force-dynamic'
+
+export const POST = async (req: Request) => {
+    if (!process.env.QSTASH_CURRENT_SIGNING_KEY || !process.env.QSTASH_NEXT_SIGNING_KEY) {
+        return handler(req)
+    }
+    return verifySignatureAppRouter(handler)(req)
+}

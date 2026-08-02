@@ -920,9 +920,9 @@ export default function IngredientsManager({
                                 <Select value={moveForm.movement_type} onChange={e => setMoveForm({ ...moveForm, movement_type: e.target.value })}
                                     className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207l5%205%205-5%22%20stroke%3D%22%236b7280%22%20stroke-width%3D%221.5%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]">
                                     <option value="purchase">Purchase (add)</option>
+                                    <option value="adjustment">Adjustment (add)</option>
                                     <option value="usage">Usage (subtract)</option>
                                     <option value="waste">Waste (subtract)</option>
-                                    <option value="adjustment">Adjustment (subtract)</option>
                                 </Select>
                             </div>
                             <div>
@@ -1203,11 +1203,10 @@ export default function IngredientsManager({
                         {movements.map(m => {
                             const ing = Array.isArray(m.ingredients) ? m.ingredients[0] : m.ingredients
                             const performer = Array.isArray(m.users) ? m.users[0] : m.users
-                            // Mirrors addStockMovementAction's own delta rule exactly
-                            // (ingredients/actions.ts) — 'purchase' is the only
-                            // movement type that adds; everything else, including
-                            // 'adjustment', subtracts from stock.
-                            const isAddition = m.movement_type === 'purchase'
+                            // Mirrors addStockMovementAction's own delta rule
+                            // (ingredients/actions.ts) — 'purchase' and 'adjustment'
+                            // add to stock; 'usage' and 'waste' subtract from stock.
+                            const isAddition = m.movement_type === 'purchase' || m.movement_type === 'adjustment'
                             return (
                                 <tr key={m.id} className="hover:bg-surface-muted/30 transition-colors">
                                     <td className="px-5 py-4 text-ink-subtle font-semibold whitespace-nowrap">
