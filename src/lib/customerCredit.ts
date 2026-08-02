@@ -148,6 +148,38 @@ export async function postCreditCharge(
     return { success: true }
 }
 
+/**
+ * The counterpart to postCreditCharge — records money collected against a
+ * customer's existing due, without touching the Day Book. Used when a
+ * checkout folds "also collect their old due" into the same cash/QR/credit
+ * amounts already being posted for the current bill, so the combined total
+ * is only ever recorded once (here, and separately as ordinary sales income
+ * for the order itself) instead of double-posting the cash/bank side.
+ */
+export async function postCreditRepayment(
+    supabase: SupabaseClient,
+    restaurantId: string,
+    userId: string | null,
+    input: { customerCreditAccountId: string; amount: number; description: string }
+): Promise<{ success: boolean; error?: string }> {
+    if (input.amount <= 0) return { success: true }
+
+    const { error } = await supabase.from('receivable_transactions').insert({
+        restaurant_id: restaurantId,
+        customer_credit_account_id: input.customerCreditAccountId,
+        type: 'payment',
+        amount: input.amount,
+        description: input.description,
+        created_by: userId,
+    })
+
+    if (error) {
+        console.error('Failed to post credit repayment:', error)
+        return { success: false, error: error.message }
+    }
+    return { success: true }
+}
+
 export async function postLoyaltyEarn(
     supabase: SupabaseClient,
     restaurantId: string,

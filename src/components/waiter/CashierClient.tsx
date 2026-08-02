@@ -35,6 +35,7 @@ import QuickOrderModal from './QuickOrderModal'
 import { calculateNights, getBookingCustomPrice, lateCheckoutNights, resolveDeparture, LATE_CHECKOUT_GRACE_HOURS, advanceMethodLabel, getItemDisplayName } from '@/lib/utils'
 import { type GroupBill } from '@/lib/bookingGroup'
 import { useQrCodes } from '@/lib/hooks/useQrCodes'
+import { getCustomerOutstandingBalanceByContactAction } from '@/app/(admin)/admin/vouchers/actions'
 
 // Auto-print retry/fallback tuning, matching the kitchen screen's.
 const KOT_PRINT_MAX_RETRIES = 2
@@ -503,6 +504,12 @@ export default function CashierClient({
     const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
     const [pendingInvoice, setPendingInvoice] = useState<{ type: 'room' | 'table' | 'takeout' | 'delivery'; item: any; data: any } | null>(null)
     const [isDirectCheckingOut, setIsDirectCheckingOut] = useState(false)
+    // Takeaway/delivery billing: the customer's outstanding balance from a
+    // previous visit (looked up by name/phone, already on the order), and how
+    // much of it the cashier is folding into this bill.
+    const [previousDueAmount, setPreviousDueAmount] = useState<number | null>(null)
+    const [previousDueLoading, setPreviousDueLoading] = useState(false)
+    const [previousDueToAdd, setPreviousDueToAdd] = useState('')
     const qrCodes = useQrCodes()
 
     const [mounted, setMounted] = useState(false)
@@ -768,6 +775,17 @@ export default function CashierClient({
         setCreditCustomerPhone(selectedBillingOrder?.customer_phone || '')
         setCashReceivedAmount('')
         setQrReceivedAmount('')
+        setPreviousDueToAdd('')
+        setPreviousDueAmount(null)
+        if (selectedBillingOrder?.customer_name || selectedBillingOrder?.customer_phone) {
+            setPreviousDueLoading(true)
+            getCustomerOutstandingBalanceByContactAction({
+                name: selectedBillingOrder.customer_name || undefined,
+                phone: selectedBillingOrder.customer_phone || undefined,
+            }).then(res => {
+                setPreviousDueAmount('data' in res ? (res.data ?? 0) : 0)
+            }).finally(() => setPreviousDueLoading(false))
+        }
     }, [selectedBillingOrder?.id])
 
     // Mirrors the server folio, including the late-checkout rule — if this
@@ -1422,7 +1440,11 @@ export default function CashierClient({
             const bargainRateEntered = tableBargainRate.trim() !== ''
             const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : subtotal
             const discountAmount = bargainRateEntered ? Math.max(0, subtotal - bargainRateValue) : 0
-            const total = subtotal - discountAmount
+            // Previous due, folded straight into this bill's total — settled
+            // with whatever cash/QR the customer hands over for the combined
+            // amount, same as the order's own total would be.
+            const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
+            const total = subtotal - discountAmount + previousDueApplied
 
             const cashGivenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashReceivedAmount.trim() !== '' ? parseFloat(cashReceivedAmount) : null
             const cashTakenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashTakenAmount.trim() !== '' ? parseFloat(cashTakenAmount) : null
@@ -1471,6 +1493,7 @@ export default function CashierClient({
                 total,
                 discountAmount,
                 discountReason: discountAmount > 0 ? tableBargainReason.trim() : '',
+                previousDueAmount: previousDueApplied,
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
                 cashGiven: resolvedCashGiven,
@@ -1796,6 +1819,7 @@ export default function CashierClient({
                         discount_reason: invoice.discountReason,
                         customer_name: invoice.customerName,
                         customer_phone: invoice.customerPhone,
+                        previous_due_amount: invoice.previousDueAmount || 0,
                     })
                 })
                 const data = await res.json()
@@ -3682,11 +3706,46 @@ export default function CashierClient({
                             const bargainRateValue = bargainRateEntered ? parseFloat(tableBargainRate) || 0 : orderSubtotal
                             const orderDiscountAmount = bargainRateEntered ? Math.max(0, orderSubtotal - bargainRateValue) : 0
                             const orderDiscountInvalid = bargainRateEntered && (bargainRateValue < 0 || bargainRateValue > orderSubtotal)
-                            const orderTotal = orderSubtotal - orderDiscountAmount
+                            const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
+                            const orderTotal = orderSubtotal - orderDiscountAmount + previousDueApplied
                             const invoiceType = selectedBillingOrder.order_type === 'delivery' ? 'delivery' : 'takeout'
 
                             return (
                                 <>
+                                    {/* Previous due — only ever shown once a balance is actually
+                                        found for this customer, and only ever settled with real
+                                        cash/QR (never credit, that would just be borrowing to pay
+                                        off the same borrowing). */}
+                                    {!previousDueLoading && !!previousDueAmount && previousDueAmount > 0 && (
+                                        <div className="border-2 border-rose-200 rounded-2xl p-4 space-y-3 bg-rose-50/60 shadow-sm">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-xs font-black text-rose-800 uppercase tracking-wider">Previous Due</p>
+                                                    <p className="text-[10px] text-rose-700/70 font-semibold">
+                                                        {selectedBillingOrder.customer_name || 'This customer'} owes {money(previousDueAmount)} from before
+                                                    </p>
+                                                </div>
+                                                <div className="relative w-32">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-700">Rs.</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={previousDueAmount}
+                                                        placeholder="0.00"
+                                                        value={previousDueToAdd}
+                                                        onChange={e => setPreviousDueToAdd(e.target.value)}
+                                                        className="w-full pl-7 pr-2 py-2 border-2 border-rose-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-rose-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                            {previousDueApplied > 0 && (
+                                                <p className="text-[10px] font-bold text-rose-700">
+                                                    Adding {money(previousDueApplied)} to this bill — settle with cash or QR.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {/* Bargain rate */}
                                     <div className="border-2 border-amber-200 rounded-2xl p-4 space-y-3 bg-amber-50/60 shadow-sm">
                                         <div className="flex items-center justify-between gap-3">
@@ -3773,7 +3832,9 @@ export default function CashierClient({
                                             </button>
                                             <button
                                                 onClick={() => setBillingPaymentMethod('credit')}
-                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                disabled={previousDueApplied > 0}
+                                                title={previousDueApplied > 0 ? 'Previous due must be settled with cash or QR, not credit' : undefined}
+                                                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
                                                     billingPaymentMethod === 'credit'
                                                         ? 'border-brand-500 bg-brand-50 text-brand-600'
                                                         : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'

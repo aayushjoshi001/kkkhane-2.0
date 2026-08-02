@@ -150,7 +150,7 @@ const ENTRY_CARDS = [
 const emptyForms = {
     cash_in: { amount: '', description: '', category: 'other' },
     cash_out: { amount: '', description: '', category: 'other', expense_category_id: '', bank_name: '', staff_id: '', supplier_id: '' },
-    bank_transaction: { amount: '', description: '', bank_name: '', transaction_type: 'deposit', category: 'other', expense_category_id: '', staff_id: '', supplier_id: '' },
+    bank_transaction: { amount: '', description: '', bank_name: '', transaction_type: 'deposit', category: 'other', expense_category_id: '', staff_id: '', supplier_id: '', method: 'qr' },
     voucher: { voucher_type: 'receipt', party_name: '', amount: '', particulars: '', payment_mode: 'cash', bank_name: '' },
     inventory: { ingredient_id: '', movement_type: 'purchase', quantity: '', rate: '', unit: 'kg', category_id: '', supplier_id: '', bill_number: '', paid_amount: '', notes: '' },
     supplier_payment: { supplier_id: '', amount: '', payment_source: 'cash', bank_name: '', notes: '' },
@@ -707,12 +707,31 @@ export default function ManualEntryClient({
                     if (!sessionId) { toast.error('No active session'); return }
                     const isWithdrawal = f.transaction_type === 'withdrawal'
                     const isSupplierExpense = isWithdrawal && f.category === 'expense' && !!f.supplier_id
+                    // Bank to Hotel Cash by cheque isn't real money yet — it goes to
+                    // Critical Center's cheque queue and only actually moves the bank
+                    // balance into the drawer once a manager approves it (and only on
+                    // or after the cheque's own date), unlike the QR case below which
+                    // transfers instantly.
+                    const isCashTransferCheque = isWithdrawal && f.category === 'withdrawal' && f.method === 'cheque'
                     if (isWithdrawal && f.category === 'expense' && !isSupplierExpense && !f.expense_category_id) {
                         toast.error('Select an expense category')
                         return
                     }
 
-                    if (isSupplierExpense) {
+                    if (isCashTransferCheque) {
+                        const chequeError = validateChequeDetails(chequeDetails)
+                        if (chequeError) { toast.error(chequeError); return }
+                        result = await createVoucherAction({
+                            voucher_type: 'payment',
+                            party_name: 'Hotel Cash Drawer',
+                            amount,
+                            payment_mode: 'cheque',
+                            bank_name: f.bank_name,
+                            particulars: f.description.trim(),
+                            category: 'cash_transfer',
+                            cheque_details: buildChequeDetailsPayload(chequeDetails),
+                        })
+                    } else if (isSupplierExpense) {
                         const supplierObj = suppliers.find(s => s.id === f.supplier_id)
                         result = await createVoucherAction({
                             voucher_type: 'payment',
@@ -825,13 +844,14 @@ export default function ManualEntryClient({
                         if (exact) ingredientId = exact.id
                     }
                     const isNewItem = !ingredientId
+                    const isRemoval = f.movement_type === 'waste' || f.movement_type === 'usage'
 
                     if (!ingredientId && !typedName) { toast.error('Select or type an ingredient/item name'); return }
                     if (isNaN(qty) || qty <= 0) { toast.error('Enter a valid quantity'); return }
-                    if (isNewItem && f.movement_type !== 'purchase') {
-                        toast.error('"' + typedName + '" isn\'t in your inventory yet — switch to "Add Stock (Purchase)" to create it, or pick an existing item.')
-                        return
-                    }
+                    // A brand-new item always needs a category of its own — an
+                    // existing item already has one (carried over automatically
+                    // when it was picked), so this only ever fires for a new name.
+                    if (isNewItem && !f.category_id) { toast.error('Select a category for the new item'); return }
 
                     let selectedIngredient = ingredientsList.find(i => i.id === ingredientId)
                     const rate = parseFloat(f.rate) || 0
@@ -846,6 +866,13 @@ export default function ManualEntryClient({
                     if (willBill) {
                         if (!f.category_id) { toast.error('Select a category to record this purchase'); return }
                         if (paidAmount > total) { toast.error('Paid amount cannot exceed the total amount'); return }
+                        // A credit balance has to be owed to someone — "Unspecified/Others"
+                        // is fine for a fully-paid purchase, but leaves an untraceable due
+                        // once part of the bill goes unpaid.
+                        if (paidAmount < total && (!f.supplier_id || f.supplier_id === OTHERS_SUPPLIER_ID)) {
+                            toast.error('Select a supplier — required when part of the purchase is on credit')
+                            return
+                        }
                         const paymentError = validateSupplierPayment(inventoryPayment, paidAmount)
                         if (paymentError) { toast.error(paymentError); return }
                         if (isUnderpaidSplit(inventoryPayment, paidAmount, total)) {
@@ -857,15 +884,18 @@ export default function ManualEntryClient({
                     const supplierForNew = suppliers.find(s => s.id === f.supplier_id)
 
                     if (isNewItem) {
-                        // Brand-new item — created with its starting stock set
-                        // directly, the same way the Stock page's own "Create New
-                        // Stock Item" does; no separate movement entry for this
-                        // first quantity.
+                        // Brand-new item — purchase/adjustment give it a starting
+                        // stock set directly, the same way the Stock page's own
+                        // "Create New Stock Item" does (no separate movement entry
+                        // for that first quantity). Waste/usage instead start it at
+                        // zero and log the removal as a normal stock movement, so a
+                        // typed name that isn't in inventory yet is never a dead end
+                        // regardless of which adjustment type was chosen.
                         const createRes = await createIngredientAction({
                             restaurant_id: restaurantId,
                             name: typedName,
                             unit: f.unit,
-                            stock_quantity: qty,
+                            stock_quantity: isRemoval ? 0 : qty,
                             reorder_level: 10,
                             cost_per_unit: rate,
                             supplier: supplierForNew?.name || null,
@@ -877,6 +907,15 @@ export default function ManualEntryClient({
                         selectedIngredient = newIng
                         ingredientId = newIng.id
                         result = { data: newIng }
+
+                        if (isRemoval) {
+                            result = await addStockMovementAction({
+                                ingredient_id: newIng.id,
+                                movement_type: f.movement_type,
+                                quantity: qty,
+                                notes: f.notes || undefined,
+                            })
+                        }
                     } else {
                         result = await addStockMovementAction({
                             ingredient_id: ingredientId,
@@ -1419,6 +1458,24 @@ export default function ManualEntryClient({
                                                     <option value="other">Other</option>
                                                 </SelectField>
                                             )}
+                                            {/* Bank to Hotel Cash moves money out of the bank into the drawer right
+                                                now (QR) — same as any other withdrawal here — or via a cheque, which
+                                                isn't real money until a manager approves it on/after its own date,
+                                                so it goes to Critical Center's cheque queue instead of moving
+                                                anything immediately. */}
+                                            {forms.bank_transaction.transaction_type === 'withdrawal' && forms.bank_transaction.category === 'withdrawal' && (
+                                                <SelectField
+                                                    label="Method"
+                                                    value={forms.bank_transaction.method}
+                                                    onChange={e => updateForm('bank_transaction', 'method', e.target.value)}
+                                                >
+                                                    <option value="qr">QR (Instant)</option>
+                                                    <option value="cheque">Cheque (Needs Approval)</option>
+                                                </SelectField>
+                                            )}
+                                            {forms.bank_transaction.transaction_type === 'withdrawal' && forms.bank_transaction.category === 'withdrawal' && forms.bank_transaction.method === 'cheque' && (
+                                                <ChequeDetailsFields value={chequeDetails} onChange={setChequeDetails} />
+                                            )}
                                             {forms.bank_transaction.transaction_type === 'withdrawal' && forms.bank_transaction.category === 'salary' && staffList.length > 0 && (
                                                 <SelectField
                                                     label="Staff Member"
@@ -1599,6 +1656,24 @@ export default function ManualEntryClient({
                                                 >
                                                     {['kg', 'g', 'L', 'mL', 'pcs', 'bottle', 'packet', 'lbs', 'oz', 'cups', 'tbsp', 'tsp'].map(u => (
                                                         <option key={u} value={u}>{u}</option>
+                                                    ))}
+                                                </SelectField>
+                                            )}
+                                            {/* A brand-new item needs its own category picked here regardless of
+                                                adjustment type — the Purchase branch below asks for it too, but
+                                                only when billing a supplier, so this covers Adjustment/Waste/Usage.
+                                                An existing item already carries its own category (auto-filled by
+                                                selectIngredientSuggestion), so this is skipped once one is picked. */}
+                                            {isTypingNewIngredient && forms.inventory.movement_type !== 'purchase' && (
+                                                <SelectField
+                                                    label="Category (new item)"
+                                                    value={forms.inventory.category_id}
+                                                    onChange={e => updateForm('inventory', 'category_id', e.target.value)}
+                                                    searchable
+                                                >
+                                                    <option value="">Select category...</option>
+                                                    {stockCategoryOptions.map(({ category, label }) => (
+                                                        <option key={category.id} value={category.id}>{label}</option>
                                                     ))}
                                                 </SelectField>
                                             )}

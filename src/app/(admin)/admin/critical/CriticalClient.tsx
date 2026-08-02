@@ -10,6 +10,7 @@ import { approveChequeAction, rejectChequeAction } from '@/app/(admin)/admin/vou
 import { useConfirmStore } from '@/lib/stores/confirm'
 import Select from '@/components/ui/Select'
 import { UNSPECIFIED_SUPPLIER_NAME, OTHERS_SUPPLIER_ID } from '@/components/admin/SupplierPaymentFields'
+import { getNstDateString } from '@/lib/timezone'
 
 interface Ingredient {
     id: string
@@ -111,7 +112,8 @@ export default function CriticalClient({
                 receiver_name: '',
                 status: 'pending_approval',
                 amount: Number(v.amount),
-                category: 'other'
+                category: 'other',
+                cheque_details: undefined as { written_name: string; bank_cheque: string; cheque_number: string; cheque_date: string; cheque_type: string } | undefined,
             }
             try {
                 if (v.description.startsWith('{')) {
@@ -392,7 +394,14 @@ export default function CriticalClient({
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {parsedVouchers.map(v => (
+                                {parsedVouchers.map(v => {
+                                    // Every entry in this queue is a cheque (that's the only
+                                    // thing that ever needs manager approval) — a cheque dated
+                                    // in the future can't be approved yet, the bank won't honor
+                                    // it before then.
+                                    const chequeDate = v.cheque_details?.cheque_date
+                                    const notYetDue = !!chequeDate && chequeDate > getNstDateString()
+                                    return (
                                     <div key={v.id} className="p-5 border border-hairline rounded-[20px] flex flex-col md:flex-row md:items-center justify-between bg-surface hover:border-brand-300 hover:shadow-md transition-all gap-4">
                                         <div className="space-y-2">
                                             <div className="flex items-center gap-2">
@@ -405,6 +414,11 @@ export default function CriticalClient({
                                             <p className="text-sm font-black text-ink mt-2">{v.party_name}</p>
                                             <p className="text-xs text-ink-muted font-medium">{v.particulars}</p>
                                             {v.reference_no && <p className="text-[10px] text-ink-subtle font-bold uppercase">Ref: {v.reference_no}</p>}
+                                            {chequeDate && (
+                                                <p className={`text-[10px] font-bold uppercase tracking-wider ${notYetDue ? 'text-amber-600' : 'text-ink-subtle'}`}>
+                                                    Cheque Date: {chequeDate}{notYetDue ? ' — not due yet' : ''}
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="text-left md:text-right space-y-3 shrink-0">
                                             <p className="text-xl font-black text-ink">{fmt(v.amount)}</p>
@@ -419,7 +433,8 @@ export default function CriticalClient({
                                                 </button>
                                                 <button
                                                     onClick={() => handleApproveVoucher(v.id)}
-                                                    disabled={actioningId === v.id}
+                                                    disabled={actioningId === v.id || notYetDue}
+                                                    title={notYetDue ? `Cannot approve before ${chequeDate}` : undefined}
                                                     className="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-xl text-xs transition flex items-center gap-2 shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:-translate-y-0.5 disabled:opacity-50 focus-ring"
                                                 >
                                                     {actioningId === v.id ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
@@ -428,7 +443,8 @@ export default function CriticalClient({
                                             </div>
                                         </div>
                                     </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         )}
                     </div>

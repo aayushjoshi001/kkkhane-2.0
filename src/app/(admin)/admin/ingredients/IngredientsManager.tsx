@@ -85,7 +85,7 @@ export default function IngredientsManager({
     const [createBillNumber, setCreateBillNumber] = useState('')
     const [createPayment, setCreatePayment] = useState<SupplierPaymentValue>(EMPTY_SUPPLIER_PAYMENT)
     const [moveForm, setMoveForm] = useState({
-        movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: '', bill_number: ''
+        movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: '', bill_number: '', category_id: ''
     })
     const [movePayment, setMovePayment] = useState<SupplierPaymentValue>(EMPTY_SUPPLIER_PAYMENT)
     const [saving, setSaving] = useState(false)
@@ -262,9 +262,9 @@ export default function IngredientsManager({
         const name = newSupplierName.trim()
         if (!name) return
         // Same inline-add UI is shared by the Create/Edit modal (form.category_id)
-        // and the restock/"Add on Stock Item" modal (stockModal.category_id) —
+        // and the restock/"Add on Stock Item" modal (moveForm.category_id) —
         // only one of those modals is ever open at a time.
-        const categoryId = stockModal ? stockModal.category_id : form.category_id
+        const categoryId = stockModal ? moveForm.category_id : form.category_id
         setAddingSupplier(true)
         const result = await createIngredientSupplierAction({
             restaurant_id: restaurantId,
@@ -324,6 +324,15 @@ export default function IngredientsManager({
         [stockRelevantCategories],
     )
 
+    // Fallback for the restock picker below when the item itself has no
+    // category yet — "Others" is the same catch-all bucket the Supplier
+    // field already defaults to for an unspecified vendor, so a brand-new
+    // item never starts the Category select on an empty placeholder.
+    const othersStockCategoryId = useMemo(
+        () => categories.find(c => c.is_stock_category && c.name.trim().toLowerCase() === 'others')?.id || '',
+        [categories],
+    )
+
     // Main (top-level) stock categories only — offered as the parent when
     // creating a new one inline, so a manager can nest it (e.g. a new
     // "Grains" subcategory under "Grocery") instead of only adding flat ones.
@@ -340,18 +349,20 @@ export default function IngredientsManager({
     )
 
     const emptyMoveForm = {
-        movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: '', bill_number: ''
+        movement_type: 'purchase', quantity: '', rate: '', paid_amount: '', notes: '', supplier_id: '', bill_number: '', category_id: ''
     }
 
-    // Suppliers who serve this ingredient's category — closes the gap where
-    // a stock purchase used to just repeat the ingredient's free-text
-    // supplier field instead of linking to the real Suppliers Ledger record.
-    // Falls back to every supplier if none share the category yet.
+    // Suppliers who serve this category — closes the gap where a stock
+    // purchase used to just repeat the ingredient's free-text supplier field
+    // instead of linking to the real Suppliers Ledger record. Falls back to
+    // every supplier if none share the category yet. Tracks moveForm's
+    // category (auto-filled from the picked item, but editable) rather than
+    // the item's own stored category, so changing it here re-filters live.
     const relevantSuppliers = useMemo(() => {
-        if (!stockModal?.category_id) return suppliers
-        const matching = suppliers.filter(s => s.category_id === stockModal.category_id)
+        if (!moveForm.category_id) return suppliers
+        const matching = suppliers.filter(s => s.category_id === moveForm.category_id)
         return matching.length > 0 ? matching : suppliers
-    }, [suppliers, stockModal])
+    }, [suppliers, moveForm.category_id])
 
     const effectiveSupplierId = moveForm.supplier_id || (relevantSuppliers.length === 1 ? relevantSuppliers[0].id : '')
 
@@ -363,7 +374,7 @@ export default function IngredientsManager({
 
     function openStockModal(ing: Ingredient) {
         setStockModal(ing)
-        setMoveForm({ ...emptyMoveForm, rate: ing.cost_per_unit ? ing.cost_per_unit.toString() : '' })
+        setMoveForm({ ...emptyMoveForm, rate: ing.cost_per_unit ? ing.cost_per_unit.toString() : '', category_id: ing.category_id || othersStockCategoryId })
         setMovePayment(EMPTY_SUPPLIER_PAYMENT)
     }
 
@@ -391,10 +402,10 @@ export default function IngredientsManager({
         if (!stockModal || moveQuantity <= 0) { toast.error('Enter a valid quantity'); return }
 
         const willBill = isPurchase && moveRate > 0
-        const categoryId = stockModal.category_id
+        const categoryId = moveForm.category_id
         if (willBill) {
             if (!categoryId) {
-                toast.error('This item has no category set — edit it first so purchases can be recorded.')
+                toast.error('Select a category to record this purchase')
                 return
             }
             if (movePaidAmount > moveTotal) { toast.error('Paid amount cannot exceed the total amount'); return }
@@ -447,11 +458,15 @@ export default function IngredientsManager({
                 bill_number: moveForm.bill_number.trim() || undefined,
             })
 
-            // Keep cost_per_unit in sync with the latest purchase price so
-            // the next restock's rate field is prefilled correctly. Awaited
-            // so the mutate() below picks up the new value instead of racing it.
-            if (!billRes.error && moveRate !== stockModal.cost_per_unit) {
-                await updateIngredientAction(stockModal.id, { cost_per_unit: moveRate })
+            // Keep cost_per_unit and category in sync with this purchase so the
+            // next restock's rate is prefilled and the category picked here
+            // (auto-filled from the item, or set for the first time if it had
+            // none) is remembered on the item itself, not just this one bill.
+            const updates: Record<string, unknown> = {}
+            if (moveRate !== stockModal.cost_per_unit) updates.cost_per_unit = moveRate
+            if (categoryId !== stockModal.category_id) updates.category_id = categoryId
+            if (!billRes.error && Object.keys(updates).length > 0) {
+                await updateIngredientAction(stockModal.id, updates)
             }
 
             setSaving(false)
@@ -920,6 +935,17 @@ export default function IngredientsManager({
 
                             {isPurchase && (
                                 <div className="space-y-4 p-4 bg-surface-muted/30 border border-hairline rounded-[var(--r-md)]">
+                                    <div className="space-y-2">
+                                        <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Category</label>
+                                        <Select value={moveForm.category_id} onChange={e => setMoveForm({ ...moveForm, category_id: e.target.value, supplier_id: '' })}
+                                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3">
+                                            <option value="">Select category...</option>
+                                            {stockCategoryOptions.map(({ category, label }) => (
+                                                <option key={category.id} value={category.id}>{label}</option>
+                                            ))}
+                                        </Select>
+                                        <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mt-1.5">Auto-filled from this item&apos;s own category — change it any time.</p>
+                                    </div>
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center">
                                             <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Supplier</label>

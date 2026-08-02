@@ -67,6 +67,20 @@ export default function OrderDetailModal({
     if (order.tax_amount) totalsRows.push(['Tax / VAT', order.tax_amount])
     if (order.tip_amount) totalsRows.push(['Tip', order.tip_amount])
 
+    // A dine-in order seated under a room booking settles later at hotel
+    // checkout against the folio, not here — so it has no standalone
+    // collection to report yet. Takeaway and delivery are always billed and
+    // collected directly on the order itself (even one placed for a room),
+    // as is any dine-in that isn't tied to a booking.
+    const showCollectionDetails = order.order_type !== 'dine_in' || !order.booking_id
+    const verification = order.payment_verification
+    const collectedMethodLabel = verification
+        ? verification.payment_method === 'cash' ? 'Cash'
+            : verification.payment_method === 'qr_scan' ? 'QR / Digital'
+                : verification.payment_method.replace(/_/g, ' ')
+        : order.payment_status === 'paid' ? 'Credit' : null
+    const paidAmount = order.payment_status === 'paid' ? (order.total_amount ?? 0) - (order.refunded_amount ?? 0) : null
+
     return (
         <Modal
             open={!!order}
@@ -194,6 +208,19 @@ export default function OrderDetailModal({
                         </div>
                     )}
                 </div>
+
+                {/* Collection details — takeaway, delivery, and dine-in not tied to a
+                    room are settled right at this order, so who took the payment,
+                    how much, by what method, and when is worth surfacing here.
+                    A room-linked order settles later against the folio instead. */}
+                {showCollectionDetails && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-surface-muted/40 border border-hairline">
+                        <Field label="Collected By" value={order.cashier_name} icon={User} />
+                        <Field label="Paid Amount" value={paidAmount != null ? money(paidAmount) : null} />
+                        <Field label="Payment Method" value={collectedMethodLabel} />
+                        <Field label="Collected Time" value={order.paid_at && formatDateTime(order.paid_at)} icon={Clock} />
+                    </div>
+                )}
 
                 {order.customer_note && (
                     <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200">
