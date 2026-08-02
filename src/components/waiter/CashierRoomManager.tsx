@@ -127,7 +127,7 @@ export default function CashierRoomManager({
         setMoveOpen(false)
         setMoveTargetId('')
         setMoveReason('')
-        setBookingForm({ guest_name: '', guest_phone: '', kyc: '', check_in: '', check_out: '', custom_room_price: '', adult_male: '1', adult_female: '1', children: '0', parking_required: false, parking_vehicle_no: '', parking_fee: '' })
+        setBookingForm({ guest_name: '', guest_phone: '', kyc_type: '', kyc: '', check_in: '', check_out: '', custom_room_price: '', adult_male: '1', adult_female: '1', children: '0', parking_required: false, parking_vehicle_no: '', parking_fee: '' })
         setExtraRooms({})
         setLookupField(null)
         setGuestPicked(false)
@@ -142,6 +142,7 @@ export default function CashierRoomManager({
     const [bookingForm, setBookingForm] = useState({
         guest_name: '',
         guest_phone: '',
+        kyc_type: '',
         kyc: '',
         check_in: '',
         check_out: '',
@@ -402,6 +403,7 @@ export default function CashierRoomManager({
         setBookingForm({
             guest_name: '',
             guest_phone: '',
+            kyc_type: '',
             kyc: '',
             check_in: checkIn,
             check_out: checkOut,
@@ -701,6 +703,10 @@ export default function CashierRoomManager({
             return
         }
 
+        const formattedKyc = bookingForm.kyc_type
+            ? (bookingForm.kyc?.trim() ? `${bookingForm.kyc_type}: ${bookingForm.kyc.trim()}` : bookingForm.kyc_type)
+            : bookingForm.kyc?.trim()
+
         setIsProcessing(true)
         try {
             const res = await fetch('/api/bookings', {
@@ -725,7 +731,7 @@ export default function CashierRoomManager({
                     ],
                     guest_name: bookingForm.guest_name,
                     guest_phone: bookingForm.guest_phone,
-                    kyc: bookingForm.kyc,
+                    kyc: formattedKyc || null,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
                     custom_room_price: customPrice > 0 ? customPrice : undefined,
@@ -944,10 +950,24 @@ export default function CashierRoomManager({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">KYC / ID (Optional)</label>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Document Type (Optional)</label>
+                                            <select
+                                                value={bookingForm.kyc_type || ''}
+                                                onChange={e => setBookingForm(b => ({ ...b, kyc_type: e.target.value }))}
+                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                            >
+                                                <option value="">Select Document Type</option>
+                                                <option value="Citizenship / NID">Citizenship / NID</option>
+                                                <option value="Passport">Passport</option>
+                                                <option value="Driving License">Driving License</option>
+                                                <option value="Other KYC">Other KYC</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Document No. (Optional)</label>
                                             <input
                                                 type="text"
-                                                placeholder="Passport / Citizenship"
+                                                placeholder="e.g. 123-456-789"
                                                 value={bookingForm.kyc}
                                                 onChange={e => setBookingForm(b => ({ ...b, kyc: e.target.value }))}
                                                 className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
