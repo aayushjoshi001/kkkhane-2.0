@@ -42,22 +42,26 @@ export async function POST(req: Request) {
 
         const supabase = await createAdminClient()
 
-        const { data: currentRest } = await supabase
-            .from('restaurants')
-            .select('linked_restaurant_id, linked_hotel_id')
-            .eq('id', currentUser.restaurantId)
-            .maybeSingle()
+        const [restResponse, bookingResponse] = await Promise.all([
+            supabase
+                .from('restaurants')
+                .select('linked_restaurant_id, linked_hotel_id')
+                .eq('id', currentUser.restaurantId)
+                .maybeSingle(),
+            supabase
+                .from('bookings')
+                .select('id, room_id, group_id, status, paid_amount, check_in, check_out, checked_out_at, bill_settled_at, restaurant_id, guest_name')
+                .eq('id', bookingId)
+                .maybeSingle()
+        ])
 
+        const currentRest = restResponse.data
         const partnerId = currentRest?.linked_restaurant_id || currentRest?.linked_hotel_id
-        const targetRestaurantIds = [currentUser.restaurantId]
-        if (partnerId) targetRestaurantIds.push(partnerId)
-
-        const { data: booking } = await supabase
-            .from('bookings')
-            .select('id, room_id, group_id, status, paid_amount, check_in, check_out, checked_out_at, bill_settled_at, restaurant_id, guest_name')
-            .eq('id', bookingId)
-            .in('restaurant_id', targetRestaurantIds)
-            .maybeSingle()
+        
+        const booking = bookingResponse.data
+        if (booking && booking.restaurant_id !== currentUser.restaurantId && booking.restaurant_id !== partnerId) {
+            return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+        }
 
         if (!booking) {
             return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
@@ -139,25 +143,24 @@ export async function POST(req: Request) {
 
         // `checked_out_at` is stamped by the bookings_stamp_checked_out_at
         // trigger the moment status flips, so it is not set here.
-        const { error: bookingErr } = await supabase
-            .from('bookings')
-            .update({ status: 'checked_out' })
-            .in('id', memberIds)
-        if (bookingErr) throw bookingErr
+        const [bookingRes, sessionRes, roomRes] = await Promise.all([
+            supabase
+                .from('bookings')
+                .update({ status: 'checked_out' })
+                .in('id', memberIds),
+            supabase
+                .from('sessions')
+                .update({ status: 'closed', closed_at: new Date().toISOString() })
+                .in('booking_id', memberIds)
+                .eq('status', 'active'),
+            supabase
+                .from('rooms')
+                .update({ status: 'dirty' })
+                .in('id', memberRoomIds)
+        ])
 
-        // Now the guest is actually gone, the QR session that was deliberately
-        // left open at settlement is closed.
-        await supabase
-            .from('sessions')
-            .update({ status: 'closed', closed_at: new Date().toISOString() })
-            .in('booking_id', memberIds)
-            .eq('status', 'active')
-
-        const { error: roomErr } = await supabase
-            .from('rooms')
-            .update({ status: 'dirty' })
-            .in('id', memberRoomIds)
-        if (roomErr) throw roomErr
+        if (bookingRes.error) throw bookingRes.error
+        if (roomRes.error) throw roomRes.error
 
         void logAudit({
             restaurantId: booking.restaurant_id,

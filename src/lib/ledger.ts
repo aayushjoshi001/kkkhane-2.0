@@ -594,35 +594,31 @@ export async function postHotelPaymentIncomeAndLedger(
 ): Promise<{ success: boolean; error?: string }> {
     if (input.amount <= 0) return { success: true }
 
-    // 1. Find or create the income category (defaults to 'Room Revenue')
+    // 1 & 2. Find or create the income category and resolve bank account concurrently
     const categoryName = input.incomeCategoryName || 'Room Revenue'
-    let categoryId: string | undefined
-    const { data: existingCategory } = await supabase
-        .from('income_categories')
-        .select('id')
-        .eq('restaurant_id', restaurantId)
-        .eq('name', categoryName)
-        .maybeSingle()
+    
+    const categoryPromise = (async () => {
+        const { data: existingCategory } = await supabase
+            .from('income_categories')
+            .select('id')
+            .eq('restaurant_id', restaurantId)
+            .eq('name', categoryName)
+            .maybeSingle()
+        if (existingCategory?.id) return existingCategory.id
 
-    categoryId = existingCategory?.id
-    if (!categoryId) {
         const { data: newCategory } = await supabase
             .from('income_categories')
             .insert({ restaurant_id: restaurantId, name: categoryName })
             .select('id')
             .single()
-        categoryId = newCategory?.id
-    }
-    if (!categoryId) return { success: false, error: `Failed to find/create ${categoryName} category` }
+        return newCategory?.id
+    })()
 
-    // 2. Resolve bank account ID if QR or card. Preference order:
-    //    a) the specific QR code the customer scanned (input.qrCodeId), for
-    //       restaurants running multiple QR codes into different banks
-    //    b) the legacy single restaurant-wide QR bank link (pre-multi-QR)
-    //    c) an arbitrary active bank account, as a last resort
-    let bankAccountId: string | null = null
-    let bankName: string | null = null
-    if (input.paymentMethod === 'qr_digital' || input.paymentMethod === 'card') {
+    const bankPromise = (async () => {
+        if (input.paymentMethod !== 'qr_digital' && input.paymentMethod !== 'card') {
+            return { bankAccountId: null, bankName: null }
+        }
+
         let resolvedBank: { id: string; name: string; is_active: boolean } | null = null
 
         if (input.qrCodeId) {
@@ -646,8 +642,7 @@ export async function postHotelPaymentIncomeAndLedger(
         }
 
         if (resolvedBank && resolvedBank.is_active) {
-            bankAccountId = resolvedBank.id
-            bankName = resolvedBank.name
+            return { bankAccountId: resolvedBank.id, bankName: resolvedBank.name }
         } else {
             const { data: defaultBank } = await supabase
                 .from('bank_accounts')
@@ -657,11 +652,15 @@ export async function postHotelPaymentIncomeAndLedger(
                 .limit(1)
                 .maybeSingle()
             if (defaultBank) {
-                bankAccountId = defaultBank.id
-                bankName = defaultBank.name
+                return { bankAccountId: defaultBank.id, bankName: defaultBank.name }
             }
         }
-    }
+        return { bankAccountId: null, bankName: null }
+    })()
+
+    const [categoryId, { bankAccountId, bankName }] = await Promise.all([categoryPromise, bankPromise])
+
+    if (!categoryId) return { success: false, error: `Failed to find/create ${categoryName} category` }
 
     const typeLabel = input.isAdvance ? 'Advance' : 'Settlement'
     const methodLabel = input.paymentMethod === 'cash' ? 'Cash' : 'QR/Digital'
