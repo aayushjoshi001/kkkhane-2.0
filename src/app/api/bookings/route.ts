@@ -111,14 +111,24 @@ export async function POST(req: Request) {
         const supabase = await createAdminClient()
         const roomIds = roomRequests.map(r => r.roomId)
 
-        // 1. Validate every room exists and belongs to this restaurant
-        const { data: roomRows, error: roomError } = await supabase
-            .from('rooms')
-            .select('id, room_number, room_types:type_id(base_price)')
-            .in('id', roomIds)
-            .eq('restaurant_id', currentUser.restaurantId)
+        // 1 & 2. Validate every room exists and check for active stays concurrently
+        const [roomsResponse, activeBookingsResponse] = await Promise.all([
+            supabase
+                .from('rooms')
+                .select('id, room_number, room_types:type_id(base_price)')
+                .in('id', roomIds)
+                .eq('restaurant_id', currentUser.restaurantId),
+            supabase
+                .from('bookings')
+                .select('room_id, guest_name')
+                .in('room_id', roomIds)
+                .eq('restaurant_id', currentUser.restaurantId)
+                .in('status', ['checked_in', 'pending'])
+        ])
 
+        const { data: roomRows, error: roomError } = roomsResponse
         if (roomError) throw roomError
+        
         const roomsById = new Map((roomRows || []).map(r => [r.id as string, r]))
         const missing = roomIds.filter(id => !roomsById.has(id))
         if (missing.length > 0) {
@@ -128,17 +138,7 @@ export async function POST(req: Request) {
             )
         }
 
-        // 2. Reject if ANY room already has an active stay — checked across the
-        // whole set before a single row is written, so a group booking can never
-        // half-succeed and leave some rooms occupied by a stay the front desk
-        // was told had failed. Silently cancelling the existing stay here used to
-        // be able to evict a real, currently-staying guest with zero warning.
-        const { data: existingActive } = await supabase
-            .from('bookings')
-            .select('room_id, guest_name')
-            .in('room_id', roomIds)
-            .eq('restaurant_id', currentUser.restaurantId)
-            .in('status', ['checked_in', 'pending'])
+        const { data: existingActive } = activeBookingsResponse
 
         if (existingActive && existingActive.length > 0) {
             const conflicts = existingActive.map(b => {
@@ -237,125 +237,113 @@ export async function POST(req: Request) {
             groupId = group.id
         }
 
-        // 5. Insert one booking per room.
-        //
-        // There is no transaction available through the JS client, and the
-        // per-room EXCLUDE constraint can still reject a room that was free at
-        // step 2 but got claimed a moment later. So a failure part-way through
-        // unwinds what was already written rather than leaving the guest with
-        // some of their rooms — the front desk gets a clean error and retries.
+        // 5. Insert all bookings at once.
         const insertedBookingIds: string[] = []
         const rollback = async () => {
-            if (insertedBookingIds.length > 0) {
-                await supabase.from('bookings').delete().in('id', insertedBookingIds)
-            }
             if (groupId) {
                 await supabase.from('booking_groups').delete().eq('id', groupId)
             }
         }
 
-        const bookings: Array<{ id: string; room_id: string; guest_name: string }> = []
-        for (const [i, r] of roomRequests.entries()) {
-            const { data: booking, error: bookingError } = await supabase
-                .from('bookings')
-                .insert({
-                    restaurant_id: currentUser.restaurantId,
-                    group_id: groupId,
-                    room_id: r.roomId,
-                    guest_name: guestName,
-                    guest_phone: guestPhone,
-                    guest_email: guestEmail,
-                    check_in: checkInISO,
-                    check_out: checkOutISO,
-                    adults: r.adults,
-                    adult_male: r.splitProvided ? r.male : 0,
-                    adult_female: r.splitProvided ? r.female : 0,
-                    children: r.children,
-                    status: 'checked_in',
-                    checked_in_by: currentUser.id,
-                    notes,
-                    paid_amount: advanceShares[i],
-                    advance_payment_method: advMethod,
-                    parking_required: parkingRequired,
-                    parking_vehicle_no: parkingVehicleNo,
-                })
-                .select()
-                .single()
+        const bookingsToInsert = roomRequests.map((r, i) => ({
+            restaurant_id: currentUser.restaurantId,
+            group_id: groupId,
+            room_id: r.roomId,
+            guest_name: guestName,
+            guest_phone: guestPhone,
+            guest_email: guestEmail,
+            check_in: checkInISO,
+            check_out: checkOutISO,
+            adults: r.adults,
+            adult_male: r.splitProvided ? r.male : 0,
+            adult_female: r.splitProvided ? r.female : 0,
+            children: r.children,
+            status: 'checked_in',
+            checked_in_by: currentUser.id,
+            notes,
+            paid_amount: advanceShares[i],
+            advance_payment_method: advMethod,
+            parking_required: parkingRequired,
+            parking_vehicle_no: parkingVehicleNo,
+        }))
 
-            if (bookingError || !booking) {
-                await rollback()
-                const roomNumber = roomsById.get(r.roomId)?.room_number ?? '?'
-                const detail = bookingError?.message || 'unknown error'
-                // The EXCLUDE constraint is the expected loser of a race here.
-                const isOverlap = /overlap|exclusion/i.test(detail)
-                return NextResponse.json({
-                    error: isOverlap
-                        ? `Room ${roomNumber} was just booked by someone else. No rooms were reserved — please try again.`
-                        : `Could not book room ${roomNumber}: ${detail}`
-                }, { status: isOverlap ? 409 : 500 })
-            }
+        const { data: bookings, error: bookingError } = await supabase
+            .from('bookings')
+            .insert(bookingsToInsert)
+            .select()
 
-            insertedBookingIds.push(booking.id)
-            bookings.push(booking)
+        if (bookingError || !bookings || bookings.length === 0) {
+            await rollback()
+            const detail = bookingError?.message || 'unknown error'
+            // The EXCLUDE constraint is the expected loser of a race here.
+            const isOverlap = /overlap|exclusion/i.test(detail)
+            return NextResponse.json({
+                error: isOverlap
+                    ? `One or more rooms were just booked by someone else. No rooms were reserved — please try again.`
+                    : `Could not book rooms: ${detail}`
+            }, { status: isOverlap ? 409 : 500 })
         }
+
+        for (const b of bookings) {
+            insertedBookingIds.push(b.id)
+        }
+
+        const postBookingTasks: Promise<any>[] = []
 
         // Open the first room segment for each stay. Every stay has at least
         // one, so the folio can price each night from the room actually
         // occupied rather than from whatever room the booking points at when
         // the bill is drawn.
-        const { error: segmentError } = await supabase
-            .from('booking_room_stays')
-            .insert(bookings.map(b => ({
-                restaurant_id: currentUser.restaurantId,
-                booking_id: b.id,
-                room_id: b.room_id,
-                from_ts: checkInISO,
-            })))
-        if (segmentError) {
-            // Not fatal — the folio falls back to the booking's current room when
-            // a stay has no segments, which is the pre-move behaviour. Losing the
-            // booking over a history row would be the worse trade.
-            console.error('Failed to open room segments for bookings', insertedBookingIds, segmentError)
-        }
+        postBookingTasks.push(
+            supabase.from('booking_room_stays')
+                .insert(bookings.map(b => ({
+                    restaurant_id: currentUser.restaurantId,
+                    booking_id: b.id,
+                    room_id: b.room_id,
+                    from_ts: checkInISO,
+                })))
+                .then(({ error: segmentError }) => {
+                    if (segmentError) {
+                        console.error('Failed to open room segments for bookings', insertedBookingIds, segmentError)
+                    }
+                })
+        )
 
         // 6. Update room status to occupied
-        const { error: updateError } = await supabase
-            .from('rooms')
-            .update({ status: 'occupied' })
-            .in('id', roomIds)
-            .eq('restaurant_id', currentUser.restaurantId)
-
-        if (updateError) throw updateError
+        postBookingTasks.push(
+            supabase.from('rooms')
+                .update({ status: 'occupied' })
+                .in('id', roomIds)
+                .eq('restaurant_id', currentUser.restaurantId)
+                .then(({ error: updateError }) => {
+                    if (updateError) {
+                        console.error('Failed to update room statuses', updateError)
+                        throw updateError // Optional: you can choose not to throw, but to match original we should wait and throw
+                    }
+                })
+        )
 
         // Log the advance to the financial ledger and books automatically.
-        // A group collects one advance for the whole reservation, so it posts
-        // once, described by every room it covers — posting per room would
-        // multiply one payment into several in the day book. Split advances
-        // post once per method so cash and QR each land in the correct
-        // income/cash-in-bank totals instead of one lump sum.
         const roomLabel = roomRequests
             .map(r => roomsById.get(r.roomId)?.room_number ?? 'Unknown')
             .join(', ')
         const primaryBookingId = bookings[0].id
 
-        // A parking fee bills as an ordinary folio charge, on the first room of
-        // the reservation only — the guest parked one vehicle and owes for it
-        // once, so posting it per room would multiply the fee by the room count.
-        // Not fatal if it fails: the rooms are booked and the guest is in house,
-        // and a missing incidental is added at the desk in seconds, whereas
-        // unwinding a completed booking over it is not recoverable.
         if (parkingFee > 0) {
-            const { error: parkingChargeError } = await supabase.from('room_charges').insert({
-                restaurant_id: currentUser.restaurantId,
-                booking_id: primaryBookingId,
-                description: parkingVehicleNo ? `Parking (${parkingVehicleNo})` : 'Parking',
-                amount: parkingFee,
-                charge_type: 'parking',
-                charged_by: currentUser.id,
-            })
-            if (parkingChargeError) {
-                console.error('Failed to post parking charge for booking', primaryBookingId, parkingChargeError)
-            }
+            postBookingTasks.push(
+                supabase.from('room_charges').insert({
+                    restaurant_id: currentUser.restaurantId,
+                    booking_id: primaryBookingId,
+                    description: parkingVehicleNo ? `Parking (${parkingVehicleNo})` : 'Parking',
+                    amount: parkingFee,
+                    charge_type: 'parking',
+                    charged_by: currentUser.id,
+                }).then(({ error: parkingChargeError }) => {
+                    if (parkingChargeError) {
+                        console.error('Failed to post parking charge for booking', primaryBookingId, parkingChargeError)
+                    }
+                })
+            )
         }
 
         const noteText = advance_note && String(advance_note).trim() ? String(advance_note).trim() : 'Advance'
@@ -363,55 +351,66 @@ export async function POST(req: Request) {
 
         if (isSplitAdvance) {
             if (splitCashAmount > 0) {
-                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                    bookingId: primaryBookingId,
-                    roomNumber: roomLabel,
-                    guestName,
-                    amount: splitCashAmount,
-                    paymentMethod: 'cash',
-                    isAdvance: true,
-                    description: customDesc
-                })
+                postBookingTasks.push(
+                    postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                        bookingId: primaryBookingId,
+                        roomNumber: roomLabel,
+                        guestName,
+                        amount: splitCashAmount,
+                        paymentMethod: 'cash',
+                        isAdvance: true,
+                        description: customDesc
+                    })
+                )
             }
             if (splitQrAmount > 0) {
-                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                    bookingId: primaryBookingId,
-                    roomNumber: roomLabel,
-                    guestName,
-                    amount: splitQrAmount,
-                    paymentMethod: 'qr_digital',
-                    isAdvance: true,
-                    qrCodeId: advance_qr_code_id || null,
-                    description: customDesc
-                })
+                postBookingTasks.push(
+                    postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                        bookingId: primaryBookingId,
+                        roomNumber: roomLabel,
+                        guestName,
+                        amount: splitQrAmount,
+                        paymentMethod: 'qr_digital',
+                        isAdvance: true,
+                        qrCodeId: advance_qr_code_id || null,
+                        description: customDesc
+                    })
+                )
             }
         } else if (paidAmount > 0) {
             const paymentMethodMapped = advMethod === 'cash' ? 'cash' : 'qr_digital'
-
-            await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                bookingId: primaryBookingId,
-                roomNumber: roomLabel,
-                guestName,
-                amount: paidAmount,
-                paymentMethod: paymentMethodMapped,
-                isAdvance: true,
-                qrCodeId: paymentMethodMapped === 'qr_digital' ? (advance_qr_code_id || null) : null,
-                description: customDesc
-            })
+            postBookingTasks.push(
+                postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                    bookingId: primaryBookingId,
+                    roomNumber: roomLabel,
+                    guestName,
+                    amount: paidAmount,
+                    paymentMethod: paymentMethodMapped,
+                    isAdvance: true,
+                    qrCodeId: paymentMethodMapped === 'qr_digital' ? (advance_qr_code_id || null) : null,
+                    description: customDesc
+                })
+            )
         }
 
         if (paidAmount > 0) {
-            await supabase.from('booking_payments').insert({
-                restaurant_id: currentUser.restaurantId,
-                booking_id: primaryBookingId,
-                amount: paidAmount,
-                payment_method: advMethod,
-                cash_amount: isSplitAdvance ? splitCashAmount : (advMethod === 'cash' ? paidAmount : 0),
-                qr_amount: isSplitAdvance ? splitQrAmount : (advMethod === 'qr_digital' ? paidAmount : 0),
-                note: noteText,
-                created_by: currentUser.id
-            })
+            postBookingTasks.push(
+                supabase.from('booking_payments').insert({
+                    restaurant_id: currentUser.restaurantId,
+                    booking_id: primaryBookingId,
+                    amount: paidAmount,
+                    payment_method: advMethod,
+                    cash_amount: isSplitAdvance ? splitCashAmount : (advMethod === 'cash' ? paidAmount : 0),
+                    qr_amount: isSplitAdvance ? splitQrAmount : (advMethod === 'qr_digital' ? paidAmount : 0),
+                    note: noteText,
+                    created_by: currentUser.id
+                })
+            )
         }
+
+        // Wait for all non-critical background tasks to finish
+        await Promise.all(postBookingTasks)
+
 
 
         // `data` stays the single primary booking so existing callers that read
