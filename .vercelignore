@@ -1,0 +1,23 @@
+# Keep the deploy upload small — the CLI was shipping ~700MB of local build
+# artifacts and test output, which stalled `vercel --prod` before the build
+# ever started. Vercel rebuilds .next remotely, so none of this is needed.
+.next
+node_modules
+.git
+
+# Test and report output
+test-results
+playwright-report
+tests
+
+# Local working files — notes, data exports, generated keys
+scratch
+docs
+
+# Local env files (Vercel injects the real ones)
+.env.local
+.env*.local
+.env.local.production-backup
+
+# One-off local scripts that aren't part of the build
+*.py
