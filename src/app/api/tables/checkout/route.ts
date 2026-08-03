@@ -124,15 +124,7 @@ export async function POST(req: Request) {
         }
 
         const supabase = await createAdminClient()
-        const {
-            session_id, cash_paid, qr_paid, credit_amount, qr_code_id,
-            discount_amount, discount_reason, customer_name, customer_phone,
-            redeemed_points, service_charge_override,
-        } = body
 
-        if (!session_id) {
-            return NextResponse.json({ error: 'Missing session_id' }, { status: 400 })
-        }
 
         const { getRestaurantFeatures } = await import('@/lib/features')
 
