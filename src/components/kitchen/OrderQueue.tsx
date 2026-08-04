@@ -218,7 +218,12 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             })
         }
         attemptPrint(0)
-    }, [printKot, station, stationMeta.ticketAbbr, networkPrinter])
+        // restaurantName is the header printed on the ticket. It is a prop that
+        // does not change while the board is open, so leaving it out was
+        // harmless in practice — but a callback that prints a name it captured
+        // once is the wrong thing to leave to luck, and listing a stable prop
+        // costs no extra re-creation.
+    }, [printKot, station, stationMeta.ticketAbbr, networkPrinter, restaurantName])
 
     // Print a KOT for whichever of this order's items haven't been printed
     // yet — a QR self-order confirmed in multiple batches gets one ticket per
@@ -395,7 +400,10 @@ export default function OrderQueue({ initialOrders, restaurantId, comboItems = [
             if (myPreparing.length) cookO.push({ order: o, items: myPreparing })
         }
         return { newO, queueO, cookO }
-    }, [orders, now])
+        // userId decides which "preparing" items count as this chef's, so it
+        // belongs here. Another stable prop, so naming it changes nothing today
+        // and stops the split going stale if it ever is not.
+    }, [orders, now, userId])
 
     const sections: Record<TabKey, Section[]> = { new: newO, queue: queueO, cooking: cookO }
     const active = sections[activeTab]

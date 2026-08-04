@@ -449,7 +449,6 @@ export default function SuperAdminDashboard({
                                     )}
                                 </div>
                                 <p className="text-sm text-ink-subtle mt-1">
-                                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                                     {restaurant.users?.email || 'No owner'} •
                                     Staff: {isUnlimited(restaurant.max_staff) ? 'Unlimited' : restaurant.max_staff} •
                                     Items: {isUnlimited(restaurant.max_menu_items) ? 'Unlimited' : restaurant.max_menu_items}

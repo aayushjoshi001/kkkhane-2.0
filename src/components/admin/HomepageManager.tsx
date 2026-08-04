@@ -99,7 +99,6 @@ export default function HomepageManager({ restaurantId }: HomepageManagerProps) 
             // eslint-disable-next-line react-hooks/set-state-in-effect
             setConfig({ ...DEFAULT_CONFIG, ...fetchedConfig })
         } else if (fetchedConfig === null) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setConfig({ ...DEFAULT_CONFIG, restaurant_id: restaurantId })
         }
     }, [fetchedConfig, restaurantId])
