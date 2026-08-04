@@ -770,6 +770,146 @@ function TakeoutConfirmDetail({ order, money, busy, onConfirm, onCancel }: {
     )
 }
 
+/**
+ * One order inside the status detail list.
+ *
+ * Extracted so useSelection is called from a component body. It used to run
+ * inside orders.map(), which made the hook count follow the number of orders --
+ * settle one, or let realtime deliver another, and React renders the same
+ * component with a different number of hooks and throws. The tick boxes that
+ * decide what gets marked served are the last place to want that.
+ *
+ * The empty-order guard now sits after the hook rather than before it, so the
+ * hook still runs unconditionally on every render.
+ */
+function StatusDetailOrderRow({
+    order,
+    money,
+    busyId,
+    cancelKind,
+    cancelCode,
+    onMarkServed,
+    onCancelOrder,
+    onCancelItem,
+    kotEnabled,
+    kdsEnabled,
+    reprintingId,
+    onReprint,
+}: {
+    order: AnyOrder
+    money: (n: number) => string
+    busyId: string | null
+    cancelKind: CancellationKind
+    cancelCode: string | null
+    onMarkServed: (orderId: string, itemIds: string[]) => void
+    onCancelOrder: (order: AnyOrder) => void
+    onCancelItem: (orderId: string, itemId: string, label: string, maxQty: number, unitPrice: number) => void
+    kotEnabled?: boolean
+    kdsEnabled?: boolean
+    reprintingId: string | null
+    onReprint: (orderId: string) => void
+}) {
+    const items = (order.order_items || []).filter(i => i.status !== 'cancelled')
+    const readyIds = items.filter(i => i.status === 'ready' && i.id).map(i => i.id!)
+    // Before the early return: a hook must not be skipped on any render.
+    const { selected, allSelected, toggleAll, toggle } = useSelection(readyIds)
+    if (items.length === 0) return null
+
+    const isBusy = busyId === order.id
+    const isReprinting = reprintingId === order.id
+    const timeStr = formatTime(order.placed_at)
+
+    return (
+        <div className="py-3 first:pt-1.5 last:pb-1.5 space-y-2.5">
+            {/* Subheader for the order */}
+            <div className="flex items-center justify-between text-[11px] font-bold text-ink-subtle">
+                <span>Placed at {timeStr} · {money(Number(order.total_amount) || 0)}</span>
+                <div className="flex items-center gap-3">
+                    {/* The way back from a print the printer called
+                        successful but never put on paper. */}
+                    {kotEnabled && (
+                        <button
+                            onClick={() => onReprint(order.id)}
+                            disabled={isReprinting}
+                            className="text-ink-subtle hover:text-ink font-extrabold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                            title="Print this order's kitchen/bar ticket again"
+                        >
+                            {isReprinting
+                                ? <Loader2 size={12} className="animate-spin" />
+                                : <Printer size={12} />}
+                            Reprint
+                        </button>
+                    )}
+                    <button
+                        onClick={() => onCancelOrder(order)}
+                        disabled={isBusy || !cancelCode}
+                        title={!cancelCode ? 'Pick a reason below first' : undefined}
+                        className="text-red-500 hover:text-red-700 font-extrabold transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        <XCircle size={12} />
+                        {cancelKind === 'comp' ? 'Comp Order' : 'Cancel Order'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Items checkboxes/serving logic. Serving from the till
+                needs a KDS to have moved items to `ready`; whether
+                tickets also print is a separate question. */}
+            {kdsEnabled && readyIds.length > 0 && (
+                <button
+                    onClick={toggleAll}
+                    className="flex items-center gap-1.5 text-[11px] font-bold text-ink-subtle hover:text-ink transition-colors"
+                >
+                    {allSelected ? <CheckSquare size={13} /> : <Square size={13} />}
+                    Select All Ready
+                </button>
+            )}
+
+            <div className="space-y-1.5">
+                {items.map(item => {
+                    const canServe = kdsEnabled && item.status === 'ready' && item.id
+                    return (
+                        <div key={item.id} className="flex items-center gap-2.5 bg-surface rounded-xl border border-hairline px-3 py-2">
+                            {canServe ? (
+                                <button onClick={() => item.id && toggle(item.id)} className="shrink-0 text-brand-500">
+                                    {item.id && selected.has(item.id) ? <CheckSquare size={16} /> : <Square size={16} className="text-ink-subtle" />}
+                                </button>
+                            ) : null}
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-ink truncate">{item.quantity}× {getItemDisplayName(item)}</p>
+                                {kdsEnabled && <p className="text-[10px] text-ink-subtle capitalize">{item.status}</p>}
+                            </div>
+                            <span className="text-[11px] font-semibold text-ink-muted tabular-nums shrink-0">
+                                {money((item.unit_price || 0) * item.quantity)}
+                            </span>
+                            {item.id && onCancelItem && (
+                                <button
+                                    onClick={() => item.id && onCancelItem(order.id, item.id, getItemDisplayName(item), item.quantity, Number(item.unit_price) || 0)}
+                                    disabled={isBusy}
+                                    className="shrink-0 p-1 rounded-lg text-ink-subtle hover:text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                                >
+                                    <Trash2 size={13} />
+                                </button>
+                            )}
+                        </div>
+                    )
+                })}
+            </div>
+
+            {kdsEnabled && readyIds.length > 0 && (
+                <button
+                    onClick={() => onMarkServed(order.id, Array.from(selected))}
+                    disabled={isBusy || selected.size === 0}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    {isBusy ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                    Mark Served ({selected.size})
+                </button>
+            )}
+        </div>
+    )
+}
+
 function StatusDetail({
     orders,
     money,
@@ -809,106 +949,23 @@ function StatusDetail({
 }) {
     return (
         <div className="px-4 pb-4 pt-1 bg-surface-muted/30 divide-y divide-hairline divide-dashed">
-            {orders.map((order) => {
-                const items = (order.order_items || []).filter(i => i.status !== 'cancelled')
-                if (items.length === 0) return null
-
-                const readyIds = items.filter(i => i.status === 'ready' && i.id).map(i => i.id!)
-                const { selected, allSelected, toggleAll, toggle } = useSelection(readyIds)
-                const isBusy = busyId === order.id
-                const isReprinting = reprintingId === order.id
-                const timeStr = formatTime(order.placed_at)
-
-                return (
-                    <div key={order.id} className="py-3 first:pt-1.5 last:pb-1.5 space-y-2.5">
-                        {/* Subheader for the order */}
-                        <div className="flex items-center justify-between text-[11px] font-bold text-ink-subtle">
-                            <span>Placed at {timeStr} · {money(Number(order.total_amount) || 0)}</span>
-                            <div className="flex items-center gap-3">
-                                {/* The way back from a print the printer called
-                                    successful but never put on paper. */}
-                                {kotEnabled && (
-                                    <button
-                                        onClick={() => onReprint(order.id)}
-                                        disabled={isReprinting}
-                                        className="text-ink-subtle hover:text-ink font-extrabold transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                                        title="Print this order's kitchen/bar ticket again"
-                                    >
-                                        {isReprinting
-                                            ? <Loader2 size={12} className="animate-spin" />
-                                            : <Printer size={12} />}
-                                        Reprint
-                                    </button>
-                                )}
-                                <button
-                                    onClick={() => onCancelOrder(order)}
-                                    disabled={isBusy || !cancelCode}
-                                    title={!cancelCode ? 'Pick a reason below first' : undefined}
-                                    className="text-red-500 hover:text-red-700 font-extrabold transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                    <XCircle size={12} />
-                                    {cancelKind === 'comp' ? 'Comp Order' : 'Cancel Order'}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Items checkboxes/serving logic. Serving from the till
-                            needs a KDS to have moved items to `ready`; whether
-                            tickets also print is a separate question. */}
-                        {kdsEnabled && readyIds.length > 0 && (
-                            <button
-                                onClick={toggleAll}
-                                className="flex items-center gap-1.5 text-[11px] font-bold text-ink-subtle hover:text-ink transition-colors"
-                            >
-                                {allSelected ? <CheckSquare size={13} /> : <Square size={13} />}
-                                Select All Ready
-                            </button>
-                        )}
-
-                        <div className="space-y-1.5">
-                            {items.map(item => {
-                                const canServe = kdsEnabled && item.status === 'ready' && item.id
-                                return (
-                                    <div key={item.id} className="flex items-center gap-2.5 bg-surface rounded-xl border border-hairline px-3 py-2">
-                                        {canServe ? (
-                                            <button onClick={() => item.id && toggle(item.id)} className="shrink-0 text-brand-500">
-                                                {item.id && selected.has(item.id) ? <CheckSquare size={16} /> : <Square size={16} className="text-ink-subtle" />}
-                                            </button>
-                                        ) : null}
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-bold text-ink truncate">{item.quantity}× {getItemDisplayName(item)}</p>
-                                            {kdsEnabled && <p className="text-[10px] text-ink-subtle capitalize">{item.status}</p>}
-                                        </div>
-                                        <span className="text-[11px] font-semibold text-ink-muted tabular-nums shrink-0">
-                                            {money((item.unit_price || 0) * item.quantity)}
-                                        </span>
-                                        {item.id && onCancelItem && (
-                                            <button
-                                                onClick={() => item.id && onCancelItem(order.id, item.id, getItemDisplayName(item), item.quantity, Number(item.unit_price) || 0)}
-                                                disabled={isBusy}
-                                                className="shrink-0 p-1 rounded-lg text-ink-subtle hover:text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
-                                            >
-                                                <Trash2 size={13} />
-                                            </button>
-                                        )}
-                                    </div>
-                                )
-                            })}
-                        </div>
-
-                        {kdsEnabled && readyIds.length > 0 && (
-                            <button
-                                onClick={() => onMarkServed(order.id, Array.from(selected))}
-                                disabled={isBusy || selected.size === 0}
-                                className="w-full flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                                {isBusy ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-                                Mark Served ({selected.size})
-                            </button>
-                        )}
-                    </div>
-                )
-            })}
+            {orders.map((order) => (
+                <StatusDetailOrderRow
+                    key={order.id}
+                    order={order}
+                    money={money}
+                    busyId={busyId}
+                    cancelKind={cancelKind}
+                    cancelCode={cancelCode}
+                    onMarkServed={onMarkServed}
+                    onCancelOrder={onCancelOrder}
+                    onCancelItem={onCancelItem}
+                    kotEnabled={kotEnabled}
+                    kdsEnabled={kdsEnabled}
+                    reprintingId={reprintingId}
+                    onReprint={onReprint}
+                />
+            ))}
 
             {/* Reason footer, shared by every Cancel Order button above — picked
                 before pressing one, since the action itself is irreversible. */}
