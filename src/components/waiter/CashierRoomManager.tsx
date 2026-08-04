@@ -712,40 +712,31 @@ export default function CashierRoomManager({
     useEffect(() => {
         if (selectedRoom && selectedRoom.status === 'occupied') {
             setLoadingBooking(true)
-            fetch(`/api/rooms/booking?roomId=${selectedRoom.id}`)
+            setLoadingCharges(true)
+            // One request for the whole panel. This was the booking lookup
+            // followed by a second wave of three calls that needed its id —
+            // two sequential trips to the edge before anything could render.
+            // /api/rooms/panel keeps that ordering but runs it server-side,
+            // next to the database, so the hop between the two steps costs a
+            // local round trip instead of a Kathmandu one.
+            fetch(`/api/rooms/panel?roomId=${selectedRoom.id}`)
                 .then(res => res.json())
                 .then(async (data) => {
-                    if (data.success && data.data) {
-                        const booking = data.data
+                    if (data.success && data.booking) {
+                        const booking = data.booking
                         try {
-                            setLoadingCharges(true)
-                            // Concurrently fetch charges, linked dining orders,
-                            // and the rest of the reservation if this room is
-                            // part of a multi-room one.
-                            const [chargesRes, linkedRes, groupRes] = await Promise.all([
-                                fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/group?bookingId=${booking.id}`).then(r => r.json())
-                            ])
-
                             // Set all states simultaneously
                             setActiveBooking(booking)
-                            if (chargesRes.success) {
-                                setManualCharges(chargesRes.data || [])
-                            }
-                            if (linkedRes.success) {
-                                setLinkedDiningOrders(linkedRes.items || [])
-                            }
-                            setStayGroup(groupRes?.success && groupRes.isGroup ? groupRes : null)
+                            setManualCharges(data.charges || [])
+                            setLinkedDiningOrders(data.linkedOrders || [])
+                            setStayGroup(data.group ?? null)
                         } catch (err) {
-                            console.error("Error fetching secondary stay details:", err)
+                            console.error("Error applying stay details:", err)
                             // Set basic stay booking at least
                             setActiveBooking(booking)
                             setManualCharges([])
                             setLinkedDiningOrders([])
                             setStayGroup(null)
-                        } finally {
-                            setLoadingCharges(false)
                         }
                     } else {
                         setActiveBooking(null)
@@ -763,6 +754,10 @@ export default function CashierRoomManager({
                 })
                 .finally(() => {
                     setLoadingBooking(false)
+                    // Both spinners clear here now that one request feeds both.
+                    // Leaving this on the success path alone left the charges
+                    // spinner turning forever on a vacant room or a failed load.
+                    setLoadingCharges(false)
                 })
         } else {
             setActiveBooking(null)

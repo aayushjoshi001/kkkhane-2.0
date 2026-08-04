@@ -685,32 +685,23 @@ export default function CashierClient({
             setBillingGroup(null)
             setLoadingStayDetails(true)
 
-            // Fetch newest checked_in booking from API (ORDER BY created_at DESC)
-            // This prevents showing old/orphaned bookings that were never checked out
-            fetch(`/api/rooms/booking?roomId=${selectedBillingRoom.id}`)
+            // One request for the whole bill. This was the booking lookup and
+            // then a second wave of three calls keyed on its id — two sequential
+            // trips to the edge before the cashier saw a total. /api/rooms/panel
+            // still resolves the newest checked_in booking first (ORDER BY
+            // created_at DESC, so no old orphaned stay surfaces) and then runs
+            // the three dependent reads beside the database.
+            fetch(`/api/rooms/panel?roomId=${selectedBillingRoom.id}`)
                 .then(res => res.json())
                 .then(async (data) => {
-                    if (data.success && data.data) {
-                        const booking = data.data
+                    if (data.success && data.booking) {
+                        const booking = data.booking
                         try {
-                            // Concurrently fetch charges, linked dining orders,
-                            // and the rest of the reservation if this room is
-                            // part of a multi-room one.
-                            const [chargesRes, ordersRes, groupRes] = await Promise.all([
-                                fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/group?bookingId=${booking.id}`).then(r => r.json())
-                            ])
-
                             // Set all states simultaneously
                             setBillingStayBooking(booking)
-                            if (chargesRes.success) {
-                                setBillingRoomCharges(chargesRes.data || [])
-                            }
-                            if (ordersRes.success) {
-                                setBillingLinkedOrders(ordersRes.items || [])
-                            }
-                            setBillingGroup(groupRes?.success && groupRes.isGroup ? groupRes : null)
+                            setBillingRoomCharges(data.charges || [])
+                            setBillingLinkedOrders(data.linkedOrders || [])
+                            setBillingGroup(data.group ?? null)
                         } catch (err) {
                             console.error('Error loading secondary billing details:', err)
                             // Set basic stay booking at least
