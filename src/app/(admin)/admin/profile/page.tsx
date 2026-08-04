@@ -25,36 +25,49 @@ export default async function ProfilePage() {
     // no user session, so it always returned null and left the email blank.
     const email = user.email
 
-    // Automatically generate and retrieve hotel backup password for manager
+    // The backup password the manager quotes to /api/backup/export.
+    //
+    // This read `restaurants.settings` and wrote back to it, but restaurants has
+    // no such column: PostgREST was resolving `select('settings')` as an embed of
+    // the settings *table*, and the update named a column that does not exist.
+    // Its error was never destructured, so every write failed in silence and a
+    // freshly generated password was shown and thrown away on each visit. All
+    // nine tenants had no backup_password stored, and the export answered 403 to
+    // every one of them -- it fails closed, so nothing was exposed, but the
+    // feature had never once worked. Read and write settings.features_v2, which
+    // is where the export looks.
     let backupPassword = ''
     if (dbUser.restaurant_id && (user.role === 'manager' || user.role === 'super_admin')) {
-        const { data: restaurant } = await supabase
-            .from('restaurants')
-            .select('settings')
-            .eq('id', dbUser.restaurant_id)
-            .single()
+        const { data: settingsRow } = await supabase
+            .from('settings')
+            .select('features_v2')
+            .eq('restaurant_id', dbUser.restaurant_id)
+            .maybeSingle()
 
-        if (restaurant) {
-            const settings = (restaurant.settings as any) || {}
-            const featuresV2 = settings.features_v2 || {}
-            let pwd = featuresV2.backup_password
+        if (settingsRow) {
+            const featuresV2 = (settingsRow.features_v2 as Record<string, unknown>) || {}
+            let pwd = featuresV2.backup_password as string | undefined
 
             if (!pwd) {
-                const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-                pwd = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+                // randomBytes, not Math.random: this guards a full export of the
+                // restaurant's orders, bookings and books, and Math.random is a
+                // predictable PRNG whose output can be reconstructed from a few
+                // samples. base64url of 9 bytes gives 12 URL-safe characters, the
+                // same length as before but actually unguessable.
+                const { randomBytes } = await import('crypto')
+                pwd = randomBytes(9).toString('base64url')
 
-                const updatedSettings = {
-                    ...settings,
-                    features_v2: {
-                        ...featuresV2,
-                        backup_password: pwd
-                    }
+                const { error: saveError } = await supabase
+                    .from('settings')
+                    .update({ features_v2: { ...featuresV2, backup_password: pwd } })
+                    .eq('restaurant_id', dbUser.restaurant_id)
+
+                // Surface a failure instead of handing over a password the export
+                // will reject, which is exactly how this went unnoticed before.
+                if (saveError) {
+                    console.error('[profile] Failed to persist backup password:', saveError)
+                    pwd = ''
                 }
-
-                await supabase
-                    .from('restaurants')
-                    .update({ settings: updatedSettings })
-                    .eq('id', dbUser.restaurant_id)
             }
             backupPassword = pwd
         }
