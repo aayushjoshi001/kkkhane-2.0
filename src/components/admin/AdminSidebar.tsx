@@ -17,7 +17,7 @@ import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { useSidebar } from '@/lib/contexts/SidebarContext'
 import SidebarShell from '@/components/admin/SidebarShell'
-import { useFeatures, useBusinessMode } from '@/lib/contexts/FeatureContext'
+import { useFeatures, useFeatureEnabled, useBusinessMode } from '@/lib/contexts/FeatureContext'
 import { generatedAvatar, isGeneratedAvatar } from '@/lib/avatar'
 
 function cn(...inputs: ClassValue[]) {
@@ -30,23 +30,26 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     const { closeMobile } = useSidebar()
     const [isDark, setIsDark] = useState(true) // Defaulting to the dark premium vibe
     const [imgError, setImgError] = useState(false)
-    // Explicit ?? true fallback (not useFeatureEnabled's !!, which treats a
-    // missing key as false) — restaurants provisioned before dineInEnabled
-    // existed have no such key in their stored features_v2 and must default
-    // to dine-in being available, matching the same safe default already
-    // used on the public restaurant page (src/app/(public)/r/[restaurantSlug]/page.tsx).
+    // Every flag resolves through useFeatureEnabled, which shares the absent-key
+    // defaults (DEFAULT_ON_FEATURES / MODULE_DEFAULT_ON) with the server's
+    // getRestaurantFeatures. These used to be hand-written `?? true` fallbacks
+    // guarded by a comment saying the hook read a missing key as off — that
+    // stopped being true when the hook learned the shared default list, and the
+    // local copies were then a second table of defaults that nothing kept in
+    // step with the first. The nav decides what a tenant can see, so it must
+    // reach the same answer as the page gate behind each link.
     const features = useFeatures()
-    const dineInEnabled = features.dineInEnabled ?? true
-    const financeEnabled = !!features.financeEnabled
-    const manualEntryEnabled = features.manualEntryEnabled ?? true
-    const promosEnabled = features.promosEnabled ?? true
-    const loyaltyEnabled = !!features.loyaltyEnabled
-    const takeoutEnabled = !!features.takeoutEnabled
-    const dynamicPricingEnabled = !!features.dynamicPricingEnabled
-    const ingredientTrackingEnabled = !!features.ingredientTrackingEnabled
-    const staffShiftsEnabled = !!features.staffShiftsEnabled
-    const staffManagementEnabled = features.staffManagementEnabled ?? true
-    const tableManagementEnabled = features.tableManagementEnabled ?? true
+    const dineInEnabled = useFeatureEnabled('dineInEnabled')
+    const financeEnabled = useFeatureEnabled('financeEnabled')
+    const manualEntryEnabled = useFeatureEnabled('manualEntryEnabled')
+    const promosEnabled = useFeatureEnabled('promosEnabled')
+    const loyaltyEnabled = useFeatureEnabled('loyaltyEnabled')
+    const takeoutEnabled = useFeatureEnabled('takeoutEnabled')
+    const dynamicPricingEnabled = useFeatureEnabled('dynamicPricingEnabled')
+    const ingredientTrackingEnabled = useFeatureEnabled('ingredientTrackingEnabled')
+    const staffShiftsEnabled = useFeatureEnabled('staffShiftsEnabled')
+    const staffManagementEnabled = useFeatureEnabled('staffManagementEnabled')
+    const tableManagementEnabled = useFeatureEnabled('tableManagementEnabled')
     const businessMode = useBusinessMode()
     const isHotel = businessMode === 'hotel'
 
@@ -153,6 +156,20 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                         <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/combos"      icon={Sparkles}        label="Combo Offers"    path={pathname} />
                         {dynamicPricingEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/pricing"     icon={DollarSign}      label="Dynamic Pricing" path={pathname} />}
                         {promosEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/promos"      icon={Tag}             label="Promo Codes"     path={pathname} />}
+                        {/* Same rule and same section as the hotel branch above,
+                            and the same rule as the page behind it
+                            (admin/tables/page.tsx gates on tableManagementEnabled
+                            alone). This link used to additionally require
+                            dineInEnabled while the hotel branch and the page did
+                            not — three rules for one destination, so a hotel saw
+                            the link with dine-in off, a delivery-only restaurant
+                            had it hidden yet could still open the page by URL,
+                            and turning dine-in off looked like it removed a
+                            module it does not own. Whether a tenant lays out
+                            tables is tableManagementEnabled's question; whether
+                            guests order from them at the table is dineInEnabled's,
+                            and that gates Live Orders below, not this. */}
+                        {tableManagementEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />}
 
                         {(dineInEnabled || takeoutEnabled) && (
                             <>
@@ -163,7 +180,6 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                                 {dineInEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"      icon={ShoppingBag}     label="Live Orders"     path={pathname} />}
                                 {dineInEnabled && features.irdSyncEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"    icon={CreditCard}      label="Payments"        path={pathname} />}
                                 {takeoutEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/takeout"     icon={Truck}           label="Takeout & Disp." path={pathname} />}
-                                {tableManagementEnabled && dineInEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />}
                             </>
                         )}
                         

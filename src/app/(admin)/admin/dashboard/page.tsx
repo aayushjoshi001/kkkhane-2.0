@@ -66,11 +66,15 @@ export default async function AdminDashboardPage() {
     const totalTurnover = (turnoverRes.data || []).reduce((sum, r) => sum + Number(r.amount), 0)
     const showVatWarning = totalTurnover > 2000000 && !restaurant?.vat_registered
 
-    const currencyFeatures = restaurantSettings?.features_v2 as { currency?: string; currencySymbol?: string | null; dineInEnabled?: boolean } | null
+    const currencyFeatures = restaurantSettings?.features_v2 as { currency?: string; currencySymbol?: string | null } | null
     const money: Money = (amount) => formatCurrency(amount, currencyFeatures?.currency, currencyFeatures?.currencySymbol)
-    // Same safe default as elsewhere — restaurants provisioned before this flag
-    // existed have no dineInEnabled key in their stored features_v2.
-    const dineInEnabled = currencyFeatures?.dineInEnabled ?? true
+    // Take the flag from the resolved features this page already loaded, not
+    // from the raw settings row beside it. getRestaurantFeatures runs the same
+    // absent-key defaults the client's useFeatureEnabled does, so reading the
+    // row directly meant this one screen could disagree with the sidebar about
+    // whether a tenant has dine-in. The `?? true` covers only the case where
+    // the whole fetch failed and features is null.
+    const dineInEnabled = features?.dineInEnabled ?? true
 
     const hour = new Date().getHours()
     const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'

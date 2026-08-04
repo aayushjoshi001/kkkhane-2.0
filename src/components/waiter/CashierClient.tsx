@@ -215,6 +215,12 @@ export default function CashierClient({
     const showInvoiceEnabled = useFeatureEnabled('showInvoiceEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
+    // Read the same way as the five above, and as the sidebar link and the page
+    // gate for /admin/manual-entry. These two were the one pair in this file
+    // still read straight off the context with a local `?? true`, which is a
+    // second copy of DEFAULT_ON_FEATURES that nothing keeps in step.
+    const financeEnabled = useFeatureEnabled('financeEnabled')
+    const manualEntryEnabled = useFeatureEnabled('manualEntryEnabled')
     const { formatDateTime, calendar } = useDates()
     const { print: printInvoice } = usePrinter('invoice')
     const { print: printKot, networkPrinter: kotNetworkPrinter } = usePrinter('kot')
@@ -2207,7 +2213,7 @@ export default function CashierClient({
                         <ShoppingBag size={15} />
                         Manual Takeaway/Delivery
                     </button>
-                    {!!features.financeEnabled && (features.manualEntryEnabled ?? true) && (
+                    {financeEnabled && manualEntryEnabled && (
                         <button
                             onClick={() => setShowManualEntry(true)}
                             className="flex items-center gap-2 text-sm font-bold text-white bg-brand-500 hover:bg-brand-600 px-4 py-2.5 rounded-xl transition-colors shadow-sm"
