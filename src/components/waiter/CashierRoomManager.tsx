@@ -603,10 +603,21 @@ export default function CashierRoomManager({
     useRestaurantTable(restaurantId, 'rooms', (payload) => {
         if (payload.eventType === 'UPDATE') {
             const updatedRoom = payload.new as any
-            setRooms(prev => prev.map(r => r.id === updatedRoom.id ? { ...r, status: updatedRoom.status } : r))
+            // Keep the same array when nothing moved. .map() allocates a new one
+            // every time, so an event about a room this till is not showing --
+            // or one restating a status it already had -- still re-rendered the
+            // whole grid, and used to refetch the open room's panel with it.
+            setRooms(prev => {
+                const idx = prev.findIndex(r => r.id === updatedRoom.id)
+                if (idx === -1 || prev[idx].status === updatedRoom.status) return prev
+                const next = [...prev]
+                next[idx] = { ...next[idx], status: updatedRoom.status }
+                return next
+            })
             setSelectedRoom(prev => {
                 if (!prev) return null
-                return prev.id === updatedRoom.id ? { ...prev, status: updatedRoom.status } : prev
+                if (prev.id !== updatedRoom.id || prev.status === updatedRoom.status) return prev
+                return { ...prev, status: updatedRoom.status }
             })
         }
     })
@@ -767,7 +778,23 @@ export default function CashierRoomManager({
             setShowAddChargeForm(false)
             setCreatedSessionId(null)
         }
-    }, [selectedRoom, rooms, refreshTrigger])
+        // Identity, not objects. This read `[selectedRoom, rooms, refreshTrigger]`,
+        // and both of the first two change on every rooms realtime event: the
+        // handler above rebuilds the array with .map(), which always allocates a
+        // new one even when no room actually changed, and it replaces
+        // selectedRoom with a fresh copy to restamp its status. So opening one
+        // room refetched the whole panel again for each event that happened to
+        // land — three round trips of about a second each for a single click,
+        // which is what made opening a room feel like it hung.
+        //
+        // What the panel actually depends on is which room is selected and
+        // whether it is occupied. Both are primitives, so an event that changes
+        // neither no longer costs a request.
+        //
+        // exhaustive-deps wants the whole selectedRoom object back; taking that
+        // advice restores the repeated fetching, so it is silenced on purpose.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedRoom?.id, selectedRoom?.status, refreshTrigger])
 
     // Filter rooms
     const filteredRooms = useMemo(() => {

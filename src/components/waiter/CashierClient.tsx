@@ -739,7 +739,18 @@ export default function CashierClient({
             setCashReceivedAmount('')
             setQrReceivedAmount('')
         }
-    }, [selectedBillingRoom, bookings])
+        // Keyed on the room's id, like the table panel below. This read
+        // `[selectedBillingRoom, bookings]`, and neither is stable: the object is
+        // replaced whenever the room list restamps a status, and the bookings
+        // array is rebuilt by every booking realtime event. Nothing in here
+        // reads bookings — only selectedBillingRoom.id — so all that produced was
+        // the same bill being fetched again, about a second a time, while the
+        // cashier waited on it.
+        //
+        // exhaustive-deps wants the whole selectedBillingRoom object back; taking
+        // that advice restores the repeated fetching, so it is silenced here.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedBillingRoom?.id])
 
     // Same reset for the table billing panel — keyed on the table's id so it
     // also fires when switching straight from one table to another, not just
