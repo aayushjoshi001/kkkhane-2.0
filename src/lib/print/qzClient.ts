@@ -82,10 +82,23 @@ function classifyError(err: unknown, fallback: QzStatus): QzStatus {
 // hangs instead of failing outright (rare, but possible on a misconfigured
 // network), this stops a caller (e.g. a cashier settling a bill) from
 // waiting forever on a connection that will never resolve either way.
-// A real, running QZ Tray agent answers in well under a second, so this only
-// needs to be long enough to absorb that — not long enough to make settling
-// a bill visibly hang when the till simply doesn't have QZ Tray open.
-const CONNECT_TIMEOUT_MS = 1500
+//
+// This is a backstop for a *hang*, not how we detect "QZ Tray isn't running":
+// nothing listening on the port refuses the connection immediately, so
+// qz.websocket.connect() rejects on its own long before this fires. Raising
+// the ceiling therefore costs a till without QZ nothing.
+//
+// It has to clear the SLOW trust path, not just the fast one. QZ only reads
+// the first certificate in its override.crt, and this install carries another
+// tenant's cert in that slot, so ours falls through to the "user previously
+// allowed" (allowed.dat) route — which spins up the dialog machinery, and Gtk
+// is broken on the till, so each authorization stalls before auto-allowing.
+// Measured on the real hardware: ~4.2s to connect, then ~1.5s per print,
+// against an actual print of 0.03–0.3s. At the old 1500ms every connect timed
+// out, printRawEscPos bailed before sending, and tickets diverted to the
+// window.print() fallback — which cannot render to a raw CUPS queue, so
+// nothing came out at all. 10s clears 4.2s with room for a cold JVM.
+const CONNECT_TIMEOUT_MS = 10_000
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
     return new Promise((resolve, reject) => {
