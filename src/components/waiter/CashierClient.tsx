@@ -1860,7 +1860,19 @@ export default function CashierClient({
             setSelectedBillingTable(null)
             setSelectedBillingOrder(null)
             setInvoiceSettled(false)
-            window.location.reload()
+            // Re-run the server fetch, don't reload the browser. Every settled
+            // bill used to tear the whole page down — refetch the document,
+            // re-parse the bundle, re-hydrate, re-run every server query — which
+            // is the bulk of what made settling feel slow, on the one screen a
+            // till uses all day. The selections this screen holds are cleared
+            // just above, and the settlement itself committed server-side before
+            // we got here, so there is nothing a full reload preserves.
+            //
+            // It also cost the printer: a reload drops the QZ Tray socket, so
+            // the next bill paid the connect again. Keeping the page alive keeps
+            // the socket warm, which is the other half of making the bill print
+            // instantly (see usePrinter).
+            router.refresh()
         } catch (e: any) {
             toast.error(e.message || 'Failed to settle invoice')
         } finally {
