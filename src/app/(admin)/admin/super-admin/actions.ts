@@ -13,7 +13,6 @@ import {
     TIER_ENTITLEMENTS,
     type Tier,
 } from '@/lib/tiers'
-import { getBusinessMode } from '@/lib/businessMode'
 import { provisionRestaurant } from '@/lib/provisioning'
 
 export interface CreateTenantInput {
@@ -113,7 +112,18 @@ export async function updateSubscriptionTier(
     // Define limits per tier
     const limits = TIER_LIMITS[tier]
 
-    const { data: restaurantRow, error } = await supabase
+    // Read the plan being left behind first. UPDATE ... RETURNING hands back
+    // the row as it now is, so the old tier is unrecoverable once the write has
+    // happened — and it is what separates "this capability is new to you" from
+    // "you had this and switched it off".
+    const { data: previousRow } = await supabase
+        .from('restaurants')
+        .select('subscription_tier')
+        .eq('id', restaurantId)
+        .maybeSingle()
+    const previousTier = previousRow?.subscription_tier
+
+    const { error } = await supabase
         .from('restaurants')
         .update({
             subscription_tier: tier,
@@ -122,8 +132,6 @@ export async function updateSubscriptionTier(
             max_tables: limits.max_tables,
         })
         .eq('id', restaurantId)
-        .select('business_type')
-        .maybeSingle()
 
     if (error) return { error: error.message }
 
@@ -144,8 +152,11 @@ export async function updateSubscriptionTier(
     // capabilities — loyalty, inventory, shifts, dynamic pricing,
     // multi-language — kept whatever the original provisioning tier had
     // written. Every restaurant upgraded after signup was left with its old
-    // plan's features. applyTierEntitlements re-grants those too, with the
-    // business mode still winning (a hotel does not get takeout for upgrading).
+    // plan's features. applyTierEntitlements re-grants those too, which is why
+    // it needs the tier being left behind: a capability the old plan did not
+    // cover is new and gets granted, while one it did cover keeps whatever the
+    // tenant chose. Business mode no longer takes part — it seeds the flags
+    // once at provisioning and does not get to overrule the tenant afterwards.
     const { data: settingsRow } = await supabase
         .from('settings')
         .select('features_v2')
@@ -154,8 +165,7 @@ export async function updateSubscriptionTier(
 
     if (settingsRow) {
         const current = (settingsRow.features_v2 || {}) as Record<string, unknown>
-        const mode = getBusinessMode(restaurantRow?.business_type)
-        const merged = applyTierEntitlements(applyTierModuleDefaults(current, tier), tier, mode)
+        const merged = applyTierEntitlements(applyTierModuleDefaults(current, tier), tier, previousTier)
 
         const changed = [...MODULE_KEYS, ...TIER_ENTITLEMENTS].some(
             key => current[key] !== merged[key as keyof typeof merged],

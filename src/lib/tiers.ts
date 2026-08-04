@@ -382,25 +382,44 @@ export function buildFeaturesV2(tier: Tier, mode: BusinessMode) {
  * provisioning had written `false` — the customer had paid for modules the app
  * still refused to show, and no screen could turn them on.
  *
- * The business mode still wins over the tier: a hotel does not get takeout
- * because it was upgraded. Behavioural preferences outside TIER_ENTITLEMENTS
- * are never touched.
+ * Business mode is deliberately not consulted here. It used to override the
+ * tier outright — a hotel could never hold takeout, because every plan change
+ * reset the flag from MODE_FEATURES — which made the mode a permanent
+ * restriction rather than the starting point it is meant to be. Mode now only
+ * seeds the flags once, in buildFeaturesV2 at provisioning; after that the
+ * tenant owns them. A hotel that also runs a restaurant is the ordinary case,
+ * not an exception to code around.
+ *
+ * Behavioural preferences outside TIER_ENTITLEMENTS are never touched.
  */
 export function applyTierEntitlements<T extends Record<string, unknown>>(
     features: T,
     tier: Tier | string | null | undefined,
-    mode: BusinessMode,
+    previousTier: Tier | string | null | undefined,
 ): T & Record<TierEntitlement, boolean> {
-    const modeOverlay = MODE_FEATURES[mode] as Record<string, unknown>
     const resolved = { ...features } as T & Record<TierEntitlement, boolean>
     for (const key of TIER_ENTITLEMENTS) {
-        // A mode that has an opinion about this flag keeps it — the overlay is
-        // about what the business physically does, not what it has bought.
-        if (modeOverlay[key] !== undefined) {
-            resolved[key] = !!modeOverlay[key]
+        // Entitlement outranks preference: a plan that does not cover the
+        // capability revokes it, however the tenant had it set.
+        if (!tierIncludesEntitlement(tier, key)) {
+            resolved[key] = false
             continue
         }
-        resolved[key] = tierIncludesEntitlement(tier, key)
+        // Newly covered by this plan. A stored `false` here cannot have been a
+        // decision — the old plan gave the tenant nothing to decide — so this
+        // is the grant that stops "set to the package but the features still
+        // don't work" after an upgrade.
+        if (!tierIncludesEntitlement(previousTier, key)) {
+            resolved[key] = true
+            continue
+        }
+        // Covered before and still covered, so whatever is stored is the
+        // tenant's own choice and a plan change is not the place to overrule
+        // it. This used to reassign every entitlement from the tier outright,
+        // so a restaurant that had deliberately switched loyalty off got it
+        // back on the next plan change.
+        const stored = features[key]
+        resolved[key] = stored === undefined ? true : !!stored
     }
     return resolved
 }
