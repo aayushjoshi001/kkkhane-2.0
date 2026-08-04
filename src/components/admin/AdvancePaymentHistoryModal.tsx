@@ -252,26 +252,31 @@ export default function AdvancePaymentHistoryModal({
                     <p className="text-[9px] text-gray-700 mt-0.5">Printed: {new Date().toLocaleString()}</p>
                 </div>
 
-                <table className="w-full text-left border-collapse text-[10px]">
-                    <thead>
-                        <tr className="border-b border-black text-[9px] uppercase font-bold">
-                            <th className="py-1">#</th>
-                            <th className="py-1">Remarks</th>
-                            <th className="py-1">Method</th>
-                            <th className="py-1 text-right">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {payments.map((p, idx) => (
-                            <tr key={p.id || idx} className="border-b border-gray-300">
-                                <td className="py-1 font-bold">#{idx + 1}</td>
-                                <td className="py-1">{p.note || 'Advance'}</td>
-                                <td className="py-1">{advanceMethodLabel(p.payment_method as any)}</td>
-                                <td className="py-1 text-right font-bold">{money(p.amount)}</td>
+                {/* Horizontal scroll: the card around this clips with
+                    overflow-hidden, so on a narrow screen the right-hand
+                    columns were cut off with no way to reach them. */}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-[10px]">
+                        <thead>
+                            <tr className="border-b border-black text-[9px] uppercase font-bold">
+                                <th className="py-1">#</th>
+                                <th className="py-1">Remarks</th>
+                                <th className="py-1">Method</th>
+                                <th className="py-1 text-right">Amount</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {payments.map((p, idx) => (
+                                <tr key={p.id || idx} className="border-b border-gray-300">
+                                    <td className="py-1 font-bold">#{idx + 1}</td>
+                                    <td className="py-1">{p.note || 'Advance'}</td>
+                                    <td className="py-1">{advanceMethodLabel(p.payment_method as any)}</td>
+                                    <td className="py-1 text-right font-bold">{money(p.amount)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
 
                 <div className="border-t-2 border-black mt-2 pt-2 flex justify-between font-black text-xs">
                     <span>TOTAL ADVANCE:</span>

@@ -1069,30 +1069,80 @@ export default function IngredientsManager({
             {/* Stock Table */}
             {viewMode === 'stock' && (
             <div className="bg-surface rounded-card border border-hairline overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
-                <table className="w-full text-sm">
-                    <thead className="bg-surface-muted/30 border-b border-hairline">
-                        <tr>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Name</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Stock</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Reorder</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Cost/Unit</th>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden lg:table-cell">Supplier</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-hairline">
-                    {categories.map(cat => {
-                        const items = categorizedIngredients[cat.id] || []
-                        if (items.length === 0) return null // Hide empty category!
+                {/* Horizontal scroll: the card around this clips with
+                    overflow-hidden, so on a narrow screen the right-hand
+                    columns were cut off with no way to reach them. */}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead className="bg-surface-muted/30 border-b border-hairline">
+                            <tr>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Name</th>
+                                <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Stock</th>
+                                <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Reorder</th>
+                                <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Cost/Unit</th>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden lg:table-cell">Supplier</th>
+                                <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-hairline">
+                        {categories.map(cat => {
+                            const items = categorizedIngredients[cat.id] || []
+                            if (items.length === 0) return null // Hide empty category!
                         
-                        return (
-                            <Fragment key={cat.id}>
+                            return (
+                                <Fragment key={cat.id}>
+                                    <tr className="bg-surface-muted/30">
+                                        <td colSpan={6} className="px-5 py-2.5 text-xs font-black text-indigo-700 uppercase tracking-wider bg-surface-muted/20">
+                                            📁 {cat.name} ({items.length} {items.length === 1 ? 'item' : 'items'})
+                                        </td>
+                                    </tr>
+                                    {items.map(ing => {
+                                        const isLow = ing.reorder_level !== null && ing.stock_quantity <= (ing.reorder_level ?? 0)
+                                        return (
+                                            <tr key={ing.id} className={`hover:bg-surface-muted/30 transition-colors ${isLow ? 'bg-amber-50/30 hover:bg-amber-50/50' : ''}`}>
+                                                <td className="px-5 py-4 font-extrabold text-ink flex items-center gap-2">
+                                                    {isLow && <AlertTriangle size={16} className="text-amber-600" />}
+                                                    {ing.name}
+                                                </td>
+                                                <td className={`px-5 py-4 text-right font-bold tabular-nums ${isLow ? 'text-amber-700' : 'text-brand-500'}`}>
+                                                    {ing.stock_quantity} <span className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">{ing.unit}</span>
+                                                </td>
+                                                <td className="px-5 py-4 text-right text-ink-muted font-bold tabular-nums hidden md:table-cell">
+                                                    {ing.reorder_level ?? '—'} <span className="text-[11px] font-bold uppercase tracking-wider">{ing.unit}</span>
+                                                </td>
+                                                <td className="px-5 py-4 text-right text-ink-subtle font-bold tabular-nums hidden md:table-cell">{formatCurrency(ing.cost_per_unit)}</td>
+                                                <td className="px-5 py-4 text-ink-subtle font-medium hidden lg:table-cell">{ing.supplier || '—'}</td>
+                                                <td className="px-5 py-4">
+                                                    <div className="flex items-center gap-2 justify-end">
+                                                        <button onClick={() => openEditModal(ing)}
+                                                            className="w-8 h-8 rounded-full border border-hairline flex items-center justify-center text-ink-subtle hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200 transition-all focus-ring shadow-sm bg-surface" title="Edit">
+                                                            <Edit2 size={14} />
+                                                        </button>
+                                                        <button onClick={() => openStockModal(ing)}
+                                                            className="w-8 h-8 rounded-full border border-hairline flex items-center justify-center text-ink-subtle hover:text-indigo-500 hover:bg-indigo-50 hover:border-indigo-200 transition-all focus-ring shadow-sm bg-surface" title="Stock Movement">
+                                                            <Package size={14} />
+                                                        </button>
+                                                        <button onClick={() => handleDelete(ing.id)} className="w-8 h-8 rounded-full border border-hairline flex items-center justify-center text-ink-subtle hover:text-danger-fg hover:bg-danger-bg hover:border-danger-fg/30 transition-all focus-ring shadow-sm bg-surface" title="Delete">
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                </Fragment>
+                            )
+                        })}
+
+                        {/* Uncategorized items at the bottom */}
+                        {categorizedIngredients[''] && categorizedIngredients[''].length > 0 && (
+                            <Fragment>
                                 <tr className="bg-surface-muted/30">
-                                    <td colSpan={6} className="px-5 py-2.5 text-xs font-black text-indigo-700 uppercase tracking-wider bg-surface-muted/20">
-                                        📁 {cat.name} ({items.length} {items.length === 1 ? 'item' : 'items'})
+                                    <td colSpan={6} className="px-5 py-2.5 text-xs font-black text-ink-subtle uppercase tracking-wider bg-surface-muted/20">
+                                        📦 Uncategorized Items ({categorizedIngredients[''].length} {categorizedIngredients[''].length === 1 ? 'item' : 'items'})
                                     </td>
                                 </tr>
-                                {items.map(ing => {
+                                {categorizedIngredients[''].map(ing => {
                                     const isLow = ing.reorder_level !== null && ing.stock_quantity <= (ing.reorder_level ?? 0)
                                     return (
                                         <tr key={ing.id} className={`hover:bg-surface-muted/30 transition-colors ${isLow ? 'bg-amber-50/30 hover:bg-amber-50/50' : ''}`}>
@@ -1127,59 +1177,14 @@ export default function IngredientsManager({
                                     )
                                 })}
                             </Fragment>
-                        )
-                    })}
+                        )}
 
-                    {/* Uncategorized items at the bottom */}
-                    {categorizedIngredients[''] && categorizedIngredients[''].length > 0 && (
-                        <Fragment>
-                            <tr className="bg-surface-muted/30">
-                                <td colSpan={6} className="px-5 py-2.5 text-xs font-black text-ink-subtle uppercase tracking-wider bg-surface-muted/20">
-                                    📦 Uncategorized Items ({categorizedIngredients[''].length} {categorizedIngredients[''].length === 1 ? 'item' : 'items'})
-                                </td>
-                            </tr>
-                            {categorizedIngredients[''].map(ing => {
-                                const isLow = ing.reorder_level !== null && ing.stock_quantity <= (ing.reorder_level ?? 0)
-                                return (
-                                    <tr key={ing.id} className={`hover:bg-surface-muted/30 transition-colors ${isLow ? 'bg-amber-50/30 hover:bg-amber-50/50' : ''}`}>
-                                        <td className="px-5 py-4 font-extrabold text-ink flex items-center gap-2">
-                                            {isLow && <AlertTriangle size={16} className="text-amber-600" />}
-                                            {ing.name}
-                                        </td>
-                                        <td className={`px-5 py-4 text-right font-bold tabular-nums ${isLow ? 'text-amber-700' : 'text-brand-500'}`}>
-                                            {ing.stock_quantity} <span className="text-[11px] font-bold uppercase tracking-wider text-ink-subtle">{ing.unit}</span>
-                                        </td>
-                                        <td className="px-5 py-4 text-right text-ink-muted font-bold tabular-nums hidden md:table-cell">
-                                            {ing.reorder_level ?? '—'} <span className="text-[11px] font-bold uppercase tracking-wider">{ing.unit}</span>
-                                        </td>
-                                        <td className="px-5 py-4 text-right text-ink-subtle font-bold tabular-nums hidden md:table-cell">{formatCurrency(ing.cost_per_unit)}</td>
-                                        <td className="px-5 py-4 text-ink-subtle font-medium hidden lg:table-cell">{ing.supplier || '—'}</td>
-                                        <td className="px-5 py-4">
-                                            <div className="flex items-center gap-2 justify-end">
-                                                <button onClick={() => openEditModal(ing)}
-                                                    className="w-8 h-8 rounded-full border border-hairline flex items-center justify-center text-ink-subtle hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200 transition-all focus-ring shadow-sm bg-surface" title="Edit">
-                                                    <Edit2 size={14} />
-                                                </button>
-                                                <button onClick={() => openStockModal(ing)}
-                                                    className="w-8 h-8 rounded-full border border-hairline flex items-center justify-center text-ink-subtle hover:text-indigo-500 hover:bg-indigo-50 hover:border-indigo-200 transition-all focus-ring shadow-sm bg-surface" title="Stock Movement">
-                                                    <Package size={14} />
-                                                </button>
-                                                <button onClick={() => handleDelete(ing.id)} className="w-8 h-8 rounded-full border border-hairline flex items-center justify-center text-ink-subtle hover:text-danger-fg hover:bg-danger-bg hover:border-danger-fg/30 transition-all focus-ring shadow-sm bg-surface" title="Delete">
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )
-                            })}
-                        </Fragment>
-                    )}
-
-                    {ingredients.length === 0 && (
-                        <tr><td colSpan={6} className="px-5 py-12 text-center text-ink-muted font-bold text-sm">No stock items tracked yet.</td></tr>
-                    )}
-                    </tbody>
-                </table>
+                        {ingredients.length === 0 && (
+                            <tr><td colSpan={6} className="px-5 py-12 text-center text-ink-muted font-bold text-sm">No stock items tracked yet.</td></tr>
+                        )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             )}
 
@@ -1188,49 +1193,54 @@ export default function IngredientsManager({
                 here the moment it's recorded, newest first. */}
             {viewMode === 'activities' && (
             <div className="bg-surface rounded-card border border-hairline overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
-                <table className="w-full text-sm">
-                    <thead className="bg-surface-muted/30 border-b border-hairline">
-                        <tr>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Date &amp; Time</th>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Item</th>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Type</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Quantity</th>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Entered By</th>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-hairline">
-                        {movements.map(m => {
-                            const ing = Array.isArray(m.ingredients) ? m.ingredients[0] : m.ingredients
-                            const performer = Array.isArray(m.users) ? m.users[0] : m.users
-                            // Mirrors addStockMovementAction's own delta rule
-                            // (ingredients/actions.ts) — 'purchase' and 'adjustment'
-                            // add to stock; 'usage' and 'waste' subtract from stock.
-                            const isAddition = m.movement_type === 'purchase' || m.movement_type === 'adjustment'
-                            return (
-                                <tr key={m.id} className="hover:bg-surface-muted/30 transition-colors">
-                                    <td className="px-5 py-4 text-ink-subtle font-semibold whitespace-nowrap">
-                                        <DateCell value={m.created_at} />
-                                    </td>
-                                    <td className="px-5 py-4 font-extrabold text-ink">{ing?.name || 'Deleted item'}</td>
-                                    <td className="px-5 py-4">
-                                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${isAddition ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                                            {MOVEMENT_TYPE_LABEL[m.movement_type] || m.movement_type}
-                                        </span>
-                                    </td>
-                                    <td className={`px-5 py-4 text-right font-bold tabular-nums ${isAddition ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                        {isAddition ? '+' : '-'}{m.quantity} <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{ing?.unit || ''}</span>
-                                    </td>
-                                    <td className="px-5 py-4 text-ink-subtle font-semibold">{performer?.full_name || 'Unknown'}</td>
-                                    <td className="px-5 py-4 text-ink-subtle max-w-xs break-words whitespace-normal">{m.notes || <span className="italic">—</span>}</td>
-                                </tr>
-                            )
-                        })}
-                        {movements.length === 0 && (
-                            <tr><td colSpan={6} className="px-5 py-12 text-center text-ink-muted font-bold text-sm">No inventory activity recorded yet.</td></tr>
-                        )}
-                    </tbody>
-                </table>
+                {/* Horizontal scroll: the card around this clips with
+                    overflow-hidden, so on a narrow screen the right-hand
+                    columns were cut off with no way to reach them. */}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead className="bg-surface-muted/30 border-b border-hairline">
+                            <tr>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Date &amp; Time</th>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Item</th>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Type</th>
+                                <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Quantity</th>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Entered By</th>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-hairline">
+                            {movements.map(m => {
+                                const ing = Array.isArray(m.ingredients) ? m.ingredients[0] : m.ingredients
+                                const performer = Array.isArray(m.users) ? m.users[0] : m.users
+                                // Mirrors addStockMovementAction's own delta rule
+                                // (ingredients/actions.ts) — 'purchase' and 'adjustment'
+                                // add to stock; 'usage' and 'waste' subtract from stock.
+                                const isAddition = m.movement_type === 'purchase' || m.movement_type === 'adjustment'
+                                return (
+                                    <tr key={m.id} className="hover:bg-surface-muted/30 transition-colors">
+                                        <td className="px-5 py-4 text-ink-subtle font-semibold whitespace-nowrap">
+                                            <DateCell value={m.created_at} />
+                                        </td>
+                                        <td className="px-5 py-4 font-extrabold text-ink">{ing?.name || 'Deleted item'}</td>
+                                        <td className="px-5 py-4">
+                                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${isAddition ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                                                {MOVEMENT_TYPE_LABEL[m.movement_type] || m.movement_type}
+                                            </span>
+                                        </td>
+                                        <td className={`px-5 py-4 text-right font-bold tabular-nums ${isAddition ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                            {isAddition ? '+' : '-'}{m.quantity} <span className="text-[10px] font-bold uppercase tracking-wider text-ink-subtle">{ing?.unit || ''}</span>
+                                        </td>
+                                        <td className="px-5 py-4 text-ink-subtle font-semibold">{performer?.full_name || 'Unknown'}</td>
+                                        <td className="px-5 py-4 text-ink-subtle max-w-xs break-words whitespace-normal">{m.notes || <span className="italic">—</span>}</td>
+                                    </tr>
+                                )
+                            })}
+                            {movements.length === 0 && (
+                                <tr><td colSpan={6} className="px-5 py-12 text-center text-ink-muted font-bold text-sm">No inventory activity recorded yet.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             )}
         </div>
