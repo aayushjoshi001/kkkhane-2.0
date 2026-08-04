@@ -345,7 +345,19 @@ const MODE_FEATURES: Record<BusinessMode, {
 export function buildFeaturesV2(tier: Tier, mode: BusinessMode) {
     const modeOverlay = { ...MODE_FEATURES[mode] }
 
-    return {
+    // resolveFeatureDefaults has the last word, so every DEFAULT_ON_FEATURE is
+    // written out even if nothing below names it. Three never were —
+    // manualEntryEnabled, printBillEnabled and showInvoiceEnabled — so each new
+    // tenant was created already missing them, which is exactly the drift the
+    // 20260804083527 backfill had to repair across every existing restaurant.
+    // Repairing the rows without repairing this would have recreated it on the
+    // next signup.
+    //
+    // It only fills absent keys, so a mode that deliberately switches one off
+    // (a hotel has splitBillingEnabled false) still wins. Adding a flag to
+    // DEFAULT_ON_FEATURES now provisions it here automatically rather than
+    // needing a matching edit and, later, another backfill.
+    return resolveFeatureDefaults({
         ...TIER_FEATURES[tier],
         // Written explicitly at provisioning rather than left absent — an
         // absent flag is what the server and client used to disagree about.
@@ -370,7 +382,7 @@ export function buildFeaturesV2(tier: Tier, mode: BusinessMode) {
         // why a new tenant's KOT never printed until a super admin noticed.
         kotEnabled: true,
         kdsEnabled: true,
-    }
+    })
 }
 
 /**
