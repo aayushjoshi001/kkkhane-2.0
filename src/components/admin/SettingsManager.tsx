@@ -983,6 +983,16 @@ export default function SettingsManager({
             <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {([
+                        // Listed first because it decides whether most of the
+                        // toggles under it mean anything. It had no control at
+                        // all before: business type set it once at onboarding
+                        // and nothing could change it afterwards, so a hotel
+                        // that also runs a restaurant was stuck with dine-in off
+                        // — no table QR entry point for guests and no Live
+                        // Orders in the nav — while its tables, menu and orders
+                        // all existed. Not a plan-gated key, so a manager owns
+                        // it, and a tier change leaves it alone.
+                        { key: 'dineInEnabled' as const, label: 'Dine-In Ordering', desc: 'Guests scan a table QR and order at the table. Turn on for a hotel that also runs a restaurant; off for delivery-only kitchens' },
                         { key: 'serviceRequestsEnabled' as const, label: 'Service Requests', desc: 'Customers can call waiter, request bill, etc.' },
                         { key: 'waiterSessionEnabled' as const, label: 'Waiter-Managed Sessions', desc: 'Require a waiter to open a table before guests can order. Off = guests scan & order instantly' },
                         { key: 'waiterOrderConfirmation' as const, label: 'Waiter Order Confirmation', desc: 'Orders wait for a waiter to confirm before the kitchen sees them. Off = orders go straight to the kitchen' },
