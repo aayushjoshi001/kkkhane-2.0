@@ -397,12 +397,47 @@ export default function CashierClient({
             .filter(r => billingRoomTypeFilter === 'all' || r.type_id === billingRoomTypeFilter)
     }, [roomsState, billingRoomTypeFilter])
 
+
     // Who the cashier is looking for, by the name or number taken at check-in.
     // The desk is given a name at settling time — "the bill for Mohan" — and had
     // to know which room that was to find it in a grid keyed by room number.
     const [billingSearch, setBillingSearch] = useState('')
 
     const [bookings, setBookings] = useState<any[]>(initialBookings)
+
+    /**
+     * room id → size of its combined reservation and who booked it.
+     *
+     * Billing showed each room as an independent card, so nothing on this screen
+     * said that settling one of them settles several — the desk only found out
+     * after opening it. The rooms grid has carried a badge for this; the screen
+     * where the money actually moves had none.
+     *
+     * The contact is the earliest-created member, matching what
+     * /api/bookings/group treats as primary, so this name is the one on the
+     * folio rather than the occupant of whichever room was clicked.
+     */
+    const roomGroupInfo = useMemo(() => {
+        const live = (bookings || []).filter(b =>
+            b.group_id && (b.status === 'checked_in' || b.status === 'pending')
+        )
+        const byGroup = new Map<string, typeof live>()
+        for (const b of live) {
+            const list = byGroup.get(b.group_id as string) ?? []
+            list.push(b)
+            byGroup.set(b.group_id as string, list)
+        }
+        const info = new Map<string, { size: number; contact: string | null }>()
+        for (const [, list] of byGroup) {
+            if (list.length < 2) continue
+            const sorted = [...list].sort((a, b) =>
+                String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''))
+            )
+            const contact = sorted.find(m => m.guest_name)?.guest_name ?? null
+            for (const m of list) info.set(m.room_id as string, { size: list.length, contact })
+        }
+        return info
+    }, [bookings])
     const [billingSubTab, setBillingSubTab] = useState<'all' | 'rooms' | 'tables' | 'takeout' | 'delivery'>('rooms')
     const [selectedBillingRoom, setSelectedBillingRoom] = useState<any | null>(null)
     const [advanceHistoryModalOpen, setAdvanceHistoryModalOpen] = useState(false)
@@ -2589,14 +2624,32 @@ export default function CashierClient({
                                                     <button
                                                         key={`room:${room.id}`}
                                                         onClick={() => setSelectedBillingRoom(room)}
-                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                        className="relative aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >
+                                                        {/* Shares a bill with other rooms. Same badge as the
+                                                            rooms grid, because settling this card settles all
+                                                            of them and the card gave no sign of that. */}
+                                                        {(roomGroupInfo.get(room.id)?.size ?? 0) > 1 && (
+                                                            <span
+                                                                className="absolute top-1.5 left-1.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-brand-500 text-white"
+                                                                title={roomGroupInfo.get(room.id)?.contact
+                                                                    ? `Part of ${roomGroupInfo.get(room.id)!.contact}'s ${roomGroupInfo.get(room.id)!.size}-room booking — these rooms share one bill`
+                                                                    : `Part of a ${roomGroupInfo.get(room.id)!.size}-room booking — these rooms share one bill`}
+                                                            >
+                                                                {roomGroupInfo.get(room.id)!.size} ROOMS
+                                                            </span>
+                                                        )}
                                                         <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
                                                             Room {room.room_number}
                                                         </span>
                                                         {booking && (
                                                             <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
                                                                 {booking.guest_name}
+                                                            </span>
+                                                        )}
+                                                        {roomGroupInfo.get(room.id)?.contact && (
+                                                            <span className="text-[9px] font-bold text-brand-600 truncate max-w-full leading-tight">
+                                                                on {roomGroupInfo.get(room.id)!.contact}&apos;s bill
                                                             </span>
                                                         )}
                                                         <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
@@ -2659,14 +2712,32 @@ export default function CashierClient({
                                                     <button
                                                         key={room.id}
                                                         onClick={() => setSelectedBillingRoom(room)}
-                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                        className="relative aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >
+                                                        {/* Shares a bill with other rooms. Same badge as the
+                                                            rooms grid, because settling this card settles all
+                                                            of them and the card gave no sign of that. */}
+                                                        {(roomGroupInfo.get(room.id)?.size ?? 0) > 1 && (
+                                                            <span
+                                                                className="absolute top-1.5 left-1.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-brand-500 text-white"
+                                                                title={roomGroupInfo.get(room.id)?.contact
+                                                                    ? `Part of ${roomGroupInfo.get(room.id)!.contact}'s ${roomGroupInfo.get(room.id)!.size}-room booking — these rooms share one bill`
+                                                                    : `Part of a ${roomGroupInfo.get(room.id)!.size}-room booking — these rooms share one bill`}
+                                                            >
+                                                                {roomGroupInfo.get(room.id)!.size} ROOMS
+                                                            </span>
+                                                        )}
                                                         <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
                                                             Room {room.room_number}
                                                         </span>
                                                         {booking && (
                                                             <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
                                                                 {booking.guest_name}
+                                                            </span>
+                                                        )}
+                                                        {roomGroupInfo.get(room.id)?.contact && (
+                                                            <span className="text-[9px] font-bold text-brand-600 truncate max-w-full leading-tight">
+                                                                on {roomGroupInfo.get(room.id)!.contact}&apos;s bill
                                                             </span>
                                                         )}
                                                         <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">

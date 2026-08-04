@@ -561,16 +561,39 @@ export default function CashierRoomManager({
 
     const selectedExtraIds = useMemo(() => Object.keys(extraRooms), [extraRooms])
 
-    /** room id → how many rooms its reservation holds. 0/1 for a normal stay. */
-    const groupSizeByRoomId = useMemo(() => {
-        const countByGroup = new Map<string, number>()
+    /**
+     * room id → how many rooms its reservation holds, and who booked it.
+     *
+     * The count alone says "this room is not alone" without saying who it is
+     * with, which is the question the desk actually asks — every room on a
+     * combined reservation carries its own occupant's name, so a card showing
+     * only "2 ROOMS" leaves staff opening each one to find whose booking it
+     * belongs to. The contact is the earliest-created member, the same one
+     * /api/bookings/group treats as primary, so the name here matches the name
+     * on the folio.
+     */
+    const groupInfoByRoomId = useMemo(() => {
         const live = (bookings || []).filter(b =>
             b.group_id && (b.status === 'checked_in' || b.status === 'pending')
         )
+        const membersByGroup = new Map<string, typeof live>()
         for (const b of live) {
-            countByGroup.set(b.group_id, (countByGroup.get(b.group_id) ?? 0) + 1)
+            const list = membersByGroup.get(b.group_id) ?? []
+            list.push(b)
+            membersByGroup.set(b.group_id, list)
         }
-        return new Map(live.map(b => [b.room_id as string, countByGroup.get(b.group_id) ?? 1]))
+        const info = new Map<string, { size: number; contact: string | null }>()
+        for (const [, list] of membersByGroup) {
+            // Oldest first, matching the group endpoint's created_at ordering.
+            const sorted = [...list].sort((a, b) =>
+                String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''))
+            )
+            const contact = sorted.find(m => m.guest_name)?.guest_name ?? null
+            for (const m of list) {
+                info.set(m.room_id as string, { size: list.length, contact })
+            }
+        }
+        return info
     }, [bookings])
 
     /** Nightly rate across every room on the reservation — what a "full"
@@ -1143,7 +1166,8 @@ export default function CashierRoomManager({
                         // Rooms held by the same reservation are marked so the
                         // front desk can see at a glance that checking one out
                         // will settle and release the others with it.
-                        const groupSize = groupSizeByRoomId.get(room.id) ?? 0
+                        const groupInfo = groupInfoByRoomId.get(room.id)
+                        const groupSize = groupInfo?.size ?? 0
 
                         return (
                             <button
@@ -1172,12 +1196,24 @@ export default function CashierRoomManager({
                                 </span>
                                 <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
                                 {groupSize > 1 && (
-                                    <span
-                                        className="absolute top-1.5 left-1.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-brand-500 text-white"
-                                        title={`Part of a ${groupSize}-room booking — these rooms bill and check out together`}
-                                    >
-                                        {groupSize} ROOMS
-                                    </span>
+                                    <>
+                                        <span
+                                            className="absolute top-1.5 left-1.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-brand-500 text-white"
+                                            title={groupInfo?.contact
+                                                ? `Part of ${groupInfo.contact}'s ${groupSize}-room booking — these rooms share one bill`
+                                                : `Part of a ${groupSize}-room booking — these rooms share one bill`}
+                                        >
+                                            {groupSize} ROOMS
+                                        </span>
+                                        {/* Whose reservation this room belongs to. Each room on a
+                                            combined booking carries its own occupant, so the count
+                                            alone does not say which stay it joins. */}
+                                        {groupInfo?.contact && (
+                                            <span className="mt-1 px-1 w-full text-center text-[9px] font-bold text-brand-600 leading-tight truncate">
+                                                {groupInfo.contact}
+                                            </span>
+                                        )}
+                                    </>
                                 )}
                             </button>
                         )
