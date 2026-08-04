@@ -25,7 +25,6 @@ export async function GET(req: NextRequest) {
         }
 
         const bookingId = req.nextUrl.searchParams.get('bookingId')
-        console.log('[linked-orders API] Received bookingId:', bookingId)
         if (!bookingId) {
             return NextResponse.json({ error: 'Missing bookingId' }, { status: 400 })
         }
@@ -44,10 +43,54 @@ export async function GET(req: NextRequest) {
         // `.is('tables.room_id', null)` filter: without `!inner`, filtering on an
         // embedded column nulls out the embed rather than dropping the parent row,
         // so the room's own session would survive the filter and double-count.
-        const { data: linkedSessions, error: sessErr } = await supabase
-            .from('sessions')
-            .select('id')
-            .in('booking_id', folioBookingIds)
+        // Everything that only needs the folio ids, in one go.
+        //
+        // These four ran one after another, and three of them never needed the
+        // answer to the one before. Each PostgREST call costs a round trip of
+        // its own -- about 20-50ms even with the function sitting beside the
+        // database in Singapore, because the cost is per request, not per row --
+        // so the ordering alone was worth a tenth of a second on a route the
+        // room panel and the cashier's bill both wait on. The two reads that do
+        // have a dependency (orders needs the session ids and the partner
+        // restaurant; the folio needs the stays) still run after this.
+        const [
+            { data: linkedSessions, error: sessErr },
+            { data: currentRest },
+            { data: stayRows },
+            { data: paymentRows },
+        ] = await Promise.all([
+            supabase
+                .from('sessions')
+                .select('id')
+                .in('booking_id', folioBookingIds),
+            // Target restaurant IDs (current hotel/restaurant + partner if any)
+            supabase
+                .from('restaurants')
+                .select('linked_restaurant_id, linked_hotel_id')
+                .eq('id', currentUser.restaurantId)
+                .maybeSingle(),
+            // Booking-level summary for the Bookings & Stays History detail card:
+            // who checked the guest in/out and when, the discount applied, the
+            // actual service charge billed, and the cash/QR split of everything
+            // received (advance + settlement) across the whole folio group.
+            supabase
+                .from('bookings')
+                .select('id, room_id, status, check_in, check_out, checked_out_at, checked_in_at, checked_in_by, cashier_id, discount_amount, discount_reason, service_charge_override')
+                .in('id', folioBookingIds),
+            // Settlement rows are always written with the literal note
+            // 'Settlement' (recordSettlementPayment in bookings/checkout/route.ts);
+            // an advance row's note defaults to 'Advance' but the front desk can
+            // type over it (advance_note in POST /api/bookings), so "not
+            // Settlement" -- not an exact 'Advance' match -- is what reliably
+            // means "the advance". Fetched here rather than inside the summary
+            // branch below: the primary stay is the booking we were asked about,
+            // so it is essentially always present, and hoisting the read saves a
+            // round trip on every request instead of costing one on a rare miss.
+            supabase
+                .from('booking_payments')
+                .select('amount, cash_amount, qr_amount, note')
+                .in('booking_id', folioBookingIds),
+        ])
 
         if (sessErr) {
             console.error('[linked-orders] Error fetching sessions:', sessErr)
@@ -55,13 +98,6 @@ export async function GET(req: NextRequest) {
         }
 
         const sessionIds = (linkedSessions || []).map((s: { id: string }) => s.id)
-
-        // Resolve target restaurant IDs (current hotel/restaurant + partner if any)
-        const { data: currentRest } = await supabase
-            .from('restaurants')
-            .select('linked_restaurant_id, linked_hotel_id')
-            .eq('id', currentUser.restaurantId)
-            .maybeSingle()
 
         const partnerRestaurantId = currentRest?.linked_restaurant_id || currentRest?.linked_hotel_id
         const targetRestaurantIds = [currentUser.restaurantId]
@@ -99,8 +135,6 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 })
         }
 
-        console.log('[linked-orders API] Found orders matching sessionIds:', orders?.length, orders)
-
         // Flatten order items
         const getRoomId = (sessionObj: any): string | null => {
             if (!sessionObj) return null
@@ -134,24 +168,14 @@ export async function GET(req: NextRequest) {
                 }))
         })
 
-        console.log('[linked-orders API] Flattened items to return:', items)
-
         // Food discount is whatever promo/loyalty discount landed on the food
         // orders themselves (orders.discount_amount) — separate from the room
         // stay's own bargain-rate discount (bookings.discount_amount), which
         // only ever reduces the room rate (see folio.ts).
         const foodDiscount = ((orders || []) as LinkedOrder[]).reduce((s, o) => s + (Number(o.discount_amount) || 0), 0)
 
-        // Booking-level summary for the Bookings & Stays History detail card:
-        // who checked the guest in/out and when, the discount applied, the
-        // actual service charge billed, and the cash/QR split of everything
-        // received (advance + settlement) across the whole folio group.
+        // stayRows and paymentRows were read in the batch above.
         let bookingSummary: Record<string, unknown> | null = null
-        const { data: stayRows } = await supabase
-            .from('bookings')
-            .select('id, room_id, status, check_in, check_out, checked_out_at, checked_in_at, checked_in_by, cashier_id, discount_amount, discount_reason, service_charge_override')
-            .in('id', folioBookingIds)
-
         const primary = (stayRows || []).find(b => b.id === bookingId)
         if (primary) {
             const userIds = [primary.checked_in_by, primary.cashier_id].filter((id): id is string => !!id)
@@ -179,16 +203,6 @@ export async function GET(req: NextRequest) {
                 console.error('[linked-orders] Failed to compute service charge:', err)
             }
 
-            // Settlement rows are always written with the literal note
-            // 'Settlement' (recordSettlementPayment in bookings/checkout/route.ts);
-            // an advance row's note defaults to 'Advance' but the front desk can
-            // type over it (advance_note in POST /api/bookings), so "not
-            // Settlement" — not an exact 'Advance' match — is what reliably
-            // means "the advance".
-            const { data: paymentRows } = await supabase
-                .from('booking_payments')
-                .select('amount, cash_amount, qr_amount, note')
-                .in('booking_id', folioBookingIds)
             const sumBy = (isSettlement: boolean, field: 'cash_amount' | 'qr_amount') =>
                 (paymentRows || [])
                     .filter(p => (p.note === 'Settlement') === isSettlement)
