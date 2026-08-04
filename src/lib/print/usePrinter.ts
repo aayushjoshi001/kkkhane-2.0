@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useHydratedStore } from '@/lib/stores/useHydratedStore'
 import { usePrinterSettingsStore } from '@/lib/stores/printerSettings'
-import { listPrinters, printRawEscPos, type QzResult, type QzStatus } from './qzClient'
+import { ensureConnected, listPrinters, printRawEscPos, type QzResult, type QzStatus } from './qzClient'
 import { useNetworkPrinter } from './useNetworkPrinters'
 import type { PrinterConfigRole } from '@/types/database'
 
@@ -31,6 +31,10 @@ function toConnStatus(result: QzResult): PrinterConnStatus {
 // of each rediscovering it a ticket at a time.
 const LAN_COOLDOWN_MS = 30_000
 const lanFailedUntil = new Map<string, number>()
+
+// How often a printing screen re-checks that the QZ socket is still open. A
+// no-op local check while connected; only does real work after a drop.
+const WARM_INTERVAL_MS = 20_000
 const lanKey = (t: { host: string; port: number }) => `${t.host}:${t.port}`
 
 /**
@@ -123,6 +127,29 @@ export function usePrinter(role: PrinterRole) {
 
     // True when auto-print has a destination — either a LAN printer or a USB pick.
     const hasTarget = !!networkPrinter || !!selectedPrinter
+
+    // Open the QZ Tray socket as soon as a screen that can print mounts, rather
+    // than on the first ticket. Connecting is the expensive half of printing on
+    // this till — QZ's slow trust path costs seconds (see CONNECT_TIMEOUT_MS in
+    // qzClient) while the print itself is milliseconds — and paying it lazily
+    // put the whole stall in front of the cashier at the exact moment they
+    // settled a bill. Warming it while they are still ringing up items means
+    // ensureConnected() finds an active socket and returns immediately, so
+    // "Print Bill" is instant.
+    //
+    // Re-runs on an interval because the socket can drop (QZ restarted, machine
+    // slept) and because QZ may not have been running when the screen opened —
+    // a reconnect then happens in the background instead of on the next ticket.
+    // When the socket is already up this is a local isActive() check that costs
+    // nothing, so the interval can stay short.
+    useEffect(() => {
+        if (!hasTarget) return
+        let cancelled = false
+        const warm = () => { if (!cancelled) void ensureConnected() }
+        warm()
+        const id = setInterval(warm, WARM_INTERVAL_MS)
+        return () => { cancelled = true; clearInterval(id) }
+    }, [hasTarget])
 
     return { status, printers, refreshPrinters, print, selectedPrinter, selectPrinter, hasTarget, networkPrinter }
 }

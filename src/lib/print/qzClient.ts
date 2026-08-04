@@ -110,13 +110,29 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
     })
 }
 
+// Shared in-flight connect. A single screen can hold several printer roles at
+// once — the cashier has invoice, kot and bot — and they all reach for the
+// socket together on mount. Without this each one sees isActive() === false,
+// each calls connect(), and qz-tray races several handshakes for one agent.
+// Everyone awaits the same attempt instead, and the slow trust path is walked
+// exactly once.
+let connecting: Promise<QzResult> | null = null
+
 /** Ensures an active QZ Tray connection, connecting if needed. */
 export async function ensureConnected(): Promise<QzResult> {
     try {
         const qz = await getQz()
         if (qz.websocket.isActive()) return { ok: true, status: 'connected' }
-        await withTimeout(qz.websocket.connect({ retries: 1, delay: 1 }), CONNECT_TIMEOUT_MS, 'Timed out connecting to QZ Tray')
-        return { ok: true, status: 'connected' }
+        if (connecting) return connecting
+        connecting = withTimeout(qz.websocket.connect({ retries: 1, delay: 1 }), CONNECT_TIMEOUT_MS, 'Timed out connecting to QZ Tray')
+            .then<QzResult, QzResult>(
+                () => ({ ok: true, status: 'connected' }),
+                (err) => ({ ok: false, status: 'not-running', error: err instanceof Error ? err.message : String(err) })
+            )
+            // Clear only after the attempt settles, so callers arriving mid-flight
+            // join it and the next one after it starts fresh.
+            .finally(() => { connecting = null })
+        return connecting
     } catch (err) {
         return { ok: false, status: 'not-running', error: err instanceof Error ? err.message : String(err) }
     }
