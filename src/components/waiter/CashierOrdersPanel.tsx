@@ -58,9 +58,16 @@ function locationLabel(order: AnyOrder, splitSessionIds: Set<string>): string {
 function useSelection(ids: string[]) {
     const [selected, setSelected] = useState<Set<string>>(() => new Set(ids))
     const idsKey = ids.join(',')
-    const prevKeyRef = useRef(idsKey)
-    if (prevKeyRef.current !== idsKey) {
-        prevKeyRef.current = idsKey
+    // Reset the selection when the order list changes, held in state rather than
+    // a ref. Adjusting state during render is the supported way to do this, but
+    // it has to be compared against state: a ref written during render is a
+    // side effect on a render React is free to discard and replay, and a replay
+    // sees the ref already updated and skips the reset -- leaving items ticked
+    // that belong to the previous list, on a panel whose tick boxes decide what
+    // gets settled.
+    const [prevKey, setPrevKey] = useState(idsKey)
+    if (prevKey !== idsKey) {
+        setPrevKey(idsKey)
         setSelected(new Set(ids))
     }
     const allSelected = ids.length > 0 && ids.every(id => selected.has(id))
