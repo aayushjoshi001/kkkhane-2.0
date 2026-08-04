@@ -38,39 +38,44 @@ export default async function ProfilePage() {
     // is where the export looks.
     let backupPassword = ''
     if (dbUser.restaurant_id && (user.role === 'manager' || user.role === 'super_admin')) {
-        const { data: settingsRow } = await supabase
-            .from('settings')
-            .select('features_v2')
+        // restaurant_backup_secrets, not settings.features_v2. settings carries
+        // public_read_settings (SELECT USING (true)) so the customer QR menu can
+        // read currency and flags unauthenticated, and RLS is row-level -- a
+        // credential stored there is served to anyone who asks. The secrets table
+        // has RLS on with no policies, so only service_role reaches it.
+        const { data: secretRow } = await supabase
+            .from('restaurant_backup_secrets')
+            .select('backup_password')
             .eq('restaurant_id', dbUser.restaurant_id)
             .maybeSingle()
 
-        if (settingsRow) {
-            const featuresV2 = (settingsRow.features_v2 as Record<string, unknown>) || {}
-            let pwd = featuresV2.backup_password as string | undefined
+        let pwd = secretRow?.backup_password as string | undefined
 
-            if (!pwd) {
-                // randomBytes, not Math.random: this guards a full export of the
-                // restaurant's orders, bookings and books, and Math.random is a
-                // predictable PRNG whose output can be reconstructed from a few
-                // samples. base64url of 9 bytes gives 12 URL-safe characters, the
-                // same length as before but actually unguessable.
-                const { randomBytes } = await import('crypto')
-                pwd = randomBytes(9).toString('base64url')
+        if (!pwd) {
+            // randomBytes, not Math.random: this guards a full export of the
+            // restaurant's orders, bookings and books, and Math.random is a
+            // predictable PRNG whose output can be reconstructed from a few
+            // samples. base64url of 9 bytes gives 12 URL-safe characters.
+            const { randomBytes } = await import('crypto')
+            pwd = randomBytes(9).toString('base64url')
 
-                const { error: saveError } = await supabase
-                    .from('settings')
-                    .update({ features_v2: { ...featuresV2, backup_password: pwd } })
-                    .eq('restaurant_id', dbUser.restaurant_id)
+            // upsert, not insert: two tabs opening this page together would
+            // otherwise race on the primary key and one would error out.
+            const { error: saveError } = await supabase
+                .from('restaurant_backup_secrets')
+                .upsert(
+                    { restaurant_id: dbUser.restaurant_id, backup_password: pwd },
+                    { onConflict: 'restaurant_id', ignoreDuplicates: true },
+                )
 
-                // Surface a failure instead of handing over a password the export
-                // will reject, which is exactly how this went unnoticed before.
-                if (saveError) {
-                    console.error('[profile] Failed to persist backup password:', saveError)
-                    pwd = ''
-                }
+            // Surface a failure instead of handing over a password the export
+            // will reject, which is exactly how this went unnoticed before.
+            if (saveError) {
+                console.error('[profile] Failed to persist backup password:', saveError)
+                pwd = ''
             }
-            backupPassword = pwd
         }
+        backupPassword = pwd
     }
 
     return (
