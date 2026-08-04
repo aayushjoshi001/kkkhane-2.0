@@ -624,7 +624,7 @@ export async function POST(req: Request) {
         // cashPaid/qrPaid are what the guest actually handed over, before the
         // hotel/restaurant partner split above — that split only decides whose
         // books the money lands in, not how much cash vs QR was received.
-        const postCheckoutTasks: Promise<any>[] = []
+        const postCheckoutTasks: PromiseLike<any>[] = []
 
         postCheckoutTasks.push(
             recordSettlementPayment(

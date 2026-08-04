@@ -221,7 +221,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Table session is already closed' }, { status: 409 })
         }
 
-        const postCheckoutTasks: Promise<any>[] = []
+        const postCheckoutTasks: PromiseLike<any>[] = []
 
         postCheckoutTasks.push(markTableDirtyForSession(supabase, session_id))
 

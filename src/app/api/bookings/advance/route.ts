@@ -70,7 +70,7 @@ export async function POST(req: Request) {
         const noteText = note && String(note).trim() ? String(note).trim() : 'Advance'
         const customDesc = `Room Advance (${noteText}): ${booking.guest_name} (Room ${roomNumber})`
 
-        const postTasks: Promise<any>[] = []
+        const postTasks: PromiseLike<any>[] = []
 
         if (isSplit) {
             if (splitCash > 0) {
@@ -128,6 +128,11 @@ export async function POST(req: Request) {
                 note: noteText,
                 created_by: currentUser.id
             })
+                .then(({ error: paymentError }) => {
+                    if (paymentError) {
+                        console.error('Failed to record booking payment for booking', booking.id, paymentError)
+                    }
+                })
         )
 
         await Promise.all(postTasks)

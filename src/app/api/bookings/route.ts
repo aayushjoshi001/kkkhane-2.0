@@ -289,7 +289,7 @@ export async function POST(req: Request) {
             insertedBookingIds.push(b.id)
         }
 
-        const postBookingTasks: Promise<any>[] = []
+        const postBookingTasks: PromiseLike<any>[] = []
 
         // Open the first room segment for each stay. Every stay has at least
         // one, so the folio can price each night from the room actually
