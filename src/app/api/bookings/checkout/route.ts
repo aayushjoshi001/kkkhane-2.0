@@ -128,6 +128,9 @@ async function recordSettlementPayment(
     cash: number,
     qr: number,
     credit: number,
+    /** Who handed the money over, when that is not obvious from the booking —
+     *  the rooms of a combined reservation each have their own occupant. */
+    paidBy?: string | null,
 ) {
     const amount = round2(cash + qr + credit)
     if (amount <= 0) return
@@ -141,6 +144,9 @@ async function recordSettlementPayment(
         qr_amount: round2(qr),
         note: 'Settlement',
         created_by: userId,
+        // created_by is the cashier; this is the guest. Null when nobody typed
+        // one, which reads correctly as "not recorded".
+        paid_by: paidBy?.trim() || null,
     })
     if (error) console.error('Failed to record settlement payment:', error)
 }
@@ -207,7 +213,16 @@ export async function POST(req: Request) {
             discount_amount, discount_reason, credit_amount, customer_name, customer_phone,
             redeemed_points, extra_hour_charge, service_charge_override,
             close_stay,
+            // Settle this room of a combined reservation on its own, leaving the
+            // others open. Ignored on a booking that is not part of a group.
+            settle_member_only,
+            // The guest who paid, recorded against the payment. Matters most
+            // alongside settle_member_only, where each room may be paid by a
+            // different person.
+            paid_by,
         } = body
+        const settleMemberOnly = settle_member_only === true
+        const paidBy = typeof paid_by === 'string' ? paid_by.trim() : ''
 
         if (!booking_id || !room_id) {
             return NextResponse.json({ error: 'Missing booking_id or room_id' }, { status: 400 })
@@ -317,7 +332,21 @@ export async function POST(req: Request) {
             paid_amount: booking.paid_amount,
         }]
 
-        if (booking.group_id) {
+        // settle_member_only settles just this room of a combined reservation and
+        // leaves the rest of the folio open.
+        //
+        // Everything downstream is derived from `members` — the folio, which RPC
+        // runs, which rooms are sent to housekeeping, what the invoice itemizes —
+        // so narrowing it here is the whole feature. The room is then settled by
+        // exactly the path a standalone booking takes, rather than through a
+        // second money path written specially for it.
+        //
+        // What it owes is what computeFolioForStays returns for this stay alone:
+        // its own nights, its own room charges, and the orders carrying its
+        // booking_id. Anything belonging to the reservation rather than to a room
+        // stays on the folio for whoever settles last. The siblings keep their
+        // group_id and are untouched.
+        if (booking.group_id && !settleMemberOnly) {
             const { data: groupRows } = await supabase
                 .from('bookings')
                 .select('id, room_id, check_in, check_out, checked_out_at, status, paid_amount')
@@ -430,7 +459,7 @@ export async function POST(req: Request) {
 
             await recordSettlementPayment(
                 supabase, booking.restaurant_id, booking_id, currentUser.id,
-                Number(cash_paid) || 0, Number(qr_paid) || 0, creditAmount,
+                Number(cash_paid) || 0, Number(qr_paid) || 0, creditAmount, paidBy,
             )
 
             const priorPaidNoInvoice = members.reduce((s, m) => s + (Number(m.paid_amount) || 0), 0)
@@ -629,7 +658,7 @@ export async function POST(req: Request) {
         postCheckoutTasks.push(
             recordSettlementPayment(
                 supabase, booking.restaurant_id, booking_id, currentUser.id,
-                cashPaid, qrPaid, creditAmount,
+                cashPaid, qrPaid, creditAmount, paidBy,
             )
         )
 
