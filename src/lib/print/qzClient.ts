@@ -78,6 +78,26 @@ function classifyError(err: unknown, fallback: QzStatus): QzStatus {
     return fallback
 }
 
+// Everything that can stop a till connecting reports the same 'not-running',
+// which is only one of the reasons and usually not the right one. A machine
+// whose DNS cannot resolve localhost.qz.io, one missing override.crt so the
+// trust dialog is sat waiting for a click, one with 8181 firewalled and one
+// where QZ genuinely is not open all show the cashier the same red banner —
+// and the reason is thrown away, so the till cannot tell anyone which it is.
+// That is the whole difficulty of a printer that works on two machines and
+// not on a third. The status stays as it was (callers switch on it), but the
+// reason is written to the console under a tag worth screenshotting.
+function reportConnectFailure(err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    // qz-tray tries wss://localhost then wss://localhost.qz.io. From an https
+    // page the ws:// fallback is mixed content and the browser refuses it, so
+    // localhost.qz.io resolving is what the secure handshake rests on.
+    const hint = /timed out/i.test(message)
+        ? 'Connect timed out. QZ Tray may be showing an unanswered Allow/Block dialog — install override.crt on this machine to make it silent.'
+        : 'Could not open wss://localhost:8181 or wss://localhost.qz.io:8181. Check QZ Tray is running, that this machine resolves localhost.qz.io to 127.0.0.1 (add it to the hosts file if not), and that 8181 is not firewalled.'
+    console.warn(`[QZ] connect failed on this device: ${message}\n[QZ] ${hint}`)
+}
+
 // The browser's WebSocket has no built-in connect timeout — if the handshake
 // hangs instead of failing outright (rare, but possible on a misconfigured
 // network), this stops a caller (e.g. a cashier settling a bill) from
@@ -127,7 +147,10 @@ export async function ensureConnected(): Promise<QzResult> {
         connecting = withTimeout(qz.websocket.connect({ retries: 1, delay: 1 }), CONNECT_TIMEOUT_MS, 'Timed out connecting to QZ Tray')
             .then<QzResult, QzResult>(
                 () => ({ ok: true, status: 'connected' }),
-                (err) => ({ ok: false, status: 'not-running', error: err instanceof Error ? err.message : String(err) })
+                (err) => {
+                    reportConnectFailure(err)
+                    return { ok: false, status: 'not-running' as const, error: err instanceof Error ? err.message : String(err) }
+                }
             )
             // Clear only after the attempt settles, so callers arriving mid-flight
             // join it and the next one after it starts fresh.
