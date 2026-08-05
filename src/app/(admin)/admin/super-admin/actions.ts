@@ -130,6 +130,13 @@ export async function updateSubscriptionTier(
             max_staff: limits.max_staff,
             max_menu_items: limits.max_menu_items,
             max_tables: limits.max_tables,
+            // Setting a plan by hand ends any trial that was running. Without
+            // this the row keeps subscription_status = 'trialing' and its
+            // original 14-day expiry, so the nightly job would take the plan
+            // straight back off them again — a tenant upgraded on day 10 would
+            // silently drop to Free on day 14.
+            subscription_status: 'active',
+            subscription_expires_at: null,
         })
         .eq('id', restaurantId)
 

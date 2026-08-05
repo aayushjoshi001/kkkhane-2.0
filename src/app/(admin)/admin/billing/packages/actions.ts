@@ -3,7 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireRoleWithOptions } from '@/lib/auth'
 import { TIER_LIMITS } from '@/lib/tiers'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 
 export async function selectFreePlanAction() {
     try {
@@ -29,6 +29,15 @@ export async function selectFreePlanAction() {
 
         if (error) throw error
 
+        // The plan gates read through getRestaurantFeatures, which caches per
+        // tenant for an hour under its own tag. revalidatePath does not reach
+        // that, so without this a tenant dropping to Free (including one ending
+        // their trial early) would keep the paid features for up to an hour.
+        try {
+            revalidateTag(`features-${currentUser.restaurantId}`, 'max')
+        } catch (e) {
+            console.warn('[selectFreePlan] revalidate failed', e)
+        }
         revalidatePath('/', 'layout')
         return { success: true }
     } catch (error) {

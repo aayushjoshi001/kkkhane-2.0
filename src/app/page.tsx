@@ -19,7 +19,31 @@ const faqs = [
     { q: "Do you offer a QR code menu feature?", a: "Yes. Guests scan a table QR code to browse the menu and order from their own phone, on every plan." },
 ]
 
-export default async function Home() {
+export default async function Home({
+    searchParams,
+}: {
+    searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+    // Salvage an OAuth callback that was aimed at the wrong place.
+    //
+    // Supabase silently rewrites a post-login redirect to the project's Site URL
+    // when the requested URL is not on the Redirect URLs allow-list — so the
+    // browser arrives *here*, at the marketing page, carrying the `?code=` that
+    // /auth/callback was supposed to exchange. Nothing on this page consumed it,
+    // so the user saw the home page, still logged out, with no error: the exact
+    // symptom that made Google sign-in look broken.
+    //
+    // Forwarding it fixes the flow even when the allow-list is wrong or has not
+    // caught up with a new preview domain. The allow-list is still the real fix
+    // (see supabase/config.toml) — this only stops a config gap from costing a
+    // login.
+    const params = await searchParams
+    const code = typeof params.code === 'string' ? params.code : null
+    if (code) {
+        const next = typeof params.next === 'string' ? params.next : null
+        redirect(`/auth/callback?code=${encodeURIComponent(code)}${next ? `&next=${encodeURIComponent(next)}` : ''}`)
+    }
+
     // If logged in, redirect directly to user's dashboard (e.g. /cashier, /admin/dashboard, /kitchen)
     const currentUser = await getOptionalUser()
     if (currentUser) {

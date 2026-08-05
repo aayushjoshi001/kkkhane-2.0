@@ -26,6 +26,7 @@ import {
     DEFAULT_FEATURES_V1,
     buildFeaturesV2,
 } from '@/lib/tiers'
+import { TRIAL_TIER, TRIAL_STATUS, trialExpiryFrom } from '@/lib/trial'
 import { getBusinessMode, type BusinessMode } from '@/lib/businessMode'
 import type { StationKind } from '@/lib/stations'
 
@@ -65,6 +66,15 @@ export interface ProvisionInput {
     /** Restaurant category selected during onboarding (FastFood/Hotel/Cafe/etc). */
     businessType?: string | null
     tier?: Tier
+    /**
+     * Start this tenant on the 14-day full-access trial, overriding `tier`.
+     *
+     * Opt-in rather than the default because only self-serve onboarding earns a
+     * trial. A demo tenant and a tenant a super admin creates by hand both come
+     * with a deliberate plan already chosen, and silently converting those into
+     * expiring platinum would suspend or downgrade them a fortnight later.
+     */
+    trial?: boolean
     // Optional signup-only business fields
     contactEmail?: string | null
     slogan?: string | null
@@ -169,7 +179,17 @@ const DEFAULT_UNGROUPED_CATEGORIES: { name: string; isStock?: boolean }[] = [
 
 export async function provisionRestaurant(input: ProvisionInput): Promise<ProvisionResult> {
     const supabase = await createAdminClient()
-    const tier: Tier = input.tier ?? 'free'
+    // A trial tenant really is on TRIAL_TIER — the caps, the seeded feature
+    // flags and every tier check downstream all read the same value, so nothing
+    // below has to know a trial is what put it there. Only the status and the
+    // expiry date mark it, and those are what the nightly job reads to end it.
+    const onTrial = input.trial === true
+    const tier: Tier = onTrial ? TRIAL_TIER : (input.tier ?? 'free')
+    // One timestamp, written to both columns. They diverge later — the
+    // downgrade clears the expiry and keeps the trial marker — but they must
+    // start out agreeing or the countdown and the plan would disagree on the
+    // day it ends.
+    const trialEndsAt = onTrial ? trialExpiryFrom() : null
     const mode = getBusinessMode(input.businessType)
     const limits = TIER_LIMITS[tier]
     const seed = input.seedSample !== false
@@ -205,7 +225,17 @@ export async function provisionRestaurant(input: ProvisionInput): Promise<Provis
                 latitude: input.latitude ?? null,
                 longitude: input.longitude ?? null,
                 subscription_tier: tier,
-                subscription_status: 'active',
+                subscription_status: onTrial ? TRIAL_STATUS : 'active',
+                // Only ever set for a trial. A paid subscription leaves this
+                // null until billing writes a real renewal date, and
+                // auto-suspend only looks at rows that have one — so a null
+                // here is what keeps a paying tenant from being suspended by a
+                // date nobody set.
+                subscription_expires_at: trialEndsAt,
+                // Survives the downgrade that clears subscription_expires_at,
+                // so the app can still tell a tenant whose trial just ran out
+                // from one that has always been on Free.
+                trial_ends_at: trialEndsAt,
                 max_staff: limits.max_staff,
                 max_menu_items: limits.max_menu_items,
                 max_tables: limits.max_tables,

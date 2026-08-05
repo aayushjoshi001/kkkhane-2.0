@@ -4,8 +4,10 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
 import type { Settings, Restaurant } from '@/types/database'
 import { getBusinessMode, type BusinessMode } from '@/lib/businessMode'
+import { effectiveTier } from '@/lib/trial'
 import {
     applyTierModuleDefaults,
+    applyTierEntitlements,
     resolveFeatureDefaults,
     tierIncludesModule,
     tierIncludesEntitlement,
@@ -42,19 +44,38 @@ export async function getRestaurantFeatures(restaurantId: string): Promise<Setti
                             .maybeSingle(),
                         supabase
                             .from('restaurants')
-                            .select('subscription_tier')
+                            // Status and expiry ride along so a trial that ran
+                            // out stops granting its plan straight away. The
+                            // nightly cron is what writes the downgrade down,
+                            // but it runs once a day — resolving it here too is
+                            // what stops the hours in between being free
+                            // platinum. Same row, no extra round-trip.
+                            .select('subscription_tier, subscription_status, subscription_expires_at')
                             .eq('id', restaurantId)
                             .maybeSingle(),
                     ])
                     if (!settings?.features_v2) return null
+                    const tier = effectiveTier(
+                        restaurant?.subscription_tier,
+                        restaurant?.subscription_status,
+                        restaurant?.subscription_expires_at,
+                    )
                     // resolveFeatureDefaults fills the non-module flags an older
                     // provisioning never wrote. Without it the client read an
                     // absent key as on and the server page gate read it as off,
                     // so e.g. Manual Finance Entry showed as enabled in settings
                     // and still bounced the tenant off /admin/manual-entry.
+                    //
+                    // applyTierEntitlements revokes the paid capabilities a
+                    // lapsed trial no longer covers; on any live plan the tier
+                    // is unchanged and it is a no-op.
                     return applyTierModuleDefaults(
-                        resolveFeatureDefaults(settings.features_v2 as Record<string, unknown>),
-                        restaurant?.subscription_tier,
+                        applyTierEntitlements(
+                            resolveFeatureDefaults(settings.features_v2 as Record<string, unknown>),
+                            tier,
+                            tier,
+                        ),
+                        tier,
                     )
                 }, 30)
             },
