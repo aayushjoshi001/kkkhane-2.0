@@ -939,7 +939,11 @@ export default function CashierClient({
         const sessionId = table.activeSession.id
         const allActive = active.filter(o => o.session_id === sessionId)
         const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        const combinedOrders = [...allActive, ...allUnpaid]
+        const ordersMap = new Map<string, any>()
+        for (const o of [...allActive, ...allUnpaid]) {
+            if (o.id) ordersMap.set(o.id, o)
+        }
+        const combinedOrders = Array.from(ordersMap.values())
 
         const itemsMap: Record<string, { id: string; name: string; quantity: number; unitPrice: number; status: string }> = {}
         for (const order of combinedOrders) {
@@ -980,14 +984,23 @@ export default function CashierClient({
         const sessionId = table.activeSession.id
         const allActive = active.filter(o => o.session_id === sessionId)
         const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        return [...allActive, ...allUnpaid]
+        const ordersMap = new Map<string, any>()
+        for (const o of [...allActive, ...allUnpaid]) {
+            if (o.id) ordersMap.set(o.id, o)
+        }
+        return Array.from(ordersMap.values())
             .filter(o => o.status !== 'cancelled')
             .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
     }
 
     const getTableSessionOrders = (table: any) => {
         if (!table?.activeSession) return []
-        return [...active, ...unpaid].filter(o => o.session_id === table.activeSession.id && o.status !== 'cancelled')
+        const raw = [...active, ...unpaid].filter(o => o.session_id === table.activeSession.id && o.status !== 'cancelled')
+        const ordersMap = new Map<string, any>()
+        for (const o of raw) {
+            if (o.id) ordersMap.set(o.id, o)
+        }
+        return Array.from(ordersMap.values())
     }
 
     // The service charge as it stands on the bill: what the orders locked in at
