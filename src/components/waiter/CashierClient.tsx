@@ -1003,13 +1003,13 @@ export default function CashierClient({
         return Array.from(ordersMap.values())
     }
 
-    // The service charge as it stands on the bill: what the orders locked in at
-    // placement time, and what the cashier has decided it should be. `delta` is
-    // the only part that changes the money owed — the auto figure is already
-    // baked into each order's total_amount, so charging the override means
-    // adding the difference on top, never the whole overridden amount.
+    // Service charge applies only to room stay orders. Standard table orders
+    // (no room_id) carry zero service charge and cannot be overridden here.
     const resolveTableServiceCharge = (table: any) => {
         const auto = round2(getTableSessionOrders(table).reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0))
+        if (auto === 0 && !table?.room_id) {
+            return { auto: 0, charged: 0, isOverridden: false, delta: 0 }
+        }
         const isOverridden = tableServiceCharge.trim() !== ''
         const charged = isOverridden ? round2(Math.max(0, parseFloat(tableServiceCharge) || 0)) : auto
         return { auto, charged, isOverridden, delta: round2(charged - auto) }
@@ -3528,7 +3528,7 @@ export default function CashierClient({
                                                 </div>
                                             )}
 
-                                            {sessionOrders.length > 0 && (
+                                            {(sc.auto > 0 || sc.isOverridden || !!selectedBillingTable?.room_id) && (
                                                 <div className="flex justify-between items-center gap-3">
                                                     <span className="text-ink-subtle font-semibold shrink-0">
                                                         Service Charge
