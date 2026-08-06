@@ -10,7 +10,7 @@ import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
 import { type TableWithSession } from './CashierTableManager'
 import { type GroupBill } from '@/lib/bookingGroup'
-import { calculateNights, getBookingCustomPrice, getBookingKycNote, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs } from '@/lib/utils'
+import { calculateNights, getBookingCustomPrice, getBookingKycNote, advanceMethodLabel, getItemDisplayName, defaultStayWindowInputs, lateCheckoutNights, resolveDeparture } from '@/lib/utils'
 import { describeGuestMix, totalGuests } from '@/lib/guests'
 import QuickOrderModal from './QuickOrderModal'
 import { openSession } from '@/app/(staff)/waiter/actions'
@@ -877,6 +877,7 @@ export default function CashierRoomManager({
         const customPrice = getBookingCustomPrice(activeBooking)
         const price = customPrice > 0 ? customPrice : (selectedRoom.room_types?.base_price || 0)
         const nights = calculateNights(activeBooking.check_in, activeBooking.check_out)
+            + lateCheckoutNights(activeBooking.check_out, resolveDeparture(activeBooking))
         const cost = price * nights
 
         return { nights, cost, price, isCustom: customPrice > 0 }
