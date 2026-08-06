@@ -27,7 +27,7 @@ export async function POST(req: Request) {
         const { data: booking, error: fetchError } = await supabase
             .from('bookings')
             .select(`
-                id, check_in, check_out, checked_out_at, status, room_id, guest_name, guest_phone, discount_amount, paid_amount,
+                id, check_in, check_out, checked_out_at, status, room_id, guest_name, guest_phone, guest_address, discount_amount, paid_amount,
                 rooms!inner (
                     room_number,
                     room_types ( name, base_price )
@@ -194,6 +194,9 @@ export async function POST(req: Request) {
                         <td><strong>NIGHTS:</strong> ${folio.nights}</td>
                         <td style="text-align: right;"><strong>PHONE:</strong> ${booking.guest_phone || 'N/A'}</td>
                     </tr>
+                    ${booking.guest_address ? `<tr>
+                        <td colspan="2"><strong>ADDRESS:</strong> ${booking.guest_address}</td>
+                    </tr>` : ''}
                 </table>
 
                 <div class="divider"></div>

@@ -112,6 +112,12 @@ export default function InvoiceReceipt({
                         <span>{invoice.guestPhone}</span>
                     </div>
                 )}
+                {invoice.guestAddress && (
+                    <div className="flex justify-between gap-2">
+                        <span className="font-bold shrink-0">ADDRESS:</span>
+                        <span className="text-right">{invoice.guestAddress}</span>
+                    </div>
+                )}
                 <div className="flex justify-between">
                     <span className="font-bold">REF:</span>
                     <span className="font-bold uppercase text-brand-600">{invoice.label}</span>

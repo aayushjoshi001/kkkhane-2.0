@@ -185,6 +185,8 @@ export interface BookingBill {
     groupId: string | null
     guestName: string
     guestPhone: string | null
+    /** Address taken at check-in. Null when it was never asked for. */
+    guestAddress: string | null
     status: string
     checkIn: string
     checkOut: string
@@ -269,7 +271,7 @@ export async function buildBookingBill(
         supabase
             .from('bookings')
             .select(`
-                id, restaurant_id, room_id, group_id, guest_name, guest_phone, status,
+                id, restaurant_id, room_id, group_id, guest_name, guest_phone, guest_address, status,
                 check_in, check_out, checked_in_at, checked_in_by, checked_out_at, cashier_id,
                 total_amount, paid_amount, discount_amount, discount_reason, extra_hour_charge,
                 service_charge_override, advance_payment_method, notes, parking_vehicle_no,
@@ -622,6 +624,7 @@ export async function buildBookingBill(
         groupId: (primary.group_id as string) || null,
         guestName: (primary.guest_name as string) || 'Guest',
         guestPhone: (primary.guest_phone as string) || null,
+        guestAddress: (primary.guest_address as string) || null,
         status: primary.status as string,
         checkIn: primary.check_in as string,
         checkOut: primary.check_out as string,

@@ -1020,6 +1020,8 @@ export interface Booking {
     guest_name: string
     guest_phone: string | null
     guest_email: string | null
+    /** Address written at the desk. Null means it was never asked for. */
+    guest_address?: string | null
     check_in: string
     check_out: string
     /** Total adults — kept as `adult_male + adult_female` for new bookings. */

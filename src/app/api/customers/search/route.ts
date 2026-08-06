@@ -10,6 +10,8 @@ export interface GuestSuggestion {
     phone: string
     name: string
     email: string | null
+    /** Address from their last stay, if it was recorded. */
+    address: string | null
     /** Citizenship/passport number from their last stay, if recorded. */
     kyc: string | null
     /** How many times they have stayed before. */
@@ -69,6 +71,7 @@ export async function GET(req: Request) {
             guest_phone: string
             guest_name: string
             guest_email: string | null
+            guest_address: string | null
             kyc: string | null
             visits: number | string
             last_stay_at: string | null
@@ -77,6 +80,7 @@ export async function GET(req: Request) {
             phone: row.guest_phone,
             name: row.guest_name,
             email: row.guest_email,
+            address: row.guest_address,
             kyc: row.kyc,
             visits: Number(row.visits) || 0,
             lastStayAt: row.last_stay_at,

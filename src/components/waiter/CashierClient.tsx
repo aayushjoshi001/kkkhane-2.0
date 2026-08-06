@@ -1360,6 +1360,7 @@ export default function CashierClient({
                 roomLines,
                 guestName: booking.guest_name,
                 guestPhone: booking.guest_phone,
+                guestAddress: booking.guest_address ?? null,
                 checkIn: booking.check_in,
                 checkOut: booking.check_out,
                 nights,

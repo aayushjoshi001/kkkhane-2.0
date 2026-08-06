@@ -127,7 +127,7 @@ export default function CashierRoomManager({
         setMoveOpen(false)
         setMoveTargetId('')
         setMoveReason('')
-        setBookingForm({ guest_name: '', guest_phone: '', kyc_type: '', kyc: '', check_in: '', check_out: '', custom_room_price: '', adult_male: '1', adult_female: '1', children: '0', parking_required: false, parking_vehicle_no: '', parking_fee: '' })
+        setBookingForm({ guest_name: '', guest_phone: '', guest_address: '', kyc_type: '', kyc: '', check_in: '', check_out: '', custom_room_price: '', adult_male: '1', adult_female: '1', children: '0', parking_required: false, parking_vehicle_no: '', parking_fee: '' })
         setLinkToBookingId('')
         setExtraRooms({})
         setLookupField(null)
@@ -145,6 +145,7 @@ export default function CashierRoomManager({
     const [bookingForm, setBookingForm] = useState({
         guest_name: '',
         guest_phone: '',
+        guest_address: '',
         kyc_type: '',
         kyc: '',
         check_in: '',
@@ -177,8 +178,10 @@ export default function CashierRoomManager({
             ...b,
             guest_name: guest.name || b.guest_name,
             guest_phone: guest.phone || b.guest_phone,
-            // Only overwrite KYC when we actually have one on file — a blank
-            // from an old stay must not wipe what the cashier just typed.
+            // Only overwrite KYC and address when we actually have them on
+            // file — a blank from an old stay must not wipe what the cashier
+            // just typed.
+            guest_address: guest.address || b.guest_address,
             kyc: guest.kyc || b.kyc,
         }))
         setGuestPicked(true)
@@ -247,6 +250,7 @@ export default function CashierRoomManager({
         setBookingForm({
             guest_name: activeBooking.guest_name || '',
             guest_phone: activeBooking.guest_phone || '',
+            guest_address: activeBooking.guest_address || '',
             kyc_type: kycType,
             kyc: kycVal,
             check_in: activeBooking.check_in ? activeBooking.check_in.slice(0, 16) : '',
@@ -289,6 +293,7 @@ export default function CashierRoomManager({
         setBookingForm({
             guest_name: activeBooking.guest_name || '',
             guest_phone: activeBooking.guest_phone || '',
+            guest_address: activeBooking.guest_address || '',
             kyc_type: kycType,
             kyc: kycVal,
             check_in: activeBooking.check_in ? activeBooking.check_in.slice(0, 16) : '',
@@ -334,6 +339,7 @@ export default function CashierRoomManager({
                     bookingId: activeBooking.id,
                     guest_name: bookingForm.guest_name,
                     guest_phone: bookingForm.guest_phone,
+                    guest_address: bookingForm.guest_address.trim() || null,
                     kyc: formattedKyc || null,
                     custom_room_price: bookingForm.custom_room_price ? (parseFloat(bookingForm.custom_room_price) || 0) : 0,
                     check_in: bookingForm.check_in,
@@ -365,6 +371,7 @@ export default function CashierRoomManager({
                         })),
                         guest_name: bookingForm.guest_name,
                         guest_phone: bookingForm.guest_phone,
+                        guest_address: bookingForm.guest_address.trim() || undefined,
                         kyc: formattedKyc || null,
                         check_in: bookingForm.check_in,
                         check_out: bookingForm.check_out,
@@ -718,6 +725,7 @@ export default function CashierRoomManager({
         setBookingForm({
             guest_name: '',
             guest_phone: '',
+            guest_address: '',
             kyc_type: '',
             kyc: '',
             check_in: checkIn,
@@ -1057,6 +1065,7 @@ export default function CashierRoomManager({
                     ],
                     guest_name: bookingForm.guest_name,
                     guest_phone: bookingForm.guest_phone,
+                    guest_address: bookingForm.guest_address.trim() || undefined,
                     kyc: formattedKyc || null,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
@@ -1326,6 +1335,17 @@ export default function CashierRoomManager({
                                                 placeholder="e.g. 123-456-789"
                                                 value={bookingForm.kyc}
                                                 onChange={e => setBookingForm(b => ({ ...b, kyc: e.target.value }))}
+                                                className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
+                                            <label className="block text-[10px] font-bold text-ink-subtle uppercase mb-1">Address (Optional)</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. Ward 5, Bharatpur, Chitwan"
+                                                maxLength={200}
+                                                value={bookingForm.guest_address}
+                                                onChange={e => setBookingForm(b => ({ ...b, guest_address: e.target.value }))}
                                                 className="w-full px-3 py-1.5 border border-hairline rounded-xl text-xs bg-surface focus:outline-none focus:border-brand-500 font-semibold"
                                             />
                                         </div>
@@ -1996,6 +2016,9 @@ export default function CashierRoomManager({
                                         </div>
                                         <p className="font-extrabold text-ink text-sm">{activeBooking.guest_name}</p>
                                         <p className="font-semibold text-ink-muted">{activeBooking.guest_phone}</p>
+                                        {activeBooking.guest_address && (
+                                            <p className="font-semibold text-ink-muted">{activeBooking.guest_address}</p>
+                                        )}
                                         {getBookingKycNote(activeBooking) && (
                                             <p className="text-[10px] bg-white border border-hairline px-2 py-0.5 rounded-md text-ink-muted inline-block">
                                                 KYC: {getBookingKycNote(activeBooking)}

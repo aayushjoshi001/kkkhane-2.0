@@ -72,7 +72,7 @@ export async function POST(req: Request) {
 
         const body = await req.json().catch(() => ({}))
         const {
-            guest_name, guest_phone, guest_email, kyc,
+            guest_name, guest_phone, guest_email, guest_address, kyc,
             check_in, check_out,
             advance_amount, advance_payment_method,
             advance_cash_amount, advance_qr_amount,
@@ -216,6 +216,11 @@ export async function POST(req: Request) {
         const guestName = String(guest_name).trim()
         const guestPhone = String(guest_phone).trim()
         const guestEmail = typeof guest_email === 'string' && guest_email.trim() ? guest_email.trim() : null
+        // Optional, and stays NULL when it wasn't asked for. Trimmed to the
+        // column's 200-char limit so a pasted paragraph can't fail the insert.
+        const guestAddress = typeof guest_address === 'string' && guest_address.trim()
+            ? guest_address.trim().slice(0, 200)
+            : null
 
         // 4. Create the reservation header for a multi-room stay
         let groupId: string | null = null
@@ -227,6 +232,7 @@ export async function POST(req: Request) {
                     guest_name: guestName,
                     guest_phone: guestPhone,
                     guest_email: guestEmail,
+                    guest_address: guestAddress,
                     check_in: checkInISO,
                     check_out: checkOutISO,
                     notes,
@@ -253,6 +259,7 @@ export async function POST(req: Request) {
             guest_name: guestName,
             guest_phone: guestPhone,
             guest_email: guestEmail,
+            guest_address: guestAddress,
             check_in: checkInISO,
             check_out: checkOutISO,
             adults: r.adults,
@@ -481,6 +488,11 @@ export async function PATCH(req: Request) {
         if (body.guest_email !== undefined) {
             updates.guest_email = typeof body.guest_email === 'string' && body.guest_email.trim() ? body.guest_email.trim() : null
         }
+        if (body.guest_address !== undefined) {
+            updates.guest_address = typeof body.guest_address === 'string' && body.guest_address.trim()
+                ? body.guest_address.trim().slice(0, 200)
+                : null
+        }
 
         // Guest mix
         if (body.adult_male !== undefined || body.adult_female !== undefined || body.children !== undefined) {
@@ -601,6 +613,7 @@ export async function PATCH(req: Request) {
             oldValue: {
                 guest_name: existing.guest_name,
                 guest_phone: existing.guest_phone,
+                guest_address: existing.guest_address,
                 check_in: existing.check_in,
                 check_out: existing.check_out,
                 notes: existing.notes,
