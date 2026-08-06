@@ -2116,70 +2116,38 @@ export default function CashierRoomManager({
                                             </div>
                                         )}
 
-                                        {/* Room Service Charge — the auto figure for rooms
-                                            that carry one, and an empty field to add one by
-                                            hand for rooms that don't. */}
+                                        {/* Room Service Charge — ON/OFF toggle button only (no manual text edits) */}
                                         {activeBooking && (
                                             <div className="p-4 space-y-2">
                                                 <div className="flex justify-between items-center gap-3">
                                                     <div className="min-w-0">
                                                         <p className="text-xs font-extrabold text-sky-600 flex items-center gap-1.5">
-                                                            Room Service Charge
-                                                            {serviceChargeOverridden && applyRoomServiceCharge && (
-                                                                <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">
-                                                                    {serviceChargeIsAutomatic ? 'EDITED' : 'MANUAL'}
+                                                            Room Service Charge (10%)
+                                                            {!applyRoomServiceCharge && (
+                                                                <span className="text-[9px] font-black text-rose-700 bg-rose-50 border border-rose-200 rounded px-1 py-0.5">
+                                                                    OFF
                                                                 </span>
                                                             )}
                                                         </p>
                                                         <p className="text-[10px] text-ink-subtle font-semibold">
                                                             {serviceChargeIsAutomatic
-                                                                ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto ${money(autoServiceCharge)}`
-                                                                : 'Not charged automatically for this room — type an amount to add one'}
+                                                                ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room food · ${money(autoServiceCharge)}`
+                                                                : 'Not charged automatically for this room'}
                                                         </p>
                                                     </div>
-                                                    <div className="flex items-center gap-1.5 shrink-0">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setServiceChargeOffRoomId(applyRoomServiceCharge ? selectedRoom.id : null)}
-                                                            className={`px-2 py-1 rounded-lg text-[9px] font-black border transition ${
-                                                                applyRoomServiceCharge
-                                                                    ? 'bg-sky-50 text-sky-700 border-sky-200'
-                                                                    : 'bg-surface-muted text-ink-subtle border-hairline'
-                                                            }`}
-                                                        >
-                                                            {applyRoomServiceCharge ? 'ON' : 'OFF'}
-                                                        </button>
-                                                        {serviceChargeOverridden && applyRoomServiceCharge && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setServiceChargeEdit(null)}
-                                                                title={serviceChargeIsAutomatic ? `Reset to the auto-calculated ${money(autoServiceCharge)}` : 'Clear the manual charge'}
-                                                                className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
-                                                            >
-                                                                <RotateCcw size={12} />
-                                                            </button>
-                                                        )}
-                                                        <div className="relative w-28">
-                                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                step="0.01"
-                                                                disabled={!applyRoomServiceCharge}
-                                                                value={serviceChargeOverridden ? roomServiceChargeInput : (autoServiceCharge ? String(autoServiceCharge) : '')}
-                                                                placeholder={autoServiceCharge ? String(autoServiceCharge) : '0.00'}
-                                                                onChange={e => setServiceChargeEdit({ roomId: selectedRoom.id, value: e.target.value })}
-                                                                aria-label="Room service charge"
-                                                                className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500 disabled:opacity-50 disabled:bg-surface-muted"
-                                                            />
-                                                        </div>
-                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setServiceChargeOffRoomId(applyRoomServiceCharge ? selectedRoom.id : null)}
+                                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all duration-150 flex items-center gap-1.5 shrink-0 ${
+                                                            applyRoomServiceCharge
+                                                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                                                                : 'bg-surface-muted border-hairline text-ink-subtle hover:bg-surface-muted/80'
+                                                        }`}
+                                                    >
+                                                        <span className={`w-2 h-2 rounded-full ${applyRoomServiceCharge ? 'bg-emerald-500' : 'bg-ink-muted/40'}`} />
+                                                        {applyRoomServiceCharge ? `ON (${money(autoServiceCharge)})` : 'OFF (Rs. 0.00)'}
+                                                    </button>
                                                 </div>
-                                                {serviceChargeOverridden && applyRoomServiceCharge && serviceChargeIsAutomatic && (
-                                                    <p className="text-[9px] text-amber-700 font-bold text-right">
-                                                        Edited — auto was {money(autoServiceCharge)}
-                                                    </p>
-                                                )}
                                             </div>
                                         )}
 

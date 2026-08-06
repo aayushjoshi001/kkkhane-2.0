@@ -1114,38 +1114,15 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
                                                     <button
                                                         type="button"
                                                         onClick={() => setApplyRoomServiceCharge(!applyRoomServiceCharge)}
-                                                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+                                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all duration-150 flex items-center gap-1.5 ${
                                                             applyRoomServiceCharge
-                                                                ? 'bg-brand-500 text-white shadow-sm'
-                                                                : 'bg-surface-muted text-ink-subtle border border-hairline hover:bg-surface-muted/80'
+                                                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                                                                : 'bg-surface-muted border-hairline text-ink-subtle hover:bg-surface-muted/80'
                                                         }`}
                                                     >
-                                                        {applyRoomServiceCharge ? 'ON' : 'OFF'}
+                                                        <span className={`w-2 h-2 rounded-full ${applyRoomServiceCharge ? 'bg-emerald-500' : 'bg-ink-muted/40'}`} />
+                                                        {applyRoomServiceCharge ? `ON (${money(autoServiceCharge)})` : 'OFF (Rs. 0.00)'}
                                                     </button>
-                                                    {serviceCharge.isOverridden && applyRoomServiceCharge && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setRoomServiceChargeInput('')}
-                                                            title={serviceChargeIsAutomatic ? `Reset to the auto-calculated ${money(autoServiceCharge)}` : 'Clear the manual charge'}
-                                                            className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
-                                                        >
-                                                            <RotateCcw size={12} />
-                                                        </button>
-                                                    )}
-                                                    <div className="relative w-28">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            step="0.01"
-                                                            disabled={!applyRoomServiceCharge}
-                                                            value={serviceCharge.isOverridden ? roomServiceChargeInput : (autoServiceCharge ? String(autoServiceCharge) : '')}
-                                                            placeholder={autoServiceCharge ? String(autoServiceCharge) : '0.00'}
-                                                            onChange={e => setRoomServiceChargeInput(e.target.value)}
-                                                            aria-label="Room service charge"
-                                                            className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500 disabled:opacity-50 disabled:bg-surface-muted"
-                                                        />
-                                                    </div>
                                                 </div>
                                             </div>
                                             {applyRoomServiceCharge && roomServiceChargeAmount > 0 && (
