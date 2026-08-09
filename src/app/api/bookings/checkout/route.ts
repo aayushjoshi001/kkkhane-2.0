@@ -2,9 +2,9 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
-import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense } from '@/lib/ledger'
+import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense, postFinancialTransaction } from '@/lib/ledger'
 import { computeFolioForStays } from '@/lib/folio'
-import { findOrCreateCustomerCreditAccount, postCreditCharge, settleLoyalty } from '@/lib/customerCredit'
+import { findOrCreateCustomerCreditAccount, postCreditCharge, postCreditRepayment, settleLoyalty } from '@/lib/customerCredit'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
 import { bookingInvoiceNumber } from '@/lib/utils'
 
@@ -212,7 +212,7 @@ export async function POST(req: Request) {
             booking_id, room_id, total_amount, cash_paid, qr_paid, qr_code_id, session_id,
             discount_amount, discount_reason, credit_amount, customer_name, customer_phone,
             redeemed_points, extra_hour_charge, service_charge_override,
-            close_stay,
+            close_stay, previous_due_amount,
             // Settle this room of a combined reservation on its own, leaving the
             // others open. Ignored on a booking that is not part of a group.
             settle_member_only,
@@ -265,7 +265,27 @@ export async function POST(req: Request) {
         if (creditAmount > 0 && (!creditCustomerName || !creditCustomerPhone)) {
             return NextResponse.json({ error: 'Customer name and phone are required for credit' }, { status: 400 })
         }
-        const settledNow = (Number(cash_paid) || 0) + (Number(qr_paid) || 0) + creditAmount
+
+        // "Add previous due to this bill" — collects an old balance alongside
+        // the stay in one transaction, same as the takeaway/delivery and table
+        // checkouts. Only real money can retire a debt, so it has to come out
+        // of cash/QR, never out of new credit — and it's kept out of the
+        // room's own total_amount/paid_amount below, since that debt has
+        // nothing to do with this stay.
+        const cashPaidRaw = Number(cash_paid) || 0
+        const qrPaidRaw = Number(qr_paid) || 0
+        const previousDueAmount = round2(Number(previous_due_amount) || 0)
+        if (previousDueAmount < 0) {
+            return NextResponse.json({ error: 'previous_due_amount cannot be negative' }, { status: 400 })
+        }
+        if (previousDueAmount > cashPaidRaw + qrPaidRaw + 0.01) {
+            return NextResponse.json({ error: 'Previous due must be covered by cash or QR, not credit' }, { status: 400 })
+        }
+        const dueFromCash = round2(Math.min(cashPaidRaw, previousDueAmount))
+        const dueFromQr = round2(Math.min(qrPaidRaw, previousDueAmount - dueFromCash))
+        const cashForRoom = round2(cashPaidRaw - dueFromCash)
+        const qrForRoom = round2(qrPaidRaw - dueFromQr)
+        const settledNow = cashForRoom + qrForRoom + creditAmount
 
         // A bargained room rate — any staff at checkout can apply one, but a
         // reason is mandatory as the audit trail (no separate manager
@@ -404,6 +424,15 @@ export async function POST(req: Request) {
             .map(m => m.room_id)
 
         if (!isInvoiceEnabled) {
+            // Collecting a previous due posts to customer_credit_accounts via
+            // the ledger, which this restaurant's configuration doesn't use —
+            // rather than silently drop the money into the room's own
+            // paid_amount (inflating it by an unrelated old debt), refuse the
+            // request outright.
+            if (previousDueAmount > 0) {
+                return NextResponse.json({ error: 'Previous due collection is not available for this restaurant configuration' }, { status: 400 })
+            }
+
             // 1. Settle the session orders (if session_id is provided). On an
             // early settlement the orders are marked paid but the session is
             // left open — the guest still has the room, and closing their QR
@@ -465,7 +494,6 @@ export async function POST(req: Request) {
             const priorPaidNoInvoice = members.reduce((s, m) => s + (Number(m.paid_amount) || 0), 0)
             const returnToGuestNoInvoice = round2(priorPaidNoInvoice + settledNow - authoritativeTotal)
             if (returnToGuestNoInvoice > 0) {
-                const { postFinancialTransaction } = await import('@/lib/ledger')
                 await postFinancialTransaction(supabase, { restaurantId: booking.restaurant_id, id: currentUser.id }, {
                     type: 'cash_out',
                     amount: returnToGuestNoInvoice,
@@ -515,10 +543,18 @@ export async function POST(req: Request) {
             roomNumber = roomContext?.room_number || 'Unknown'
         }
         const guestName = booking.guest_name || 'Guest'
+        const effectiveDueCustomerName = creditCustomerName || booking.guest_name || ''
+        const effectiveDueCustomerPhone = creditCustomerPhone || booking.guest_phone || ''
+        if (previousDueAmount > 0 && (!effectiveDueCustomerName || !effectiveDueCustomerPhone)) {
+            return NextResponse.json({ error: 'Customer name and phone are required to collect a previous due' }, { status: 400 })
+        }
 
-        // 3. Resolve cash, qr, and credit splits
-        const cashPaid = Number(cash_paid) || 0
-        const qrPaid = Number(qr_paid) || 0
+        // 3. Resolve cash, qr, and credit splits — excluding whatever of it
+        // was drawn to cover a previous due (see cashForRoom/qrForRoom
+        // above), since that money settles a separate receivable, not this
+        // stay's bill, and must not inflate the room's own revenue/paid_amount.
+        const cashPaid = cashForRoom
+        const qrPaid = qrForRoom
 
         let hotelCash = cashPaid
         let hotelQr = qrPaid
@@ -662,6 +698,46 @@ export async function POST(req: Request) {
             )
         )
 
+        // Previous due, collected alongside this stay's settlement — posted as
+        // a receivable payment plus a plain Day Book movement, never as room
+        // revenue (that income was already recognized when the due was first
+        // charged), same pattern as the takeaway/delivery and table checkouts.
+        if (previousDueAmount > 0) {
+            postCheckoutTasks.push((async () => {
+                const account = await findOrCreateCustomerCreditAccount(supabase, booking.restaurant_id, currentUser.id, {
+                    name: effectiveDueCustomerName,
+                    phone: effectiveDueCustomerPhone,
+                })
+                if ('error' in account) {
+                    console.error('Failed to resolve customer credit account for previous-due collection:', account.error)
+                } else {
+                    await postCreditRepayment(supabase, booking.restaurant_id, currentUser.id, {
+                        customerCreditAccountId: account.id,
+                        amount: previousDueAmount,
+                        description: `Previous due collected with Room ${roomNumber} stay (${effectiveDueCustomerName})`,
+                    })
+                    if (dueFromCash > 0) {
+                        await postFinancialTransaction(supabase, { id: currentUser.id, restaurantId: booking.restaurant_id }, {
+                            type: 'cash_in',
+                            amount: dueFromCash,
+                            description: `Previous due collected: ${effectiveDueCustomerName} (Room ${roomNumber})`,
+                            category: 'order_payment',
+                            requireOpenSession: false,
+                        })
+                    }
+                    if (dueFromQr > 0) {
+                        await postFinancialTransaction(supabase, { id: currentUser.id, restaurantId: booking.restaurant_id }, {
+                            type: 'bank_in',
+                            amount: dueFromQr,
+                            description: `Previous due collected: ${effectiveDueCustomerName} (Room ${roomNumber})`,
+                            category: 'order_payment',
+                            requireOpenSession: false,
+                        })
+                    }
+                }
+            })())
+        }
+
         // Written after the settling transaction rather than inside it: the RPC
         // has already charged this figure by way of authoritativeTotal, and
         // storing it is only so a later recompute of the folio reproduces the
@@ -741,13 +817,14 @@ export async function POST(req: Request) {
                 qr_paid: Number(qr_paid) || 0,
                 discount_amount: discountAmount,
                 discount_reason: discountAmount > 0 ? discountReason : null,
+                previous_due_amount: previousDueAmount,
                 session_id: session_id || null,
                 split_mode: restaurant?.ledger_split_mode || 'direct',
                 commission_rate: Number(restaurant?.billing_commission_rate) || 0
             },
         })
 
-        return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio, closed: closeStay })
+        return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio, closed: closeStay, previous_due_collected: previousDueAmount })
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Server error'
         return NextResponse.json({ error: message }, { status: 500 })

@@ -103,9 +103,23 @@ export default function CashierTableManager({
         return 'Occupied'
     }
 
-    // Form inputs for reservation
+    // Form inputs and persistent store for reservation guest details
     const [reserveName, setReserveName] = useState('')
     const [reservePhone, setReservePhone] = useState('')
+    const [tableGuestDetails, setTableGuestDetails] = useState<Record<string, { name: string; phone: string }>>({})
+
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem(`kkkhane_table_reservations_${restaurantId}`)
+            if (saved) setTableGuestDetails(JSON.parse(saved))
+        } catch (e) {}
+    }, [restaurantId])
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(`kkkhane_table_reservations_${restaurantId}`, JSON.stringify(tableGuestDetails))
+        } catch (e) {}
+    }, [tableGuestDetails, restaurantId])
 
     // Choice step inside the Table click modal
     const [choiceStep, setChoiceStep] = useState<'options' | 'manual_order' | 'reserve'>('options')
@@ -358,6 +372,9 @@ export default function CashierTableManager({
         if (res.error) {
             toast.error(res.error)
         } else {
+            const guestInfo = { name: reserveName.trim(), phone: reservePhone.trim() }
+            setTableGuestDetails(prev => ({ ...prev, [selectedTable.id]: guestInfo }))
+            setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, table_status: 'reserved' } : t))
             toast.success(`Table ${selectedTable.label} reserved for ${reserveName}`)
             setSelectedTable(null)
             setReserveName('')
@@ -373,10 +390,40 @@ export default function CashierTableManager({
         if (res.error) {
             toast.error(res.error)
         } else {
+            setTableGuestDetails(prev => {
+                const next = { ...prev }
+                delete next[selectedTable.id]
+                return next
+            })
             toast.success(`Reservation released for Table ${selectedTable.label}`)
             setSelectedTable(null)
         }
         setIsProcessing(false)
+    }
+
+    const handleConvertToOccupied = async () => {
+        if (!selectedTable) return
+        setIsProcessing(true)
+        try {
+            await setTableStatus(selectedTable.id, 'available')
+            const sessionRes = await openSession(selectedTable.id, restaurantId, undefined, 1)
+            if (sessionRes.error) {
+                toast.error(sessionRes.error)
+            } else {
+                setTables(prev => prev.map(t =>
+                    t.id === selectedTable.id
+                        ? { ...t, table_status: 'available', activeSession: sessionRes.session }
+                        : t
+                ))
+                const details = tableGuestDetails[selectedTable.id]
+                toast.success(`Table ${selectedTable.label} converted to Occupied${details?.name ? ` for ${details.name}` : ''}`)
+                setSelectedTable(null)
+            }
+        } catch (e: any) {
+            toast.error(e.message || 'Failed to convert table to Occupied')
+        } finally {
+            setIsProcessing(false)
+        }
     }
 
     const handleSilentOpenSeatSession = async (tableId: string, seatNumber: number) => {
@@ -511,20 +558,27 @@ export default function CashierTableManager({
                                     setReservePhone('')
                                     setSelectedTable(table)
                                 }}
-                                className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${displayCardCls} hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95`}
+                                className={`relative min-h-[96px] p-2 sm:p-2.5 rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${displayCardCls} hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95 overflow-hidden cursor-pointer pointer-events-auto z-10`}
                             >
-                                <span className={`${getFontSizeClass(table.label || '')} font-extrabold tracking-tight text-ink leading-tight text-center break-words max-w-full px-1.5`}>
+                                <span className={`${getFontSizeClass(table.label || '')} font-black tracking-tight text-ink leading-tight text-center break-words max-w-full px-1`}>
                                     {table.label}
                                 </span>
                                 {table.capacity && (
-                                    <span className="flex items-center gap-0.5 text-caption text-ink-subtle mt-0.5">
+                                    <span className="flex items-center gap-0.5 text-[10px] font-bold text-ink-subtle mt-0.5">
                                         <Users size={9} />{table.capacity}
                                     </span>
                                 )}
                                 {displayStatusLabel && (
-                                    <span className={`uppercase tracking-wide mt-1.5 ${displayLabelCls}`}>{displayStatusLabel}</span>
+                                    <span className={`uppercase tracking-wider mt-1.5 font-black text-[9px] px-2 py-0.5 rounded-md border shrink-0 ${displayLabelCls}`}>
+                                        {displayStatusLabel}
+                                    </span>
                                 )}
-                                <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${displayDotCls}`} />
+                                {tableGuestDetails[table.id]?.name && (
+                                    <span className="text-[9px] font-extrabold text-brand-600 dark:text-brand-400 mt-0.5 max-w-full px-1 truncate leading-tight" title={tableGuestDetails[table.id].name}>
+                                        {tableGuestDetails[table.id].name}
+                                    </span>
+                                )}
+                                <span className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${displayDotCls}`} />
                             </button>
                         )
                     })
@@ -571,12 +625,29 @@ export default function CashierTableManager({
 
                         {/* Content */}
                         <div className="p-6 max-h-[75vh] overflow-y-auto">
-                            {selectedTable.table_status === 'reserved' ? (
+                            {(selectedTable.table_status === 'reserved' || !!tableGuestDetails[selectedTable.id]) && !selectedTable.activeSession ? (
                                 <div className="space-y-4">
                                     <div className="flex flex-col items-center py-2 text-info-fg">
                                         <CalendarClock size={44} strokeWidth={1.5} />
                                         <p className="text-center text-xs font-semibold text-ink-muted mt-2">This table is currently reserved</p>
+                                        {tableGuestDetails[selectedTable.id] && (
+                                            <div className="mt-3 p-3 bg-info-bg/80 border border-info/30 rounded-xl text-center w-full">
+                                                <p className="text-xs font-extrabold text-info-fg">{tableGuestDetails[selectedTable.id].name}</p>
+                                                {tableGuestDetails[selectedTable.id].phone && (
+                                                    <p className="text-[11px] font-bold text-ink-subtle mt-0.5">{tableGuestDetails[selectedTable.id].phone}</p>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
+                                    <Button 
+                                        block 
+                                        variant="primary" 
+                                        icon={ShoppingCart} 
+                                        loading={isProcessing} 
+                                        onClick={handleConvertToOccupied}
+                                    >
+                                        Convert to Occupied
+                                    </Button>
                                     <Button 
                                         block 
                                         variant="secondary" 
@@ -590,6 +661,20 @@ export default function CashierTableManager({
                             ) : choiceStep === 'options' ? (
                                 // OPTIONS STEP (Default view when clicked)
                                 <div className="space-y-4">
+                                    {tableGuestDetails[selectedTable.id] && (
+                                        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between shadow-xs">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-800">Occupied · Guest Details</p>
+                                                <p className="text-xs font-black text-ink mt-0.5">{tableGuestDetails[selectedTable.id].name}</p>
+                                                {tableGuestDetails[selectedTable.id].phone && (
+                                                    <p className="text-[11px] font-semibold text-ink-muted">{tableGuestDetails[selectedTable.id].phone}</p>
+                                                )}
+                                            </div>
+                                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                From Reservation
+                                            </span>
+                                        </div>
+                                    )}
                                     {selectedTable.activeSession ? (
                                         // Occupied Option Choice
                                         <div className="space-y-4">

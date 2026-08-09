@@ -63,9 +63,7 @@ export async function POST(req: Request) {
         } else if (status === 'cancelled') {
             roomStatus = 'available'
         } else if (status === 'pending') {
-            // Restoring a cancelled booking → re-occupy the room so cashier
-            // panel and room grid reflect the guest is back.
-            roomStatus = 'occupied'
+            roomStatus = 'available'
         }
 
         if (roomStatus && booking.room_id) {

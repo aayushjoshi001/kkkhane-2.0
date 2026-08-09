@@ -85,6 +85,10 @@ export interface ActiveInvoice {
     discountAmount?: number
     discountReason?: string
     extraHourCharge?: number
+    /** Old balance collected alongside this bill, already folded into `total`. */
+    previousDueAmount?: number
+    /** What the customer still owes after this payment's previousDueAmount is collected. */
+    previousDueRemaining?: number
 }
 
 const COL = { desc: 18, qty: 4, rate: 9, amt: 11 }
@@ -260,6 +264,14 @@ export function buildInvoiceTicket(
         if (invoice.creditPaid && invoice.creditPaid > 0.01) {
             b.bold(true)
             b.line(`  ON CREDIT: ${money(invoice.creditPaid)}`)
+            b.bold(false)
+        }
+        // What's left on the old balance after this payment's PREVIOUS DUE
+        // line above is collected — printed regardless of payment method,
+        // since a due can be settled with plain cash or QR, not just a split.
+        if (invoice.previousDueAmount && invoice.previousDueAmount > 0.01) {
+            b.bold(true)
+            b.line(`  REMAINING DUE: ${money(invoice.previousDueRemaining ?? 0)}`)
             b.bold(false)
         }
     }

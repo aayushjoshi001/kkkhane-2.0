@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import {
-    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, Users, Download, Printer, HandCoins, TrendingUp, TrendingDown, ShieldAlert, Receipt, CreditCard, CheckCircle2, ChevronDown, ChevronUp, Info, Percent
+    Plus, X, Search, Loader2, Trash2, Edit2, FileText, Phone, Users, Download, Printer, HandCoins, TrendingUp, TrendingDown, ShieldAlert, Receipt, CreditCard, CheckCircle2, ChevronDown, ChevronUp, Info, Percent, Award
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import {
@@ -47,6 +47,7 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
     const [transactions, setTransactions] = useState<ReceivableTransactionWithCreator[]>(initialTransactions)
     const formatDate = useDateFormatter()
     const [searchQuery, setSearchQuery] = useState('')
+    const [directoryFilter, setDirectoryFilter] = useState<'due_credit' | 'crm_loyalty'>('due_credit')
 
     // Create/Edit customer modal
     const [modalOpen, setModalOpen] = useState<'create' | 'edit' | null>(null)
@@ -329,15 +330,6 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
         toast.success('Transaction deleted')
     }
 
-    const filteredAccounts = useMemo(() => {
-        const q = searchQuery.toLowerCase().trim()
-        if (!q) return accounts
-        return accounts.filter(a =>
-            a.customer_name.toLowerCase().includes(q) ||
-            (a.customer_phone && a.customer_phone.includes(q))
-        )
-    }, [accounts, searchQuery])
-
     // Per-customer Paid / Due totals for the directory table, so balances are visible without opening the statement.
     const accountBalances = useMemo(() => {
         const map = new Map<string, { paid: number; due: number }>()
@@ -349,6 +341,55 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
         }
         return map
     }, [transactions])
+
+    const dueCreditTotals = useMemo(() => {
+        let totalDue = 0
+        let totalCharged = 0
+        let totalPaid = 0
+        let activeCount = 0
+
+        for (const a of accounts) {
+            const bal = accountBalances.get(a.id) ?? { paid: 0, due: 0 }
+            const outstanding = Math.max(bal.due - bal.paid, 0)
+            const hasActivity = bal.due > 0 || bal.paid > 0 || outstanding > 0 || Number(a.credit_limit || 0) > 0
+            if (hasActivity) {
+                activeCount++
+                totalDue += outstanding
+                totalCharged += bal.due
+                totalPaid += bal.paid
+            }
+        }
+        return { totalDue, totalCharged, totalPaid, activeCount }
+    }, [accounts, accountBalances])
+
+    const filteredAccounts = useMemo(() => {
+        const q = searchQuery.toLowerCase().trim()
+        const list = accounts.filter(a => {
+            const bal = accountBalances.get(a.id) ?? { paid: 0, due: 0 }
+            const outstanding = Math.max(bal.due - bal.paid, 0)
+            const hasActivity = bal.due > 0 || bal.paid > 0 || outstanding > 0 || Number(a.credit_limit || 0) > 0
+
+            if (directoryFilter === 'due_credit' && !hasActivity) return false
+
+            if (!q) return true
+            return (
+                a.customer_name.toLowerCase().includes(q) ||
+                (a.customer_phone && a.customer_phone.includes(q))
+            )
+        })
+
+        if (directoryFilter !== 'due_credit') return list
+
+        // Outstanding-due accounts float to the top (highest due first); fully-settled credit accounts sink to the bottom.
+        return [...list].sort((a, b) => {
+            const balA = accountBalances.get(a.id) ?? { paid: 0, due: 0 }
+            const balB = accountBalances.get(b.id) ?? { paid: 0, due: 0 }
+            const outA = Math.max(balA.due - balA.paid, 0)
+            const outB = Math.max(balB.due - balB.paid, 0)
+            if (outA !== outB) return outB - outA
+            return balB.paid - balA.paid
+        })
+    }, [accounts, searchQuery, directoryFilter, accountBalances])
 
     // Ledger statement transactions with running balance (charge increases what's owed, payment reduces it)
     const customerLedgerEntries = useMemo(() => {
@@ -472,9 +513,74 @@ export default function CustomersLedgerManager({ initialAccounts, initialTransac
                     </button>
                 </div>
 
+                {/* ── Two Separate Section Cards / Boxes ── */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Box 1: Due & Credit Activities (Selected By Default!) */}
+                    <div
+                        onClick={() => setDirectoryFilter('due_credit')}
+                        className={`p-5 rounded-2xl border text-left transition-all duration-200 cursor-pointer ${
+                            directoryFilter === 'due_credit'
+                                ? 'bg-surface border-rose-500 shadow-md ring-2 ring-rose-500/20'
+                                : 'bg-surface/60 border-hairline hover:bg-surface hover:border-hairline-strong'
+                        }`}
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${directoryFilter === 'due_credit' ? 'bg-rose-50 text-rose-600' : 'bg-surface-muted text-ink-subtle'}`}>
+                                    <Receipt size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-base text-ink">Due & Credit Activities</h3>
+                                    <p className="text-xs text-ink-subtle mt-0.5">Active customer balances, credit charges & payments</p>
+                                </div>
+                            </div>
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-black ${directoryFilter === 'due_credit' ? 'bg-rose-100 text-rose-700' : 'bg-surface-muted text-ink-subtle'}`}>
+                                {dueCreditTotals.activeCount} Accounts
+                            </span>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-hairline flex items-center justify-between text-xs">
+                            <span className="font-bold text-ink-subtle">Total Outstanding Due:</span>
+                            <span className="font-black text-rose-600 text-sm">{formatCurrency(dueCreditTotals.totalDue)}</span>
+                        </div>
+                    </div>
+
+                    {/* Box 2: CRM & Loyalty Directory */}
+                    <div
+                        onClick={() => setDirectoryFilter('crm_loyalty')}
+                        className={`p-5 rounded-2xl border text-left transition-all duration-200 cursor-pointer ${
+                            directoryFilter === 'crm_loyalty'
+                                ? 'bg-surface border-brand-500 shadow-md ring-2 ring-brand-500/20'
+                                : 'bg-surface/60 border-hairline hover:bg-surface hover:border-hairline-strong'
+                        }`}
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${directoryFilter === 'crm_loyalty' ? 'bg-brand-50 text-brand-600' : 'bg-surface-muted text-ink-subtle'}`}>
+                                    <Award size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-base text-ink">CRM & Loyalty Directory</h3>
+                                    <p className="text-xs text-ink-subtle mt-0.5">All registered customer profiles & 5% loyalty points</p>
+                                </div>
+                            </div>
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-black ${directoryFilter === 'crm_loyalty' ? 'bg-brand-100 text-brand-700' : 'bg-surface-muted text-ink-subtle'}`}>
+                                {accounts.length} Profiles
+                            </span>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-hairline flex items-center justify-between text-xs">
+                            <span className="font-bold text-ink-subtle">Total Registered Profiles:</span>
+                            <span className="font-black text-ink text-sm">{accounts.length} Registered</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-hairline bg-surface-muted/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <p className="text-xs font-black text-ink uppercase tracking-wider">Customers Directory ({filteredAccounts.length})</p>
+                    <div className="p-4 border-b border-hairline bg-surface-muted/50 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <p className="text-xs font-black text-ink uppercase tracking-wider whitespace-nowrap">
+                                {directoryFilter === 'due_credit' ? 'Due & Credit Accounts' : 'CRM & Loyalty Customers'} ({filteredAccounts.length})
+                            </p>
+                        </div>
                         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                             <div className="flex items-center gap-1.5 print:hidden">
                                 <button

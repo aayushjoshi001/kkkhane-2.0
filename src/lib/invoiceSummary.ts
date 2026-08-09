@@ -72,6 +72,10 @@ export interface InvoiceSummaryInput {
     extraHourCharge?: number
     total: number
     advancePaid?: number
+    /** Old balance folded into this bill at settlement — already baked into
+     *  `total` by the caller, shown here only as its own line so the guest
+     *  can see where the figure came from. */
+    previousDueAmount?: number
 }
 
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
@@ -93,7 +97,13 @@ export function summariseInvoice(invoice: InvoiceSummaryInput): InvoiceSummary {
     const tax = n(invoice.taxAmount) || n(invoice.tax_amount)
     const discount = n(invoice.discountAmount)
 
+    const previousDue = Math.max(0, round2(n(invoice.previousDueAmount)))
+
     const lines: InvoiceSummaryLine[] = [{ label: 'SUBTOTAL', amount: round2(subtotal), sign: '' }]
+    // Directly under the subtotal, ahead of the bill's own adjustments — it's
+    // a separate old balance being collected alongside this bill, not a
+    // charge that belongs to it.
+    if (previousDue > 0) lines.push({ label: 'PREVIOUS DUE', amount: previousDue, sign: '+' })
     if (extraHour > 0) lines.push({ label: 'EXTRA HOUR', amount: round2(extraHour), sign: '+' })
     if (serviceCharge > 0) lines.push({ label: 'SERVICE CHARGE', amount: round2(serviceCharge), sign: '+' })
     if (discount > 0) lines.push({ label: 'DISCOUNT', amount: round2(discount), sign: '-' })

@@ -252,6 +252,10 @@ export async function POST(req: Request) {
             }
         }
 
+        const isReservation = body.status === 'pending' || body.is_reservation === true
+        const bookingStatus = isReservation ? 'pending' : 'checked_in'
+        const targetRoomStatus = isReservation ? 'available' : 'occupied'
+
         const bookingsToInsert = roomRequests.map((r, i) => ({
             restaurant_id: currentUser.restaurantId,
             group_id: groupId,
@@ -266,8 +270,8 @@ export async function POST(req: Request) {
             adult_male: r.splitProvided ? r.male : 0,
             adult_female: r.splitProvided ? r.female : 0,
             children: r.children,
-            status: 'checked_in',
-            checked_in_by: currentUser.id,
+            status: bookingStatus,
+            checked_in_by: isReservation ? null : currentUser.id,
             notes,
             paid_amount: advanceShares[i],
             advance_payment_method: advMethod,
@@ -317,10 +321,10 @@ export async function POST(req: Request) {
                 })
         )
 
-        // 6. Update room status to occupied
+        // 6. Update room status to occupied or reserved
         postBookingTasks.push(
             supabase.from('rooms')
-                .update({ status: 'occupied' })
+                .update({ status: targetRoomStatus })
                 .in('id', roomIds)
                 .eq('restaurant_id', currentUser.restaurantId)
                 .then(({ error: updateError }) => {

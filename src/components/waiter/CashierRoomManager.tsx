@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { createClient } from '@/lib/supabase/client'
-import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils, ArrowLeftRight, History, RotateCcw, Car, Pencil, Layers, Link2, Unlink, AlertTriangle, Lock } from 'lucide-react'
+import { Users, X, Check, Bed, ClipboardList, Loader2, CreditCard, RefreshCw, Calendar, FileText, Plus, Landmark, Utensils, ArrowLeftRight, History, RotateCcw, Car, Pencil, Layers, Link2, Unlink, AlertTriangle, Lock, CheckCircle2, CalendarClock } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCurrency, useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
@@ -58,7 +58,7 @@ export default function CashierRoomManager({
     setBookings: React.Dispatch<React.SetStateAction<any[]>>
     restaurantId: string
     partnerRestaurantId?: string | null
-    roomsFilter: 'all' | 'available' | 'reserve' | 'occupied' | 'dirty' | 'closed'
+    roomsFilter: 'all' | 'available' | 'reserved' | 'reserve' | 'occupied' | 'dirty' | 'closed'
     roomTypeFilter?: string
     tables: TableWithSession[]
     activeOrders: any[]
@@ -87,6 +87,7 @@ export default function CashierRoomManager({
 
     // Sub-modal and drawer states
     const [bookingFormOpen, setBookingFormOpen] = useState(false)
+    const [isReserveMode, setIsReserveMode] = useState(false)
     const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
     const [confirmDirtyOpen, setConfirmDirtyOpen] = useState(false)
     
@@ -750,9 +751,10 @@ export default function CashierRoomManager({
         setAdvanceQrCodeId('')
     }
 
-    // Fetch active booking details, manual charges, and linked dining orders concurrently when selected room is occupied
+    // Fetch active booking details, manual charges, and linked dining orders concurrently when selected room is occupied or held by reservation
     useEffect(() => {
-        if (selectedRoom && selectedRoom.status === 'occupied') {
+        const isRoomHeld = selectedRoom && (bookings || []).some(b => b.room_id === selectedRoom.id && (b.status === 'checked_in' || b.status === 'pending'))
+        if (selectedRoom && (selectedRoom.status === 'occupied' || isRoomHeld)) {
             setLoadingBooking(true)
             setLoadingCharges(true)
             // One request for the whole panel. This was the booking lookup
@@ -834,16 +836,23 @@ export default function CashierRoomManager({
             if (roomTypeFilter && roomTypeFilter !== 'all' && r.type_id !== roomTypeFilter) {
                 return false
             }
+            const roomBooking = (bookings || []).find(b => b.room_id === r.id && (b.status === 'checked_in' || b.status === 'pending'))
+            const effectiveStatus = roomBooking?.status === 'pending'
+                ? 'reserved'
+                : roomBooking?.status === 'checked_in'
+                    ? 'occupied'
+                    : r.status
+
             // Status filter
             if (roomsFilter === 'all') return true
-            if (roomsFilter === 'available') return r.status === 'available'
-            if (roomsFilter === 'occupied') return r.status === 'occupied'
-            if (roomsFilter === 'dirty') return r.status === 'dirty'
-            if (roomsFilter === 'closed') return r.status === 'maintenance'
-            if (roomsFilter === 'reserve') return false // dummy reserved status
+            if (roomsFilter === 'available') return effectiveStatus === 'available'
+            if (roomsFilter === 'reserved') return effectiveStatus === 'reserved'
+            if (roomsFilter === 'occupied') return effectiveStatus === 'occupied'
+            if (roomsFilter === 'dirty') return effectiveStatus === 'dirty'
+            if (roomsFilter === 'closed') return effectiveStatus === 'maintenance'
             return true
         })
-    }, [rooms, roomsFilter, roomTypeFilter])
+    }, [rooms, bookings, roomsFilter, roomTypeFilter])
 
     // Room-service orders bucket (the room's own QR table + manual "direct to
     // room" orders placed from the cashier/manager). We derive it from the SAME
@@ -1063,6 +1072,7 @@ export default function CashierRoomManager({
                             children: extraRooms[roomId].children,
                         })),
                     ],
+                    status: isReserveMode ? 'pending' : 'checked_in',
                     guest_name: bookingForm.guest_name,
                     guest_phone: bookingForm.guest_phone,
                     guest_address: bookingForm.guest_address.trim() || undefined,
@@ -1105,11 +1115,13 @@ export default function CashierRoomManager({
 
             const bookedIds = new Set<string>([selectedRoom.id, ...selectedExtraIds])
             const roomLabel = [selectedRoom.room_number, ...selectedExtraIds.map(id => rooms.find(r => r.id === id)?.room_number).filter(Boolean)].join(', ')
+            const targetStatus = isReserveMode ? 'available' : 'occupied'
+            const actionWord = isReserveMode ? 'reserved' : 'booked'
             toast.success(
-                `${bookedIds.size > 1 ? `${bookedIds.size} rooms (${roomLabel})` : `Room ${selectedRoom.room_number}`} booked!` +
+                `${bookedIds.size > 1 ? `${bookedIds.size} rooms (${roomLabel})` : `Room ${selectedRoom.room_number}`} ${actionWord}!` +
                 (resolvedAdvance > 0 ? ` Advance: Rs. ${resolvedAdvance.toLocaleString()}` : '')
             )
-            setRooms(prev => prev.map(r => bookedIds.has(r.id) ? { ...r, status: 'occupied' } : r))
+            setRooms(prev => prev.map(r => bookedIds.has(r.id) ? { ...r, status: targetStatus } : r))
             setBookings(prev => {
                 const newB = data.bookings || [data.data]
                 return [...prev, ...newB.filter((nb: any) => !prev.some(p => p.id === nb.id))]
@@ -1119,9 +1131,63 @@ export default function CashierRoomManager({
             setSelectedRoom(null)
             setAdvanceSplitCash('')
             setAdvanceSplitQr('')
-            setAdvanceQrCodeId('')
+            setAdvanceNote('')
+            setLinkToBookingId('')
         } catch (e: any) {
-            toast.error(e.message || 'Failed to book room')
+            toast.error(e.message || 'Failed to create booking')
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleCancelReservation = async () => {
+        if (!activeBooking || !selectedRoom) return
+        setIsProcessing(true)
+        try {
+            const res = await fetch('/api/bookings/status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bookingId: activeBooking.id,
+                    status: 'cancelled',
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error)
+
+            toast.success(`Room ${selectedRoom.room_number} reservation cancelled. Room is now Available.`)
+            setActiveBooking(null)
+            setRooms((prev: any[]) => prev.map((r: any) => r.id === selectedRoom.id ? { ...r, status: 'available' } : r))
+            setBookings((prev: any[]) => prev.map((b: any) => b.id === activeBooking.id ? { ...b, status: 'cancelled' } : b))
+            setSelectedRoom(null)
+        } catch (e: any) {
+            toast.error(e.message || 'Failed to cancel reservation')
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleConvertToBooked = async () => {
+        if (!activeBooking || !selectedRoom) return
+        setIsProcessing(true)
+        try {
+            const res = await fetch('/api/bookings/status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bookingId: activeBooking.id,
+                    status: 'checked_in',
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error)
+
+            toast.success(`Room ${selectedRoom.room_number} converted to Booked! Guest checked in.`)
+            setActiveBooking((prev: any) => prev ? { ...prev, status: 'checked_in' } : null)
+            setRooms((prev: any[]) => prev.map((r: any) => r.id === selectedRoom.id ? { ...r, status: 'occupied' } : r))
+            setBookings((prev: any[]) => prev.map((b: any) => b.id === activeBooking.id ? { ...b, status: 'checked_in' } : b))
+        } catch (e: any) {
+            toast.error(e.message || 'Failed to convert room status')
         } finally {
             setIsProcessing(false)
         }
@@ -1171,7 +1237,9 @@ export default function CashierRoomManager({
                     </div>
                 ) : (
                     filteredRooms.map(room => {
-                        const cfg = getRoomStatusConfig(room.status)
+                        const roomBooking = (bookings || []).find(b => b.room_id === room.id && (b.status === 'checked_in' || b.status === 'pending'))
+                        const effectiveStatus = roomBooking?.status === 'pending' ? 'reserved' : room.status
+                        const cfg = getRoomStatusConfig(effectiveStatus)
                         // Rooms held by the same reservation are marked so the
                         // front desk can see at a glance that checking one out
                         // will settle and release the others with it.
@@ -1185,25 +1253,20 @@ export default function CashierRoomManager({
                                     resetRoomModal()
                                     setSelectedRoom(room)
                                 }}
-                                className={`relative aspect-square rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${cfg.card} hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95`}
+                                className={`relative min-h-[100px] p-2.5 rounded-[20px] border flex flex-col items-center justify-center transition-all duration-300 ${cfg.card} hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95 overflow-hidden cursor-pointer pointer-events-auto z-10`}
                             >
-                                <span className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-ink leading-tight text-center">
+                                <span className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-ink leading-tight text-center">
                                     {room.room_number}
                                 </span>
-                                {/* Wraps instead of truncating: the room type is how staff tell
-                                    a Deluxe from a Deluxe Twin at a glance, so an ellipsis can
-                                    hide the one word that distinguishes them. The card is square
-                                    with room to spare under the number, so a second line costs
-                                    nothing. */}
                                 {room.room_types && (
-                                    <span className="text-[10px] font-bold text-ink-subtle mt-0.5 px-1 w-full text-center leading-tight break-words">
+                                    <span className="text-[10px] font-bold text-ink-subtle mt-0.5 px-1 w-full text-center leading-tight truncate">
                                         {room.room_types.name}
                                     </span>
                                 )}
-                                <span className={`uppercase tracking-wide mt-1.5 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border ${cfg.badge} ${cfg.badgeBorder}`}>
+                                <span className={`uppercase tracking-wider mt-1.5 text-[9px] font-black px-2 py-0.5 rounded-md border shrink-0 ${cfg.badge} ${cfg.badgeBorder}`}>
                                     {cfg.label}
                                 </span>
-                                <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
+                                <span className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${cfg.dot} ${cfg.pulse ? 'animate-pulse' : ''}`} />
                                 {groupSize > 1 && (
                                     <>
                                         <span
@@ -1231,7 +1294,7 @@ export default function CashierRoomManager({
             </div>
 
             {/* Modal Overlay for Available/Housekeeping/Closed rooms or Booking Form / Edit Booking */}
-            {mounted && selectedRoom && (selectedRoom.status !== 'occupied' || bookingFormOpen) && createPortal(
+            {mounted && selectedRoom && ((selectedRoom.status !== 'occupied' && !(bookings || []).some(b => b.room_id === selectedRoom.id && (b.status === 'checked_in' || b.status === 'pending'))) || bookingFormOpen) && createPortal(
                 <div 
                     className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-all duration-300"
                     onClick={() => setSelectedRoom(null)}
@@ -1759,6 +1822,7 @@ export default function CashierRoomManager({
                                                 icon={Calendar}
                                                 block
                                                 onClick={() => {
+                                                    setIsReserveMode(false)
                                                     prepopulateBookingForm()
                                                     setIsEditMode(false)
                                                     setBookingFormOpen(true)
@@ -1771,10 +1835,10 @@ export default function CashierRoomManager({
                                                 icon={Users}
                                                 block
                                                 onClick={() => {
-                                                    // Quick reserve sets to maintenance or occupied
+                                                    setIsReserveMode(true)
                                                     prepopulateBookingForm()
                                                     setIsEditMode(false)
-                                                    setBookingFormOpen(true) // Open booking form to record details
+                                                    setBookingFormOpen(true)
                                                 }}
                                             >
                                                 Reserve
@@ -1848,7 +1912,7 @@ export default function CashierRoomManager({
                                             onClick={handleCreateBooking}
                                             className="font-bold uppercase tracking-wider"
                                         >
-                                            Book Room
+                                            {isReserveMode ? 'Reserve Room' : 'Book Room'}
                                         </Button>
                                     )
                                 )}
@@ -1963,8 +2027,8 @@ export default function CashierRoomManager({
                 document.body
             )}
 
-            {/* Bottom Drawer (Sheet) for Booked (Occupied) Room Click */}
-            {mounted && selectedRoom && selectedRoom.status === 'occupied' && createPortal(
+            {/* Room Billing / Stay Details Drawer */}
+            {mounted && selectedRoom && (selectedRoom.status === 'occupied' || (bookings || []).some(b => b.room_id === selectedRoom.id && (b.status === 'checked_in' || b.status === 'pending'))) && createPortal(
                 <div 
                     className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
                     onClick={() => setSelectedRoom(null)}
@@ -2001,6 +2065,39 @@ export default function CashierRoomManager({
                             </div>
                         ) : activeBooking ? (
                             <div className="space-y-6">
+                                {activeBooking.status !== 'checked_in' && (
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-sky-50/90 border border-sky-200 rounded-2xl">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-8 h-8 rounded-xl bg-sky-500 text-white flex items-center justify-center shrink-0">
+                                                <CalendarClock size={18} />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-sky-900">Reserved Room Stay</p>
+                                                <p className="text-[11px] text-sky-700 font-medium">Guest reservation is pending. Change to Booked or Cancel Room.</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                                            <Button
+                                                variant="primary"
+                                                icon={CheckCircle2}
+                                                loading={isProcessing}
+                                                onClick={handleConvertToBooked}
+                                                className="w-full sm:w-auto font-extrabold text-xs !bg-blue-600 hover:!bg-blue-700 shadow-sm shrink-0"
+                                            >
+                                                Change to Booked
+                                            </Button>
+                                            <Button
+                                                variant="danger"
+                                                icon={X}
+                                                loading={isProcessing}
+                                                onClick={handleCancelReservation}
+                                                className="w-full sm:w-auto font-bold text-xs shrink-0"
+                                            >
+                                                Cancel Room
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                                 {/* Guest Details Section */}
                                 <div className="grid grid-cols-2 gap-4 bg-surface-muted/50 border border-hairline rounded-2xl p-4 text-xs">
                                     <div className="space-y-2">
@@ -2365,14 +2462,33 @@ export default function CashierRoomManager({
                                             </div>
                                         )}
                                         <div className="flex justify-between items-center border-b border-dashed border-hairline pb-3 mb-1">
-                                             <span className={`text-xs font-bold uppercase ${returnAmount > 0 ? 'text-emerald-600' : 'text-ink-subtle'}`}>
-                                                 {returnAmount > 0 ? 'Return to guest' : advancePaid > 0 ? 'Balance due at checkout' : 'Total bill amount'}
-                                             </span>
                                              <p className={`text-2xl font-black tabular-nums ${returnAmount > 0 ? 'text-emerald-600' : 'text-brand-600'}`}>
                                                  {returnAmount > 0 ? money(returnAmount) : money(balanceDue)}
                                              </p>
                                          </div>
                                          <div className="flex flex-wrap gap-2 justify-end">
+                                              {activeBooking?.status !== 'checked_in' && (
+                                                  <>
+                                                      <Button
+                                                          variant="primary"
+                                                          icon={CheckCircle2}
+                                                          loading={isProcessing}
+                                                          onClick={handleConvertToBooked}
+                                                          className="px-4 font-extrabold !bg-blue-600 hover:!bg-blue-700 shadow-sm"
+                                                      >
+                                                          Change to Booked
+                                                      </Button>
+                                                      <Button
+                                                          variant="danger"
+                                                          icon={X}
+                                                          loading={isProcessing}
+                                                          onClick={handleCancelReservation}
+                                                          className="px-4 font-bold"
+                                                      >
+                                                          Cancel Room
+                                                      </Button>
+                                                  </>
+                                              )}
                                               <Button
                                                   variant="secondary"
                                                   onClick={() => setSelectedRoom(null)}

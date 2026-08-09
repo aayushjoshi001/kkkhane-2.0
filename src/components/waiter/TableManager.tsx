@@ -1360,12 +1360,20 @@ export default function TableManager({ initialTables, restaurantId, appUrl, init
                                                     <p className="text-label text-ink-subtle mb-2">Table Status</p>
                                                     <div className="grid grid-cols-2 gap-2">
                                                         {selectedTable.table_status === 'reserved' ? (
-                                                            <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
-                                                                await handleSetStatus(selectedTable.id, 'available')
-                                                                setSelectedTable(null)
-                                                            }} className="col-span-2">
-                                                                Release Reservation
-                                                            </Button>
+                                                            <div className="col-span-2 space-y-2">
+                                                                <Button block variant="primary" icon={ShoppingCart} loading={isProcessing} onClick={async () => {
+                                                                    await handleSetStatus(selectedTable.id, 'available')
+                                                                    await handleOpenSeatSession(selectedTable.id, 1)
+                                                                }}>
+                                                                    Convert to Occupied
+                                                                </Button>
+                                                                <Button block variant="secondary" icon={X} loading={isProcessing} onClick={async () => {
+                                                                    await handleSetStatus(selectedTable.id, 'available')
+                                                                    setSelectedTable(null)
+                                                                }}>
+                                                                    Release Reservation
+                                                                </Button>
+                                                            </div>
                                                         ) : (
                                                             <>
                                                                 <Button block variant="secondary" icon={Sparkles} loading={isProcessing} onClick={async () => {

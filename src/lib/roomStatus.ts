@@ -77,9 +77,20 @@ export const ROOM_STATUS_CONFIG: Record<RoomStatus, RoomStatusConfig> = {
     },
 }
 
-// Neutral fallback for a status outside the RoomStatus type (e.g. a legacy
-// 'blocked' row): renders gray with the raw status word as its label.
 export function getRoomStatusConfig(status: string): RoomStatusConfig {
+    if (status === 'reserved') {
+        return {
+            label: 'Reserved',
+            icon: Bed,
+            dot: 'bg-sky-500',
+            text: 'text-sky-600',
+            badge: 'bg-sky-50 text-sky-700',
+            badgeBorder: 'border-sky-200',
+            accent: 'border-l-sky-400',
+            card: 'border-sky-200 bg-sky-50/10',
+            pulse: false,
+        }
+    }
     return ROOM_STATUS_CONFIG[status as RoomStatus] ?? {
         label: status,
         icon: Wrench,

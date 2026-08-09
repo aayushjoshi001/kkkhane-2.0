@@ -196,7 +196,7 @@ export default async function WaiterPage() {
             .from('bookings')
             .select('*')
             .eq('restaurant_id', restaurantId)
-            .eq('status', 'checked_in'),
+            .in('status', ['checked_in', 'pending']),
     ])
 
     // Ready online-delivery orders awaiting a delivery person.

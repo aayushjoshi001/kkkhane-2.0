@@ -369,7 +369,7 @@ export default function CashierClient({
     const supabaseRef = useRef(createClient())
     const [activeTab, setActiveTab] = useState<'rooms' | 'tables' | 'space' | 'billing' | 'orders'>('billing')
     const [spaceFilter, setSpaceFilter] = useState<'all' | 'available' | 'reserved' | 'occupied' | 'dirty'>('all')
-    const [roomsFilter, setRoomsFilter] = useState<'all' | 'available' | 'reserve' | 'occupied' | 'dirty' | 'closed'>('all')
+    const [roomsFilter, setRoomsFilter] = useState<'all' | 'available' | 'reserved' | 'reserve' | 'occupied' | 'dirty' | 'closed'>('all')
     const [highlightSessionId, setHighlightSessionId] = useState<string | null>(null)
 
     // Stays and Billing states
@@ -787,6 +787,28 @@ export default function CashierClient({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedBillingRoom?.id])
 
+    // Once the booking loads, check for a previous due against the guest's
+    // name/phone — a room booking always has an identity up front, unlike a
+    // table, so this can fire automatically instead of waiting on the
+    // cashier to type something in.
+    useEffect(() => {
+        setPreviousDueToAdd('')
+        setPreviousDueAmount(null)
+        if (billingStayBooking?.guest_name || billingStayBooking?.guest_phone) {
+            setPreviousDueLoading(true)
+            getCustomerOutstandingBalanceByContactAction({
+                name: billingStayBooking.guest_name || undefined,
+                phone: billingStayBooking.guest_phone || undefined,
+            }).then(res => {
+                const balance = 'data' in res ? (res.data ?? 0) : 0
+                setPreviousDueAmount(balance)
+                // Defaults to collecting the whole thing — the cashier only
+                // has to act (retype a smaller figure) for a partial payoff.
+                if (balance > 0) setPreviousDueToAdd(String(balance))
+            }).finally(() => setPreviousDueLoading(false))
+        }
+    }, [billingStayBooking?.id])
+
     // Same reset for the table billing panel — keyed on the table's id so it
     // also fires when switching straight from one table to another, not just
     // on close.
@@ -802,7 +824,30 @@ export default function CashierClient({
         setCreditCustomerPhone('')
         setCashReceivedAmount('')
         setQrReceivedAmount('')
+        setPreviousDueToAdd('')
+        setPreviousDueAmount(null)
     }, [selectedBillingTable?.id])
+
+    // A table session has no built-in customer identity, so the previous-due
+    // check only runs once the cashier types a name or phone in (see
+    // checkTablePreviousDue, wired to the lookup fields in the table panel).
+    const checkTablePreviousDue = () => {
+        const name = creditCustomerName.trim()
+        const phone = creditCustomerPhone.trim()
+        if (!name && !phone) return
+        setPreviousDueToAdd('')
+        setPreviousDueLoading(true)
+        getCustomerOutstandingBalanceByContactAction({
+            name: name || undefined,
+            phone: phone || undefined,
+        }).then(res => {
+            const balance = 'data' in res ? (res.data ?? 0) : 0
+            setPreviousDueAmount(balance)
+            // Defaults to collecting the whole thing — the cashier only has
+            // to act (retype a smaller figure) for a partial payoff.
+            if (balance > 0) setPreviousDueToAdd(String(balance))
+        }).finally(() => setPreviousDueLoading(false))
+    }
 
     // Same reset for the takeaway/delivery order billing panel — shares the
     // table panel's bargain-rate/payment-method state since only one of the
@@ -826,7 +871,11 @@ export default function CashierClient({
                 name: selectedBillingOrder.customer_name || undefined,
                 phone: selectedBillingOrder.customer_phone || undefined,
             }).then(res => {
-                setPreviousDueAmount('data' in res ? (res.data ?? 0) : 0)
+                const balance = 'data' in res ? (res.data ?? 0) : 0
+                setPreviousDueAmount(balance)
+                // Defaults to collecting the whole thing — the cashier only
+                // has to act (retype a smaller figure) for a partial payoff.
+                if (balance > 0) setPreviousDueToAdd(String(balance))
             }).finally(() => setPreviousDueLoading(false))
         }
     }, [selectedBillingOrder?.id])
@@ -1301,14 +1350,24 @@ export default function CashierClient({
             const linkedOrdersTotal = filteredLinkedOrders.reduce((sum, item) => sum + (Number(item.unit_price ?? 0) * (item.quantity || 0)), 0)
             const manualChargesTotal = billingRoomCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
             const roomSc = resolveRoomSc(room)
-            const total = calculateGrandTotal(room, booking)
+            const roomStayTotal = calculateGrandTotal(room, booking)
 
             // Advance already paid at booking
             const advancePaid = advancePaidFor(booking)
             // round2 on the subtraction, not just on `total`: the advance comes
             // back off the row as a double, so a rounded total minus it drifts
             // again, and `resolvedCash` below clamps to this figure.
-            const balanceDue = Math.max(0, round2(total - advancePaid))
+            // Previous due, folded onto this stay's balance the same way the
+            // takeaway/delivery checkout does — settled with real cash/QR
+            // alongside the room bill, never as new credit.
+            const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
+            const balanceDue = Math.max(0, round2(roomStayTotal - advancePaid)) + previousDueApplied
+            // The invoice's own `total` includes the due top-up (the receipt
+            // and the printed ticket both bill off this field), same as the
+            // table/takeaway invoices below — the room's own bill amount is
+            // still available separately as roomStayTotal for anything that
+            // needs it undiluted.
+            const total = round2(roomStayTotal + previousDueApplied)
 
             // What was handed over vs what is actually being taken: a guest can
             // hand over a round note (change goes back) or short-pay on purpose
@@ -1376,6 +1435,8 @@ export default function CashierClient({
                 advancePaid,
                 advanceMethod: booking.advance_payment_method || 'none',
                 balanceDue,
+                previousDueAmount: previousDueApplied,
+                previousDueRemaining: round2((previousDueAmount ?? 0) - previousDueApplied),
                 bookingId: booking.id,
                 roomId: room.id,
                 paymentMethod: billingPaymentMethod,
@@ -1408,7 +1469,12 @@ export default function CashierClient({
             // moved the service charge by — the exact arithmetic
             // /api/tables/checkout re-does server-side, so the split payment
             // amounts sent up always reconcile against it.
-            const total = Math.max(0, round2(getTableSessionOrdersTotal(table) + sc.delta - discountAmount))
+            // A table has no built-in customer identity, so previous due is
+            // only ever nonzero once the cashier has looked one up via
+            // checkTablePreviousDue — same cash/QR-only rule as the other
+            // billing types.
+            const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
+            const total = Math.max(0, round2(getTableSessionOrdersTotal(table) + sc.delta - discountAmount)) + previousDueApplied
 
             const cashGivenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashReceivedAmount.trim() !== '' ? parseFloat(cashReceivedAmount) : null
             const cashTakenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashTakenAmount.trim() !== '' ? parseFloat(cashTakenAmount) : null
@@ -1441,8 +1507,8 @@ export default function CashierClient({
                 type: 'table',
                 id: table.id,
                 label: `Table ${table.label}`,
-                guestName: 'Table Guest',
-                guestPhone: null,
+                guestName: creditCustomerName.trim() || 'Table Guest',
+                guestPhone: creditCustomerPhone.trim() || null,
                 checkIn: table.activeSession.opened_at,
                 checkOut: new Date().toISOString(),
                 nights: 0,
@@ -1459,6 +1525,8 @@ export default function CashierClient({
                 total,
                 discountAmount,
                 discountReason: discountAmount > 0 ? tableDiscountReason.trim() : '',
+                previousDueAmount: previousDueApplied,
+                previousDueRemaining: round2((previousDueAmount ?? 0) - previousDueApplied),
                 sessionId: table.activeSession.id,
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
@@ -1468,8 +1536,8 @@ export default function CashierClient({
                 creditPaid: resolvedCredit,
                 overpaid,
                 qrCodeId: (resolvedQr > 0) ? (billingQrCodeId || (qrCodes.length === 1 ? qrCodes[0].id : undefined)) : undefined,
-                customerName: undefined,
-                customerPhone: undefined,
+                customerName: creditCustomerName.trim() || undefined,
+                customerPhone: creditCustomerPhone.trim() || undefined,
             }
         } else {
             const order: UnpaidOrder = item
@@ -1538,6 +1606,7 @@ export default function CashierClient({
                 discountAmount,
                 discountReason: discountAmount > 0 ? tableBargainReason.trim() : '',
                 previousDueAmount: previousDueApplied,
+                previousDueRemaining: round2((previousDueAmount ?? 0) - previousDueApplied),
                 paymentMethod: billingPaymentMethod,
                 cashPaid: resolvedCash,
                 cashGiven: resolvedCashGiven,
@@ -1590,12 +1659,18 @@ export default function CashierClient({
     const finalizeSettlementConfirm = () => {
         if (!pendingInvoice) return
         const d = pendingInvoice.data
+        // A previous-due collection needs the same customer identity a credit
+        // sale does (it posts to the same receivable account), so it keeps
+        // name/phone on the invoice even when this settlement has no credit
+        // portion of its own — otherwise a 'both' (cash+QR) settlement that
+        // only carries a previous-due top-up would wipe them right here.
+        const needsIdentity = d.creditPaid > 0.01 || (d.previousDueAmount ?? 0) > 0.01
         const finalData = {
             ...d,
-            guestName: d.creditPaid > 0.01 ? (creditCustomerName.trim() || d.guestName) : d.guestName,
-            guestPhone: d.creditPaid > 0.01 ? (creditCustomerPhone.trim() || d.guestPhone) : d.guestPhone,
-            customerName: d.creditPaid > 0.01 ? creditCustomerName.trim() : undefined,
-            customerPhone: d.creditPaid > 0.01 ? creditCustomerPhone.trim() : undefined,
+            guestName: needsIdentity ? (creditCustomerName.trim() || d.guestName) : d.guestName,
+            guestPhone: needsIdentity ? (creditCustomerPhone.trim() || d.guestPhone) : d.guestPhone,
+            customerName: needsIdentity ? creditCustomerName.trim() : undefined,
+            customerPhone: needsIdentity ? creditCustomerPhone.trim() : undefined,
         }
         setShowSettlementConfirm(false)
         setPendingInvoice(null)
@@ -1804,6 +1879,7 @@ export default function CashierClient({
                         discount_reason: invoice.discountReason,
                         extra_hour_charge: invoice.extraHourCharge || 0,
                         service_charge_override: invoice.serviceChargeOverride,
+                        previous_due_amount: invoice.previousDueAmount || 0,
                     })
                 })
                 const data = await res.json()
@@ -1842,6 +1918,7 @@ export default function CashierClient({
                         service_charge_override: invoice.serviceChargeOverride,
                         customer_name: invoice.customerName,
                         customer_phone: invoice.customerPhone,
+                        previous_due_amount: invoice.previousDueAmount || 0,
                     })
                 })
                 const data = await res.json()
@@ -1973,13 +2050,28 @@ export default function CashierClient({
 
     const roomsCounts = useMemo(() => {
         let all = rooms.length
-        let available = rooms.filter(r => r.status === 'available').length
-        let reserve = 0 // dummy count for reserve status
-        let occupied = rooms.filter(r => r.status === 'occupied').length
-        let dirty = rooms.filter(r => r.status === 'dirty').length
-        let closed = rooms.filter(r => r.status === 'maintenance').length
-        return { all, available, reserve, occupied, dirty, closed }
-    }, [rooms])
+        let available = 0
+        let reserved = 0
+        let occupied = 0
+        let dirty = 0
+        let closed = 0
+
+        for (const r of rooms) {
+            const b = (bookings || []).find(bk => bk.room_id === r.id && (bk.status === 'checked_in' || bk.status === 'pending'))
+            if (b?.status === 'pending') {
+                reserved++
+            } else if (r.status === 'occupied' || b?.status === 'checked_in') {
+                occupied++
+            } else if (r.status === 'dirty') {
+                dirty++
+            } else if (r.status === 'maintenance') {
+                closed++
+            } else {
+                available++
+            }
+        }
+        return { all, available, reserved, occupied, dirty, closed }
+    }, [rooms, bookings])
 
     const billingStayBookingRef = useRef(billingStayBooking)
     useEffect(() => {
@@ -2307,12 +2399,12 @@ export default function CashierClient({
                     <div className="flex flex-col gap-4 w-full">
                         {/* Sticky Sub-tabs / Filters for Rooms */}
                         <div className="sticky top-28 z-20 bg-canvas -mx-3 px-3 md:mx-0 md:px-0 py-2 border-b border-hairline flex flex-col md:flex-row items-center w-full justify-between gap-3 shadow-sm">
-                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2.5 w-full md:w-auto flex-1">
+                            <div className="grid grid-cols-2 sm:grid-cols-6 gap-1.5 sm:gap-2 w-full md:w-auto flex-1">
                                 {([
                                     { key: 'all', label: 'ALL', count: roomsCounts.all },
                                     { key: 'available', label: 'Available', count: roomsCounts.available },
-                                    { key: 'reserve', label: 'Reserve', count: roomsCounts.reserve },
-                                    { key: 'occupied', label: 'Occupied', count: roomsCounts.occupied },
+                                    { key: 'reserved', label: 'Reserved', count: roomsCounts.reserved },
+                                    { key: 'occupied', label: 'Booked', count: roomsCounts.occupied },
                                     { key: 'dirty', label: 'Dirty', count: roomsCounts.dirty },
                                     { key: 'closed', label: 'Closed', count: roomsCounts.closed }
                                 ] as const).map(({ key, label, count }) => {
@@ -2320,7 +2412,7 @@ export default function CashierClient({
                                     const activeColors = {
                                         all: 'bg-[var(--color-primary)] text-white',
                                         available: 'bg-emerald-500 text-white',
-                                        reserve: 'bg-blue-500 text-white',
+                                        reserved: 'bg-sky-500 text-white',
                                         occupied: 'bg-indigo-500 text-white',
                                         dirty: 'bg-amber-500 text-white',
                                         closed: 'bg-rose-500 text-white',
@@ -3244,6 +3336,43 @@ export default function CashierClient({
                                     )}
                                 </div>
 
+                                {/* Previous due — surfaced automatically once the guest's booking
+                                    loads (see the billingStayBooking effect above), so the cashier
+                                    sees it before asking whether to add it to this bill. Only ever
+                                    settled with real cash/QR, never new credit. */}
+                                {!previousDueLoading && !!previousDueAmount && previousDueAmount > 0 && (() => {
+                                    const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
+                                    return (
+                                        <div className="border-2 border-rose-200 rounded-2xl p-4 space-y-3 bg-rose-50/60 shadow-sm">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-xs font-black text-rose-800 uppercase tracking-wider">Previous Due</p>
+                                                    <p className="text-[10px] text-rose-700/70 font-semibold">
+                                                        {billingStayBooking?.guest_name || 'This guest'} owes {money(previousDueAmount)} from before
+                                                    </p>
+                                                </div>
+                                                <div className="relative w-32">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-700">Rs.</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={previousDueAmount}
+                                                        placeholder="0.00"
+                                                        value={previousDueToAdd}
+                                                        onChange={e => setPreviousDueToAdd(e.target.value)}
+                                                        className="w-full pl-7 pr-2 py-2 border-2 border-rose-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-rose-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                            {previousDueApplied > 0 && (
+                                                <p className="text-[10px] font-bold text-rose-700">
+                                                    Adding {money(previousDueApplied)} to this bill — settle with cash or QR. Remaining due after: {money(round2(previousDueAmount - previousDueApplied))}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )
+                                })()}
+
                                 {/* Payment Method Selector */}
                                 {irdSyncEnabled && (
                                 <div className="pt-4">
@@ -3288,7 +3417,9 @@ export default function CashierClient({
                                         </button>
                                         <button
                                             onClick={() => setBillingPaymentMethod('credit')}
-                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                            disabled={Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0)) > 0}
+                                            title={Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0)) > 0 ? 'Previous due must be settled with cash or QR, not credit' : undefined}
+                                            className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
                                                 billingPaymentMethod === 'credit'
                                                     ? 'border-brand-500 bg-brand-50 text-brand-600'
                                                     : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
@@ -3303,7 +3434,8 @@ export default function CashierClient({
                                         const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
                                         const advancePaid = advancePaidFor(billingStayBooking)
                                         const netBalance = round2(grandTotal - advancePaid)
-                                        const balanceDue = Math.max(0, netBalance)
+                                        const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
+                                        const balanceDue = Math.max(0, netBalance) + previousDueApplied
                                         return renderPaymentInputsAndCalculator(balanceDue)
                                     })()}
                                 </div>
@@ -3315,7 +3447,8 @@ export default function CashierClient({
                                         const grandTotal = calculateGrandTotal(selectedBillingRoom, billingStayBooking)
                                         const advancePaid = advancePaidFor(billingStayBooking)
                                         const netBalance = round2(grandTotal - advancePaid)
-                                        const balanceDue = Math.max(0, netBalance)
+                                        const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
+                                        const balanceDue = Math.max(0, netBalance) + previousDueApplied
                                         const returnAmount = netBalance < 0 ? Math.abs(netBalance) : 0
                                         // Settled earlier and kept the room: what is left is to
                                         // release it, unless something was charged since. The
@@ -3356,6 +3489,12 @@ export default function CashierClient({
                                                         </span>
                                                         <span className="text-sm font-black text-emerald-600 tabular-nums">− {money(advancePaid)}</span>
                                                     </button>
+                                                )}
+                                                {previousDueApplied > 0 && (
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold text-rose-600 uppercase">Previous Due Added</span>
+                                                        <span className="text-sm font-black text-rose-600 tabular-nums">+ {money(previousDueApplied)}</span>
+                                                    </div>
                                                 )}
                                                 <div className="flex items-center justify-between pt-1 border-t border-dashed border-hairline">
                                                     <div>
@@ -3496,6 +3635,10 @@ export default function CashierClient({
                                 const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
                                 const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > billableSubtotal
                                 const finalCalculatedTotal = Math.max(0, round2(billableSubtotal - tableDiscountAmount))
+                                // A table has no built-in customer identity, so this is only ever
+                                // nonzero once the cashier has looked one up below.
+                                const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
+                                const tableBalanceDue = finalCalculatedTotal + previousDueApplied
 
                                 const sessionOrders = getTableSessionOrders(selectedBillingTable)
                                 const sessionTax = sessionOrders.reduce((sum, o) => sum + (Number(o.tax_amount) || 0), 0)
@@ -3620,6 +3763,72 @@ export default function CashierClient({
                                             )}
                                         </div>
 
+                                        {/* Customer lookup — a table has no built-in identity, so the
+                                            cashier can enter a name/phone here to check for a previous
+                                            due before choosing how to settle. The same fields double as
+                                            the credit customer details if Credit ends up chosen below. */}
+                                        <div className="border border-hairline rounded-2xl p-4 space-y-3 bg-surface-muted/30">
+                                            <p className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Customer (optional — check previous due)</p>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Name"
+                                                    value={creditCustomerName}
+                                                    onChange={e => setCreditCustomerName(e.target.value)}
+                                                    className="px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                />
+                                                <input
+                                                    type="tel"
+                                                    placeholder="Phone"
+                                                    value={creditCustomerPhone}
+                                                    onChange={e => setCreditCustomerPhone(e.target.value)}
+                                                    className="px-3 py-2 border border-hairline rounded-xl text-xs font-bold bg-surface focus:outline-none focus:border-brand-500"
+                                                />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={checkTablePreviousDue}
+                                                disabled={(!creditCustomerName.trim() && !creditCustomerPhone.trim()) || previousDueLoading}
+                                                className="text-[10px] font-black uppercase tracking-wider text-brand-600 hover:text-brand-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                                            >
+                                                {previousDueLoading ? 'Checking…' : 'Check Previous Due'}
+                                            </button>
+                                        </div>
+
+                                        {/* Previous due — only ever shown once a balance is actually
+                                            found, and only ever settled with real cash/QR (never
+                                            credit, that would just be borrowing to pay off the same
+                                            borrowing). */}
+                                        {!previousDueLoading && !!previousDueAmount && previousDueAmount > 0 && (
+                                            <div className="border-2 border-rose-200 rounded-2xl p-4 space-y-3 bg-rose-50/60 shadow-sm">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-xs font-black text-rose-800 uppercase tracking-wider">Previous Due</p>
+                                                        <p className="text-[10px] text-rose-700/70 font-semibold">
+                                                            {creditCustomerName.trim() || 'This customer'} owes {money(previousDueAmount)} from before
+                                                        </p>
+                                                    </div>
+                                                    <div className="relative w-32">
+                                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-700">Rs.</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max={previousDueAmount}
+                                                            placeholder="0.00"
+                                                            value={previousDueToAdd}
+                                                            onChange={e => setPreviousDueToAdd(e.target.value)}
+                                                            className="w-full pl-7 pr-2 py-2 border-2 border-rose-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-rose-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                {previousDueApplied > 0 && (
+                                                    <p className="text-[10px] font-bold text-rose-700">
+                                                        Adding {money(previousDueApplied)} to this bill — settle with cash or QR. Remaining due after: {money(round2(previousDueAmount - previousDueApplied))}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {/* Payment Method Selector */}
                                         {irdSyncEnabled && (
                                         <div>
@@ -3664,7 +3873,9 @@ export default function CashierClient({
                                                 </button>
                                                 <button
                                                     onClick={() => setBillingPaymentMethod('credit')}
-                                                    className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 ${
+                                                    disabled={previousDueApplied > 0}
+                                                    title={previousDueApplied > 0 ? 'Previous due must be settled with cash or QR, not credit' : undefined}
+                                                    className={`flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-2xl border-2 text-xs font-bold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
                                                         billingPaymentMethod === 'credit'
                                                             ? 'border-brand-500 bg-brand-50 text-brand-600'
                                                             : 'border-hairline bg-surface text-ink-muted hover:border-brand-300 hover:text-brand-500'
@@ -3675,7 +3886,7 @@ export default function CashierClient({
                                                 </button>
                                             </div>
 
-                                            {renderPaymentInputsAndCalculator(finalCalculatedTotal)}
+                                            {renderPaymentInputsAndCalculator(tableBalanceDue)}
                                         </div>
                                         )}
                                     </div>
@@ -3688,7 +3899,8 @@ export default function CashierClient({
                             const billableSubtotal = round2(getTableSessionOrdersTotal(selectedBillingTable) + resolveTableServiceCharge(selectedBillingTable).delta)
                             const tableDiscountAmount = tableDiscount.trim() !== '' ? parseFloat(tableDiscount) || 0 : 0
                             const tableDiscountInvalid = tableDiscountAmount < 0 || tableDiscountAmount > billableSubtotal
-                            const tableTotal = Math.max(0, round2(billableSubtotal - tableDiscountAmount))
+                            const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
+                            const tableTotal = Math.max(0, round2(billableSubtotal - tableDiscountAmount)) + previousDueApplied
 
                             return (
                                 <div className="border-t border-hairline px-6 py-4 flex-shrink-0 bg-surface flex items-center justify-between">

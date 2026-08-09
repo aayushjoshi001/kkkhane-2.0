@@ -295,6 +295,16 @@ export default function InvoiceReceipt({
                             <span className="tabular-nums">{money(invoice.creditPaid)}</span>
                         </div>
                     )}
+                    {/* What's left on the old balance after this payment's
+                        PREVIOUS DUE line (above, under the subtotal) is
+                        collected — shown regardless of payment method, since a
+                        due can be settled with plain cash or QR too. */}
+                    {!!invoice.previousDueAmount && invoice.previousDueAmount > 0.01 && (
+                        <div className="flex justify-between font-bold" style={{ color: '#000' }}>
+                            <span>· Remaining Due</span>
+                            <span className="tabular-nums">{money(invoice.previousDueRemaining ?? 0)}</span>
+                        </div>
+                    )}
                 </div>
             )}
 

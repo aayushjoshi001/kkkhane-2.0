@@ -112,7 +112,7 @@ export default async function CashierPage() {
             .from('bookings')
             .select('*')
             .eq('restaurant_id', restaurantId)
-            .eq('status', 'checked_in'),
+            .in('status', ['checked_in', 'pending']),
 
         // ── Manual Entry seed data (rendered inline in the dashboard) ──────────
         adminSupabase
