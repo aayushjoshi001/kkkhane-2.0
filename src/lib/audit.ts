@@ -21,6 +21,7 @@ export type AuditAction =
     | 'staff_invite_accepted'
     | 'staff_removed'
     | 'shift_corrected'
+    | 'shift_cash_reconciled'
     | 'report_generated'
     | 'booking_checked_out'
     | 'booking_room_changed'

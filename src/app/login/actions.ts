@@ -2,6 +2,7 @@
 
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
+import { ensureAutoClockIn } from '@/lib/autoClockIn'
 import { redirect } from 'next/navigation'
 import { checkRateLimit, RATE_LIMIT_RULES } from '@/lib/ratelimit'
 import { ROLE_LANDING } from '@/lib/roleLanding'
@@ -254,5 +255,8 @@ export async function loginAction(prevState: { error: string | null }, formData:
     // getCurrentUser() already redirects to /onboarding or /suspended as needed,
     // so there's no need to re-derive role/restaurant state here by hand.
     const currentUser = await getCurrentUser()
+    if (currentUser.id && currentUser.restaurantId) {
+        await ensureAutoClockIn(currentUser.id, currentUser.restaurantId, { forceNewShift: true })
+    }
     redirect(ROLE_LANDING[currentUser.role] || '/admin/dashboard')
 }

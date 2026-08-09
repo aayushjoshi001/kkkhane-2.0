@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { getOptionalUser } from '@/lib/auth'
+import { ensureAutoClockIn } from '@/lib/autoClockIn'
 import { ROLE_LANDING } from '@/lib/roleLanding'
 
 // Handles the redirect back from an OAuth provider (Google, etc). Supabase
@@ -53,6 +54,10 @@ export async function GET(request: Request) {
         // survive. Sending them on would land them on a protected page that
         // bounces straight back here.
         return NextResponse.redirect(`${origin}/login?error=oauth`)
+    }
+
+    if (currentUser.id && currentUser.restaurantId) {
+        await ensureAutoClockIn(currentUser.id, currentUser.restaurantId)
     }
 
     // Where they end up is decided by what they actually have, not by what the

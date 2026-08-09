@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { signOutAndRedirect } from '@/lib/auth/signOut'
 
 interface IdleTimeoutProps {
     timeoutMs?: number // Default to 60 seconds
@@ -11,7 +11,6 @@ interface IdleTimeoutProps {
 export default function IdleTimeout({ timeoutMs = 60000 }: IdleTimeoutProps) {
     const router = useRouter()
     const timeoutRef = useRef<NodeJS.Timeout | null>(null)
-    const supabase = createClient()
 
     const resetTimeout = () => {
         if (timeoutRef.current) {
@@ -19,10 +18,8 @@ export default function IdleTimeout({ timeoutMs = 60000 }: IdleTimeoutProps) {
         }
         
         timeoutRef.current = setTimeout(async () => {
-            // Auto-lock the POS terminal
-            await supabase.auth.signOut()
-            router.refresh()
-            router.push('/login?message=auto_locked')
+            // Auto-lock the POS terminal and auto clock-out active shift
+            await signOutAndRedirect(router)
         }, timeoutMs)
     }
 

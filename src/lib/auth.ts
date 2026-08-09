@@ -8,6 +8,7 @@ import { unstable_cache } from 'next/cache'
 import { createServerClient, createAdminClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import type { RoleName } from '@/types/database'
+import { ensureAutoClockIn } from '@/lib/autoClockIn'
 
 export interface CurrentUser {
     id: string
@@ -149,6 +150,8 @@ async function _getCurrentUser(options?: { allowSuspended?: boolean }): Promise<
             else redirect('/suspended')
         }
 
+        await ensureAutoClockIn(claims.sub, claims.restaurant_id)
+
         return {
             id: claims.sub,
             email: claims.email,
@@ -212,6 +215,8 @@ async function _getCurrentUser(options?: { allowSuspended?: boolean }): Promise<
         if (roleName === 'owner' || roleName === 'manager') redirect('/admin/billing/packages')
         else redirect('/suspended')
     }
+
+    await ensureAutoClockIn(claims.sub, userData.restaurant_id)
 
     return {
         id: claims.sub,
