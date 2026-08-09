@@ -5,10 +5,11 @@ import { X, Search, Plus, Minus, Trash2, Loader2, ShoppingCart, Utensils, Messag
 import Modal from '@/components/ui/Modal'
 import { getStaffMenu, placeStaffOrder, placeRoomOrderDirect } from '@/app/(staff)/waiter/actions'
 import { createTakeoutOrder, createDeliveryOrder } from '@/app/api/takeout/actions'
+import { getCustomerOutstandingBalanceByContactAction } from '@/app/(admin)/admin/vouchers/actions'
 import { toast } from 'react-hot-toast'
 import Select from '@/components/ui/Select'
 
-import { matchesMenuSearch } from '@/lib/utils'
+import { matchesMenuSearch, formatCurrency, round2 } from '@/lib/utils'
 
 interface Modifier {
     id: string
@@ -115,6 +116,17 @@ export default function QuickOrderModal({
     const [takeoutCustomerPhone, setTakeoutCustomerPhone] = useState('')
     const [deliveryAddress, setDeliveryAddress] = useState('')
 
+    // Previous due — a heads-up only, this modal never collects payment (no
+    // cash/QR/credit step here, and the order's own total is computed by the
+    // placement RPC, not client-editable). The figure the cashier settles on
+    // here is for their own reference; it gets entered again — defaulted to
+    // the full remaining balance, same as this — at the actual settlement
+    // step in the Takeaway/Delivery billing panel, which is where the money
+    // and the customer's ledger are actually touched.
+    const [previousDueAmount, setPreviousDueAmount] = useState<number | null>(null)
+    const [previousDueToAdd, setPreviousDueToAdd] = useState('')
+    const [previousDueLoading, setPreviousDueLoading] = useState(false)
+
     // Reset customer info on modal close or open
     useEffect(() => {
         if (!isOpen) {
@@ -122,10 +134,34 @@ export default function QuickOrderModal({
             setTakeoutCustomerPhone('')
             setDeliveryAddress('')
             setCart([])
+            setPreviousDueAmount(null)
+            setPreviousDueToAdd('')
+            setPreviousDueLoading(false)
         } else {
             setOrderType(isManualTakeoutDelivery ? 'takeout' : 'dine_in')
         }
     }, [isOpen, isManualTakeoutDelivery])
+
+    const checkPreviousDue = () => {
+        const name = takeoutCustomerName.trim()
+        const phone = takeoutCustomerPhone.trim()
+        if (!name && !phone) return
+        setPreviousDueAmount(null)
+        setPreviousDueToAdd('')
+        setPreviousDueLoading(true)
+        getCustomerOutstandingBalanceByContactAction({
+            name: name || undefined,
+            phone: phone || undefined,
+        }).then(res => {
+            const balance = 'data' in res ? (res.data ?? 0) : 0
+            setPreviousDueAmount(balance)
+            // Defaults to the whole balance — the cashier only has to act
+            // (retype a smaller figure) for a partial payoff.
+            if (balance > 0) setPreviousDueToAdd(String(balance))
+        }).finally(() => setPreviousDueLoading(false))
+    }
+
+    const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
 
     // Modifier/Variation Configuration State
     const [configuringItem, setConfiguringItem] = useState<MenuItem | null>(null)
@@ -1239,6 +1275,53 @@ export default function QuickOrderModal({
                                     />
                                 </div>
                             </div>
+
+                            <button
+                                type="button"
+                                onClick={checkPreviousDue}
+                                disabled={(!takeoutCustomerName.trim() && !takeoutCustomerPhone.trim()) || previousDueLoading}
+                                className="text-[10px] font-black uppercase tracking-wider text-brand-600 hover:text-brand-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                {previousDueLoading ? 'Checking…' : 'Check Previous Due'}
+                            </button>
+
+                            {/* Same "how much to add" control as the table/room
+                                billing panels. This modal never collects payment
+                                itself though — the figure here is the cashier's
+                                own reference, decided again (defaulted to the
+                                full balance, same as here) at the actual
+                                settlement step in the Takeaway/Delivery billing
+                                panel, which is where the money and the
+                                customer's ledger are actually touched. */}
+                            {!previousDueLoading && !!previousDueAmount && previousDueAmount > 0 && (
+                                <div className="border-2 border-rose-200 rounded-xl p-3 space-y-2 bg-rose-50/60">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-xs font-black text-rose-800 uppercase tracking-wider">Previous Due</p>
+                                            <p className="text-[10px] text-rose-700/80 font-semibold mt-0.5">
+                                                {takeoutCustomerName.trim() || 'This customer'} owes {formatCurrency(previousDueAmount)} from before
+                                            </p>
+                                        </div>
+                                        <div className="relative w-28 shrink-0">
+                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-700">Rs.</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max={previousDueAmount}
+                                                placeholder="0.00"
+                                                value={previousDueToAdd}
+                                                onChange={e => setPreviousDueToAdd(e.target.value)}
+                                                className="w-full pl-7 pr-2 py-2 border-2 border-rose-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-rose-500"
+                                            />
+                                        </div>
+                                    </div>
+                                    {previousDueApplied > 0 && (
+                                        <p className="text-[10px] font-bold text-rose-700">
+                                            {formatCurrency(previousDueApplied)} to collect with this bill — settle with cash or QR at billing. Remaining due after: {formatCurrency(round2(previousDueAmount - previousDueApplied))}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="space-y-1">
                                 <label className="block text-[9px] font-black text-amber-700 uppercase">
