@@ -42,6 +42,8 @@ export interface ActiveInvoice {
     roomType?: string
     guestName: string
     guestPhone?: string | null
+    /** Address taken at check-in, printed under the phone when one was given. */
+    guestAddress?: string | null
     /**
      * Staff member settling this bill, printed so two cashiers working the same
      * counter produce distinguishable receipts — the paper counterpart of the
@@ -122,6 +124,7 @@ export function buildInvoiceTicket(
     b.align('left')
     b.line(`GUEST: ${invoice.guestName || 'Walk-in Customer'}`)
     if (invoice.guestPhone) b.line(`PHONE: ${invoice.guestPhone}`)
+    if (invoice.guestAddress) b.line(`ADDRESS: ${invoice.guestAddress}`)
     b.line(`REF: ${invoice.label.toUpperCase()}`)
     if (invoice.roomType) b.line(`TYPE: ${invoice.roomType}`)
     if (invoice.cashierName?.trim()) b.line(`CASHIER: ${invoice.cashierName.trim()}`)

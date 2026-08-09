@@ -139,6 +139,11 @@ export const DEFAULT_ON_FEATURES = [
     'printBillEnabled',
     'showInvoiceEnabled',
     'kdsEnabled',
+    // The kitchen gets both halves out of the box: a screen to work from and a
+    // ticket at the pass. They used to be exclusive, so a tenant provisioned
+    // without the keys silently had no auto-print at all and no way to notice —
+    // placing an order simply produced no paper and no error.
+    'kotEnabled',
 ] as const
 
 export type DefaultOnFeature = typeof DEFAULT_ON_FEATURES[number]
@@ -340,7 +345,19 @@ const MODE_FEATURES: Record<BusinessMode, {
 export function buildFeaturesV2(tier: Tier, mode: BusinessMode) {
     const modeOverlay = { ...MODE_FEATURES[mode] }
 
-    return {
+    // resolveFeatureDefaults has the last word, so every DEFAULT_ON_FEATURE is
+    // written out even if nothing below names it. Three never were —
+    // manualEntryEnabled, printBillEnabled and showInvoiceEnabled — so each new
+    // tenant was created already missing them, which is exactly the drift the
+    // 20260804083527 backfill had to repair across every existing restaurant.
+    // Repairing the rows without repairing this would have recreated it on the
+    // next signup.
+    //
+    // It only fills absent keys, so a mode that deliberately switches one off
+    // (a hotel has splitBillingEnabled false) still wins. Adding a flag to
+    // DEFAULT_ON_FEATURES now provisions it here automatically rather than
+    // needing a matching edit and, later, another backfill.
+    return resolveFeatureDefaults({
         ...TIER_FEATURES[tier],
         // Written explicitly at provisioning rather than left absent — an
         // absent flag is what the server and client used to disagree about.
@@ -359,7 +376,13 @@ export function buildFeaturesV2(tier: Tier, mode: BusinessMode) {
         geofenceRadiusMeters: 100,
         // Phase 3: customers may request a waiter open their table session.
         selfOrderRequestEnabled: true,
-    }
+        // Both halves of the kitchen, on by default. These were absent from
+        // this object entirely, so every restaurant provisioned since launch
+        // stored neither key — and absent kotEnabled reads as off, which is
+        // why a new tenant's KOT never printed until a super admin noticed.
+        kotEnabled: true,
+        kdsEnabled: true,
+    })
 }
 
 /**
@@ -371,25 +394,44 @@ export function buildFeaturesV2(tier: Tier, mode: BusinessMode) {
  * provisioning had written `false` — the customer had paid for modules the app
  * still refused to show, and no screen could turn them on.
  *
- * The business mode still wins over the tier: a hotel does not get takeout
- * because it was upgraded. Behavioural preferences outside TIER_ENTITLEMENTS
- * are never touched.
+ * Business mode is deliberately not consulted here. It used to override the
+ * tier outright — a hotel could never hold takeout, because every plan change
+ * reset the flag from MODE_FEATURES — which made the mode a permanent
+ * restriction rather than the starting point it is meant to be. Mode now only
+ * seeds the flags once, in buildFeaturesV2 at provisioning; after that the
+ * tenant owns them. A hotel that also runs a restaurant is the ordinary case,
+ * not an exception to code around.
+ *
+ * Behavioural preferences outside TIER_ENTITLEMENTS are never touched.
  */
 export function applyTierEntitlements<T extends Record<string, unknown>>(
     features: T,
     tier: Tier | string | null | undefined,
-    mode: BusinessMode,
+    previousTier: Tier | string | null | undefined,
 ): T & Record<TierEntitlement, boolean> {
-    const modeOverlay = MODE_FEATURES[mode] as Record<string, unknown>
     const resolved = { ...features } as T & Record<TierEntitlement, boolean>
     for (const key of TIER_ENTITLEMENTS) {
-        // A mode that has an opinion about this flag keeps it — the overlay is
-        // about what the business physically does, not what it has bought.
-        if (modeOverlay[key] !== undefined) {
-            resolved[key] = !!modeOverlay[key]
+        // Entitlement outranks preference: a plan that does not cover the
+        // capability revokes it, however the tenant had it set.
+        if (!tierIncludesEntitlement(tier, key)) {
+            resolved[key] = false
             continue
         }
-        resolved[key] = tierIncludesEntitlement(tier, key)
+        // Newly covered by this plan. A stored `false` here cannot have been a
+        // decision — the old plan gave the tenant nothing to decide — so this
+        // is the grant that stops "set to the package but the features still
+        // don't work" after an upgrade.
+        if (!tierIncludesEntitlement(previousTier, key)) {
+            resolved[key] = true
+            continue
+        }
+        // Covered before and still covered, so whatever is stored is the
+        // tenant's own choice and a plan change is not the place to overrule
+        // it. This used to reassign every entitlement from the tier outright,
+        // so a restaurant that had deliberately switched loyalty off got it
+        // back on the next plan change.
+        const stored = features[key]
+        resolved[key] = stored === undefined ? true : !!stored
     }
     return resolved
 }

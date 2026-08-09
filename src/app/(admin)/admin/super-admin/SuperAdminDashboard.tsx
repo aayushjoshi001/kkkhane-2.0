@@ -229,12 +229,9 @@ export default function SuperAdminDashboard({
 
     const handleFeatureToggle = async (id: string, key: 'kotEnabled' | 'kdsEnabled', enabled: boolean) => {
         setLoading(id)
-        let updatePayload: any = { [key]: enabled }
-        if (key === 'kotEnabled' && enabled) {
-            updatePayload.kdsEnabled = false
-        } else if (key === 'kdsEnabled' && enabled) {
-            updatePayload.kotEnabled = false
-        }
+        // Independent switches — a restaurant may run the screen, the printer,
+        // both (the default) or neither.
+        const updatePayload: any = { [key]: enabled }
 
         const res = await updateRestaurantFeatures(id, updatePayload)
         if (res.success) {
@@ -452,7 +449,6 @@ export default function SuperAdminDashboard({
                                     )}
                                 </div>
                                 <p className="text-sm text-ink-subtle mt-1">
-                                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                                     {restaurant.users?.email || 'No owner'} •
                                     Staff: {isUnlimited(restaurant.max_staff) ? 'Unlimited' : restaurant.max_staff} •
                                     Items: {isUnlimited(restaurant.max_menu_items) ? 'Unlimited' : restaurant.max_menu_items}

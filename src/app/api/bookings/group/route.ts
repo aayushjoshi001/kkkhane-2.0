@@ -55,7 +55,7 @@ export async function GET(req: Request) {
 
         const { data: members } = await supabase
             .from('bookings')
-            .select('id, room_id, check_in, check_out, checked_out_at, status, paid_amount, discount_amount, rooms:room_id(room_number)')
+            .select('id, room_id, check_in, check_out, checked_out_at, status, paid_amount, discount_amount, bill_settled_at, rooms:room_id(room_number)')
             .eq('group_id', booking.group_id)
             .neq('status', 'cancelled')
             .order('created_at', { ascending: true })
@@ -79,6 +79,39 @@ export async function GET(req: Request) {
         })
 
         const stayCostFor = new Map(folio.rooms.map(r => [r.bookingId, r]))
+
+        // What each room owes on its own, so the till can offer to settle one of
+        // them without guessing the figure.
+        //
+        // This is the same rule the checkout route applies under
+        // settle_member_only: one stay's own nights, its own room charges and
+        // the orders carrying its booking_id. Anything belonging to the
+        // reservation rather than to a room is not in here and stays on the
+        // folio for whoever settles last, which is why these will usually sum to
+        // less than the combined total — that difference is the point, not a
+        // rounding error.
+        //
+        // Computed per member rather than divided out of the combined folio,
+        // because the folio is not a sum of parts: service charge and VAT are
+        // rate-driven and have to be worked out against each room's own items.
+        const memberFolios = await Promise.all(members.map(m =>
+            computeFolioForStays(supabase, {
+                restaurantId: booking.restaurant_id,
+                stays: [{
+                    bookingId: m.id as string,
+                    roomId: m.room_id as string,
+                    checkIn: m.check_in as string,
+                    checkOut: m.check_out as string,
+                    checkedOutAt: m.checked_out_at as string | null,
+                    status: m.status as string | null,
+                }],
+                sessionId: null,
+                discountAmount: 0,
+            }).catch(() => null)
+        ))
+        const ownTotalFor = new Map(
+            members.map((m, i) => [m.id as string, memberFolios[i]?.total ?? null])
+        )
 
         return NextResponse.json({
             success: true,
@@ -107,6 +140,11 @@ export async function GET(req: Request) {
                     // checked_out_at, so the figures above stop growing.
                     departed: m.status === 'checked_out',
                     departedAt: (m.checked_out_at as string | null) ?? null,
+                    // This room's own bill, if settled on its own. Null when the
+                    // folio for it could not be computed, which the till reads as
+                    // "offer the combined settle only".
+                    ownTotal: ownTotalFor.get(m.id as string) ?? null,
+                    settled: !!m.bill_settled_at,
                 }
             }),
             stayCost: folio.stayCost,

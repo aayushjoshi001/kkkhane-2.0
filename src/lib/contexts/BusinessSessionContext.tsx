@@ -121,9 +121,10 @@ export function BusinessSessionProvider({
     // the front desk and an "Open Business Day" button that refuses with an
     // error they cannot act on, and a quiet day fires no events at all.
     //
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetching the
-    // authoritative answer on mount is the point; the state lands in a promise
-    // callback, not synchronously in the effect body.
+    // Fetching the authoritative answer on mount is the point; the state lands
+    // in a promise callback, not synchronously in the effect body — which is
+    // why set-state-in-effect does not fire here and the disable it once
+    // carried was doing nothing.
     useEffect(() => {
         refreshOpenSession()
     }, [refreshOpenSession])

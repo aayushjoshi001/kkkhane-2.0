@@ -215,6 +215,12 @@ export default function CashierClient({
     const showInvoiceEnabled = useFeatureEnabled('showInvoiceEnabled')
     const generateInvoiceEnabled = useFeatureEnabled('generateInvoiceEnabled')
     const irdSyncEnabled = useFeatureEnabled('irdSyncEnabled')
+    // Read the same way as the five above, and as the sidebar link and the page
+    // gate for /admin/manual-entry. These two were the one pair in this file
+    // still read straight off the context with a local `?? true`, which is a
+    // second copy of DEFAULT_ON_FEATURES that nothing keeps in step.
+    const financeEnabled = useFeatureEnabled('financeEnabled')
+    const manualEntryEnabled = useFeatureEnabled('manualEntryEnabled')
     const { formatDateTime, calendar } = useDates()
     const { print: printInvoice } = usePrinter('invoice')
     const { print: printKot, networkPrinter: kotNetworkPrinter } = usePrinter('kot')
@@ -391,12 +397,47 @@ export default function CashierClient({
             .filter(r => billingRoomTypeFilter === 'all' || r.type_id === billingRoomTypeFilter)
     }, [roomsState, billingRoomTypeFilter])
 
+
     // Who the cashier is looking for, by the name or number taken at check-in.
     // The desk is given a name at settling time — "the bill for Mohan" — and had
     // to know which room that was to find it in a grid keyed by room number.
     const [billingSearch, setBillingSearch] = useState('')
 
     const [bookings, setBookings] = useState<any[]>(initialBookings)
+
+    /**
+     * room id → size of its combined reservation and who booked it.
+     *
+     * Billing showed each room as an independent card, so nothing on this screen
+     * said that settling one of them settles several — the desk only found out
+     * after opening it. The rooms grid has carried a badge for this; the screen
+     * where the money actually moves had none.
+     *
+     * The contact is the earliest-created member, matching what
+     * /api/bookings/group treats as primary, so this name is the one on the
+     * folio rather than the occupant of whichever room was clicked.
+     */
+    const roomGroupInfo = useMemo(() => {
+        const live = (bookings || []).filter(b =>
+            b.group_id && (b.status === 'checked_in' || b.status === 'pending')
+        )
+        const byGroup = new Map<string, typeof live>()
+        for (const b of live) {
+            const list = byGroup.get(b.group_id as string) ?? []
+            list.push(b)
+            byGroup.set(b.group_id as string, list)
+        }
+        const info = new Map<string, { size: number; contact: string | null }>()
+        for (const [, list] of byGroup) {
+            if (list.length < 2) continue
+            const sorted = [...list].sort((a, b) =>
+                String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''))
+            )
+            const contact = sorted.find(m => m.guest_name)?.guest_name ?? null
+            for (const m of list) info.set(m.room_id as string, { size: list.length, contact })
+        }
+        return info
+    }, [bookings])
     const [billingSubTab, setBillingSubTab] = useState<'all' | 'rooms' | 'tables' | 'takeout' | 'delivery'>('rooms')
     const [selectedBillingRoom, setSelectedBillingRoom] = useState<any | null>(null)
     const [advanceHistoryModalOpen, setAdvanceHistoryModalOpen] = useState(false)
@@ -679,32 +720,23 @@ export default function CashierClient({
             setBillingGroup(null)
             setLoadingStayDetails(true)
 
-            // Fetch newest checked_in booking from API (ORDER BY created_at DESC)
-            // This prevents showing old/orphaned bookings that were never checked out
-            fetch(`/api/rooms/booking?roomId=${selectedBillingRoom.id}`)
+            // One request for the whole bill. This was the booking lookup and
+            // then a second wave of three calls keyed on its id — two sequential
+            // trips to the edge before the cashier saw a total. /api/rooms/panel
+            // still resolves the newest checked_in booking first (ORDER BY
+            // created_at DESC, so no old orphaned stay surfaces) and then runs
+            // the three dependent reads beside the database.
+            fetch(`/api/rooms/panel?roomId=${selectedBillingRoom.id}`)
                 .then(res => res.json())
                 .then(async (data) => {
-                    if (data.success && data.data) {
-                        const booking = data.data
+                    if (data.success && data.booking) {
+                        const booking = data.booking
                         try {
-                            // Concurrently fetch charges, linked dining orders,
-                            // and the rest of the reservation if this room is
-                            // part of a multi-room one.
-                            const [chargesRes, ordersRes, groupRes] = await Promise.all([
-                                fetch(`/api/rooms/charges?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/linked-orders?bookingId=${booking.id}`).then(r => r.json()),
-                                fetch(`/api/bookings/group?bookingId=${booking.id}`).then(r => r.json())
-                            ])
-
                             // Set all states simultaneously
                             setBillingStayBooking(booking)
-                            if (chargesRes.success) {
-                                setBillingRoomCharges(chargesRes.data || [])
-                            }
-                            if (ordersRes.success) {
-                                setBillingLinkedOrders(ordersRes.items || [])
-                            }
-                            setBillingGroup(groupRes?.success && groupRes.isGroup ? groupRes : null)
+                            setBillingRoomCharges(data.charges || [])
+                            setBillingLinkedOrders(data.linkedOrders || [])
+                            setBillingGroup(data.group ?? null)
                         } catch (err) {
                             console.error('Error loading secondary billing details:', err)
                             // Set basic stay booking at least
@@ -742,7 +774,18 @@ export default function CashierClient({
             setCashReceivedAmount('')
             setQrReceivedAmount('')
         }
-    }, [selectedBillingRoom, bookings])
+        // Keyed on the room's id, like the table panel below. This read
+        // `[selectedBillingRoom, bookings]`, and neither is stable: the object is
+        // replaced whenever the room list restamps a status, and the bookings
+        // array is rebuilt by every booking realtime event. Nothing in here
+        // reads bookings — only selectedBillingRoom.id — so all that produced was
+        // the same bill being fetched again, about a second a time, while the
+        // cashier waited on it.
+        //
+        // exhaustive-deps wants the whole selectedBillingRoom object back; taking
+        // that advice restores the repeated fetching, so it is silenced here.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedBillingRoom?.id])
 
     // Same reset for the table billing panel — keyed on the table's id so it
     // also fires when switching straight from one table to another, not just
@@ -1317,6 +1360,7 @@ export default function CashierClient({
                 roomLines,
                 guestName: booking.guest_name,
                 guestPhone: booking.guest_phone,
+                guestAddress: booking.guest_address ?? null,
                 checkIn: booking.check_in,
                 checkOut: booking.check_out,
                 nights,
@@ -1860,7 +1904,19 @@ export default function CashierClient({
             setSelectedBillingTable(null)
             setSelectedBillingOrder(null)
             setInvoiceSettled(false)
-            window.location.reload()
+            // Re-run the server fetch, don't reload the browser. Every settled
+            // bill used to tear the whole page down — refetch the document,
+            // re-parse the bundle, re-hydrate, re-run every server query — which
+            // is the bulk of what made settling feel slow, on the one screen a
+            // till uses all day. The selections this screen holds are cleared
+            // just above, and the settlement itself committed server-side before
+            // we got here, so there is nothing a full reload preserves.
+            //
+            // It also cost the printer: a reload drops the QZ Tray socket, so
+            // the next bill paid the connect again. Keeping the page alive keeps
+            // the socket warm, which is the other half of making the bill print
+            // instantly (see usePrinter).
+            router.refresh()
         } catch (e: any) {
             toast.error(e.message || 'Failed to settle invoice')
         } finally {
@@ -2195,7 +2251,7 @@ export default function CashierClient({
                         <ShoppingBag size={15} />
                         Manual Takeaway/Delivery
                     </button>
-                    {!!features.financeEnabled && (features.manualEntryEnabled ?? true) && (
+                    {financeEnabled && manualEntryEnabled && (
                         <button
                             onClick={() => setShowManualEntry(true)}
                             className="flex items-center gap-2 text-sm font-bold text-white bg-brand-500 hover:bg-brand-600 px-4 py-2.5 rounded-xl transition-colors shadow-sm"
@@ -2569,14 +2625,32 @@ export default function CashierClient({
                                                     <button
                                                         key={`room:${room.id}`}
                                                         onClick={() => setSelectedBillingRoom(room)}
-                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                        className="relative aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >
+                                                        {/* Shares a bill with other rooms. Same badge as the
+                                                            rooms grid, because settling this card settles all
+                                                            of them and the card gave no sign of that. */}
+                                                        {(roomGroupInfo.get(room.id)?.size ?? 0) > 1 && (
+                                                            <span
+                                                                className="absolute top-1.5 left-1.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-brand-500 text-white"
+                                                                title={roomGroupInfo.get(room.id)?.contact
+                                                                    ? `Part of ${roomGroupInfo.get(room.id)!.contact}'s ${roomGroupInfo.get(room.id)!.size}-room booking — these rooms share one bill`
+                                                                    : `Part of a ${roomGroupInfo.get(room.id)!.size}-room booking — these rooms share one bill`}
+                                                            >
+                                                                {roomGroupInfo.get(room.id)!.size} ROOMS
+                                                            </span>
+                                                        )}
                                                         <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
                                                             Room {room.room_number}
                                                         </span>
                                                         {booking && (
                                                             <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
                                                                 {booking.guest_name}
+                                                            </span>
+                                                        )}
+                                                        {roomGroupInfo.get(room.id)?.contact && (
+                                                            <span className="text-[9px] font-bold text-brand-600 truncate max-w-full leading-tight">
+                                                                on {roomGroupInfo.get(room.id)!.contact}&apos;s bill
                                                             </span>
                                                         )}
                                                         <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">
@@ -2639,14 +2713,32 @@ export default function CashierClient({
                                                     <button
                                                         key={room.id}
                                                         onClick={() => setSelectedBillingRoom(room)}
-                                                        className="aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
+                                                        className="relative aspect-square rounded-[20px] border border-red-200 bg-red-50/10 flex flex-col items-center justify-center p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:bg-surface active:scale-95"
                                                     >
+                                                        {/* Shares a bill with other rooms. Same badge as the
+                                                            rooms grid, because settling this card settles all
+                                                            of them and the card gave no sign of that. */}
+                                                        {(roomGroupInfo.get(room.id)?.size ?? 0) > 1 && (
+                                                            <span
+                                                                className="absolute top-1.5 left-1.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-brand-500 text-white"
+                                                                title={roomGroupInfo.get(room.id)?.contact
+                                                                    ? `Part of ${roomGroupInfo.get(room.id)!.contact}'s ${roomGroupInfo.get(room.id)!.size}-room booking — these rooms share one bill`
+                                                                    : `Part of a ${roomGroupInfo.get(room.id)!.size}-room booking — these rooms share one bill`}
+                                                            >
+                                                                {roomGroupInfo.get(room.id)!.size} ROOMS
+                                                            </span>
+                                                        )}
                                                         <span className="text-lg font-black text-ink block leading-tight truncate max-w-full px-1">
                                                             Room {room.room_number}
                                                         </span>
                                                         {booking && (
                                                             <span className="text-[10px] font-bold text-ink-subtle mt-1.5 truncate max-w-full">
                                                                 {booking.guest_name}
+                                                            </span>
+                                                        )}
+                                                        {roomGroupInfo.get(room.id)?.contact && (
+                                                            <span className="text-[9px] font-bold text-brand-600 truncate max-w-full leading-tight">
+                                                                on {roomGroupInfo.get(room.id)!.contact}&apos;s bill
                                                             </span>
                                                         )}
                                                         <span className="uppercase tracking-wide mt-2 text-[8px] font-extrabold px-1.5 py-0.5 rounded-md border border-red-100 bg-red-50 text-red-700">

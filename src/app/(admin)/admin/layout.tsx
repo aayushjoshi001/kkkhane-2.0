@@ -21,6 +21,8 @@ import { getNstDateString } from '@/lib/timezone'
 import { BusinessSessionProvider } from '@/lib/contexts/BusinessSessionContext'
 import BusinessGuard from '@/components/shared/BusinessGuard'
 import BusinessDayReminder from '@/components/shared/BusinessDayReminder'
+import TrialBanner from '@/components/admin/TrialBanner'
+import { trialState, type TrialState } from '@/lib/trial'
 
 import { ensureAutoClockIn } from '@/lib/autoClockIn'
 
@@ -50,13 +52,18 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     let features: Awaited<ReturnType<typeof getRestaurantFeatures>> = null
     let mode: BusinessMode = 'dine_in'
     let openSession: any = null
+    let trial: TrialState = { kind: 'none' }
+    let trialEndsLabel = ''
     const todayDate = getNstDateString()
 
     if (!isSuperAdmin && currentUser.restaurantId) {
-        const [{ data }, restaurantFeatures, restaurantMode, { data: sessionData }] = await Promise.all([
+        const [{ data: restaurantRow, error: restaurantError }, restaurantFeatures, restaurantMode, { data: sessionData }] = await Promise.all([
             adminSupabase
                 .from('restaurants')
-                .select('name')
+                // The subscription columns ride along on a query that was
+                // already being made, so the trial banner costs no extra
+                // round-trip on every admin page.
+                .select('name, subscription_tier, subscription_status, subscription_expires_at, trial_ends_at')
                 .eq('id', currentUser.restaurantId)
                 .maybeSingle(),
             getRestaurantFeatures(currentUser.restaurantId),
@@ -69,10 +76,41 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                 .limit(1)
                 .maybeSingle(),
         ])
+        // A database that has not had 20260805090000 applied yet has no
+        // trial_ends_at column, and PostgREST fails the WHOLE select over one
+        // unknown column — which would take the restaurant name down with it
+        // and leave the admin panel looking broken. Falling back to the name
+        // alone means a deploy that lands ahead of its migration degrades to
+        // "no trial banner" rather than to an unusable panel.
+        let data = restaurantRow
+        if (!data && restaurantError) {
+            const { data: nameOnly } = await adminSupabase
+                .from('restaurants')
+                .select('name')
+                .eq('id', currentUser.restaurantId)
+                .maybeSingle()
+            data = nameOnly as typeof restaurantRow
+        }
+
         restaurantName = data?.name || undefined
         features = restaurantFeatures
         mode = restaurantMode
         openSession = sessionData
+        trial = trialState({
+            tier: data?.subscription_tier,
+            status: data?.subscription_status,
+            expiresAt: data?.subscription_expires_at,
+            trialEndsAt: data?.trial_ends_at,
+        })
+        // Formatted here rather than in the banner: the client would format it
+        // in the visitor's own locale and timezone, which differs from the
+        // server's and breaks hydration. Nepal time is the business's time.
+        const endsAtIso = trial.kind === 'active' ? trial.endsAt : trial.kind === 'ended' ? trial.endedAt : null
+        trialEndsLabel = endsAtIso
+            ? new Date(endsAtIso).toLocaleDateString('en-GB', {
+                day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kathmandu',
+            })
+            : ''
     }
 
     const sessionProp = openSession ? {
@@ -130,6 +168,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                         <CommandPaletteMount role={roleNameRaw} theme="light" />
                         <div className="flex-1 overflow-auto p-5 md:p-8">
                             <div className="max-w-6xl mx-auto">
+                                {/* Above BusinessGuard on purpose: a manager who
+                                    has not opened the day yet still needs to be
+                                    told their trial is running out. */}
+                                {!isSuperAdmin && (
+                                    <TrialBanner state={trial} endsAtLabel={trialEndsLabel} />
+                                )}
                                 {isSuperAdmin ? (
                                     children
                                 ) : (

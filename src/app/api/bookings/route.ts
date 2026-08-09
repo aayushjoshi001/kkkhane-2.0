@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getOptionalUser } from '@/lib/auth'
 import { postHotelPaymentIncomeAndLedger } from '@/lib/ledger'
 import { nepalInputToISO } from '@/lib/utils'
+import { logAudit } from '@/lib/audit'
 
 /** One room being booked, with the guests going into it. */
 interface RoomRequest {
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
 
         const body = await req.json().catch(() => ({}))
         const {
-            guest_name, guest_phone, guest_email, kyc,
+            guest_name, guest_phone, guest_email, guest_address, kyc,
             check_in, check_out,
             advance_amount, advance_payment_method,
             advance_cash_amount, advance_qr_amount,
@@ -111,14 +112,24 @@ export async function POST(req: Request) {
         const supabase = await createAdminClient()
         const roomIds = roomRequests.map(r => r.roomId)
 
-        // 1. Validate every room exists and belongs to this restaurant
-        const { data: roomRows, error: roomError } = await supabase
-            .from('rooms')
-            .select('id, room_number, room_types:type_id(base_price)')
-            .in('id', roomIds)
-            .eq('restaurant_id', currentUser.restaurantId)
+        // 1 & 2. Validate every room exists and check for active stays concurrently
+        const [roomsResponse, activeBookingsResponse] = await Promise.all([
+            supabase
+                .from('rooms')
+                .select('id, room_number, room_types:type_id(base_price)')
+                .in('id', roomIds)
+                .eq('restaurant_id', currentUser.restaurantId),
+            supabase
+                .from('bookings')
+                .select('room_id, guest_name')
+                .in('room_id', roomIds)
+                .eq('restaurant_id', currentUser.restaurantId)
+                .in('status', ['checked_in', 'pending'])
+        ])
 
+        const { data: roomRows, error: roomError } = roomsResponse
         if (roomError) throw roomError
+        
         const roomsById = new Map((roomRows || []).map(r => [r.id as string, r]))
         const missing = roomIds.filter(id => !roomsById.has(id))
         if (missing.length > 0) {
@@ -128,17 +139,7 @@ export async function POST(req: Request) {
             )
         }
 
-        // 2. Reject if ANY room already has an active stay — checked across the
-        // whole set before a single row is written, so a group booking can never
-        // half-succeed and leave some rooms occupied by a stay the front desk
-        // was told had failed. Silently cancelling the existing stay here used to
-        // be able to evict a real, currently-staying guest with zero warning.
-        const { data: existingActive } = await supabase
-            .from('bookings')
-            .select('room_id, guest_name')
-            .in('room_id', roomIds)
-            .eq('restaurant_id', currentUser.restaurantId)
-            .in('status', ['checked_in', 'pending'])
+        const { data: existingActive } = activeBookingsResponse
 
         if (existingActive && existingActive.length > 0) {
             const conflicts = existingActive.map(b => {
@@ -215,6 +216,11 @@ export async function POST(req: Request) {
         const guestName = String(guest_name).trim()
         const guestPhone = String(guest_phone).trim()
         const guestEmail = typeof guest_email === 'string' && guest_email.trim() ? guest_email.trim() : null
+        // Optional, and stays NULL when it wasn't asked for. Trimmed to the
+        // column's 200-char limit so a pasted paragraph can't fail the insert.
+        const guestAddress = typeof guest_address === 'string' && guest_address.trim()
+            ? guest_address.trim().slice(0, 200)
+            : null
 
         // 4. Create the reservation header for a multi-room stay
         let groupId: string | null = null
@@ -226,6 +232,7 @@ export async function POST(req: Request) {
                     guest_name: guestName,
                     guest_phone: guestPhone,
                     guest_email: guestEmail,
+                    guest_address: guestAddress,
                     check_in: checkInISO,
                     check_out: checkOutISO,
                     notes,
@@ -237,125 +244,114 @@ export async function POST(req: Request) {
             groupId = group.id
         }
 
-        // 5. Insert one booking per room.
-        //
-        // There is no transaction available through the JS client, and the
-        // per-room EXCLUDE constraint can still reject a room that was free at
-        // step 2 but got claimed a moment later. So a failure part-way through
-        // unwinds what was already written rather than leaving the guest with
-        // some of their rooms — the front desk gets a clean error and retries.
+        // 5. Insert all bookings at once.
         const insertedBookingIds: string[] = []
         const rollback = async () => {
-            if (insertedBookingIds.length > 0) {
-                await supabase.from('bookings').delete().in('id', insertedBookingIds)
-            }
             if (groupId) {
                 await supabase.from('booking_groups').delete().eq('id', groupId)
             }
         }
 
-        const bookings: Array<{ id: string; room_id: string; guest_name: string }> = []
-        for (const [i, r] of roomRequests.entries()) {
-            const { data: booking, error: bookingError } = await supabase
-                .from('bookings')
-                .insert({
-                    restaurant_id: currentUser.restaurantId,
-                    group_id: groupId,
-                    room_id: r.roomId,
-                    guest_name: guestName,
-                    guest_phone: guestPhone,
-                    guest_email: guestEmail,
-                    check_in: checkInISO,
-                    check_out: checkOutISO,
-                    adults: r.adults,
-                    adult_male: r.splitProvided ? r.male : 0,
-                    adult_female: r.splitProvided ? r.female : 0,
-                    children: r.children,
-                    status: 'checked_in',
-                    checked_in_by: currentUser.id,
-                    notes,
-                    paid_amount: advanceShares[i],
-                    advance_payment_method: advMethod,
-                    parking_required: parkingRequired,
-                    parking_vehicle_no: parkingVehicleNo,
-                })
-                .select()
-                .single()
+        const bookingsToInsert = roomRequests.map((r, i) => ({
+            restaurant_id: currentUser.restaurantId,
+            group_id: groupId,
+            room_id: r.roomId,
+            guest_name: guestName,
+            guest_phone: guestPhone,
+            guest_email: guestEmail,
+            guest_address: guestAddress,
+            check_in: checkInISO,
+            check_out: checkOutISO,
+            adults: r.adults,
+            adult_male: r.splitProvided ? r.male : 0,
+            adult_female: r.splitProvided ? r.female : 0,
+            children: r.children,
+            status: 'checked_in',
+            checked_in_by: currentUser.id,
+            notes,
+            paid_amount: advanceShares[i],
+            advance_payment_method: advMethod,
+            parking_required: parkingRequired,
+            parking_vehicle_no: parkingVehicleNo,
+        }))
 
-            if (bookingError || !booking) {
-                await rollback()
-                const roomNumber = roomsById.get(r.roomId)?.room_number ?? '?'
-                const detail = bookingError?.message || 'unknown error'
-                // The EXCLUDE constraint is the expected loser of a race here.
-                const isOverlap = /overlap|exclusion/i.test(detail)
-                return NextResponse.json({
-                    error: isOverlap
-                        ? `Room ${roomNumber} was just booked by someone else. No rooms were reserved — please try again.`
-                        : `Could not book room ${roomNumber}: ${detail}`
-                }, { status: isOverlap ? 409 : 500 })
-            }
+        const { data: bookings, error: bookingError } = await supabase
+            .from('bookings')
+            .insert(bookingsToInsert)
+            .select()
 
-            insertedBookingIds.push(booking.id)
-            bookings.push(booking)
+        if (bookingError || !bookings || bookings.length === 0) {
+            await rollback()
+            const detail = bookingError?.message || 'unknown error'
+            // The EXCLUDE constraint is the expected loser of a race here.
+            const isOverlap = /overlap|exclusion/i.test(detail)
+            return NextResponse.json({
+                error: isOverlap
+                    ? `One or more rooms were just booked by someone else. No rooms were reserved — please try again.`
+                    : `Could not book rooms: ${detail}`
+            }, { status: isOverlap ? 409 : 500 })
         }
+
+        for (const b of bookings) {
+            insertedBookingIds.push(b.id)
+        }
+
+        const postBookingTasks: PromiseLike<any>[] = []
 
         // Open the first room segment for each stay. Every stay has at least
         // one, so the folio can price each night from the room actually
         // occupied rather than from whatever room the booking points at when
         // the bill is drawn.
-        const { error: segmentError } = await supabase
-            .from('booking_room_stays')
-            .insert(bookings.map(b => ({
-                restaurant_id: currentUser.restaurantId,
-                booking_id: b.id,
-                room_id: b.room_id,
-                from_ts: checkInISO,
-            })))
-        if (segmentError) {
-            // Not fatal — the folio falls back to the booking's current room when
-            // a stay has no segments, which is the pre-move behaviour. Losing the
-            // booking over a history row would be the worse trade.
-            console.error('Failed to open room segments for bookings', insertedBookingIds, segmentError)
-        }
+        postBookingTasks.push(
+            supabase.from('booking_room_stays')
+                .insert(bookings.map(b => ({
+                    restaurant_id: currentUser.restaurantId,
+                    booking_id: b.id,
+                    room_id: b.room_id,
+                    from_ts: checkInISO,
+                })))
+                .then(({ error: segmentError }) => {
+                    if (segmentError) {
+                        console.error('Failed to open room segments for bookings', insertedBookingIds, segmentError)
+                    }
+                })
+        )
 
         // 6. Update room status to occupied
-        const { error: updateError } = await supabase
-            .from('rooms')
-            .update({ status: 'occupied' })
-            .in('id', roomIds)
-            .eq('restaurant_id', currentUser.restaurantId)
-
-        if (updateError) throw updateError
+        postBookingTasks.push(
+            supabase.from('rooms')
+                .update({ status: 'occupied' })
+                .in('id', roomIds)
+                .eq('restaurant_id', currentUser.restaurantId)
+                .then(({ error: updateError }) => {
+                    if (updateError) {
+                        console.error('Failed to update room statuses', updateError)
+                        throw updateError // Optional: you can choose not to throw, but to match original we should wait and throw
+                    }
+                })
+        )
 
         // Log the advance to the financial ledger and books automatically.
-        // A group collects one advance for the whole reservation, so it posts
-        // once, described by every room it covers — posting per room would
-        // multiply one payment into several in the day book. Split advances
-        // post once per method so cash and QR each land in the correct
-        // income/cash-in-bank totals instead of one lump sum.
         const roomLabel = roomRequests
             .map(r => roomsById.get(r.roomId)?.room_number ?? 'Unknown')
             .join(', ')
         const primaryBookingId = bookings[0].id
 
-        // A parking fee bills as an ordinary folio charge, on the first room of
-        // the reservation only — the guest parked one vehicle and owes for it
-        // once, so posting it per room would multiply the fee by the room count.
-        // Not fatal if it fails: the rooms are booked and the guest is in house,
-        // and a missing incidental is added at the desk in seconds, whereas
-        // unwinding a completed booking over it is not recoverable.
         if (parkingFee > 0) {
-            const { error: parkingChargeError } = await supabase.from('room_charges').insert({
-                restaurant_id: currentUser.restaurantId,
-                booking_id: primaryBookingId,
-                description: parkingVehicleNo ? `Parking (${parkingVehicleNo})` : 'Parking',
-                amount: parkingFee,
-                charge_type: 'parking',
-                charged_by: currentUser.id,
-            })
-            if (parkingChargeError) {
-                console.error('Failed to post parking charge for booking', primaryBookingId, parkingChargeError)
-            }
+            postBookingTasks.push(
+                supabase.from('room_charges').insert({
+                    restaurant_id: currentUser.restaurantId,
+                    booking_id: primaryBookingId,
+                    description: parkingVehicleNo ? `Parking (${parkingVehicleNo})` : 'Parking',
+                    amount: parkingFee,
+                    charge_type: 'parking',
+                    charged_by: currentUser.id,
+                }).then(({ error: parkingChargeError }) => {
+                    if (parkingChargeError) {
+                        console.error('Failed to post parking charge for booking', primaryBookingId, parkingChargeError)
+                    }
+                })
+            )
         }
 
         const noteText = advance_note && String(advance_note).trim() ? String(advance_note).trim() : 'Advance'
@@ -363,55 +359,66 @@ export async function POST(req: Request) {
 
         if (isSplitAdvance) {
             if (splitCashAmount > 0) {
-                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                    bookingId: primaryBookingId,
-                    roomNumber: roomLabel,
-                    guestName,
-                    amount: splitCashAmount,
-                    paymentMethod: 'cash',
-                    isAdvance: true,
-                    description: customDesc
-                })
+                postBookingTasks.push(
+                    postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                        bookingId: primaryBookingId,
+                        roomNumber: roomLabel,
+                        guestName,
+                        amount: splitCashAmount,
+                        paymentMethod: 'cash',
+                        isAdvance: true,
+                        description: customDesc
+                    })
+                )
             }
             if (splitQrAmount > 0) {
-                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                    bookingId: primaryBookingId,
-                    roomNumber: roomLabel,
-                    guestName,
-                    amount: splitQrAmount,
-                    paymentMethod: 'qr_digital',
-                    isAdvance: true,
-                    qrCodeId: advance_qr_code_id || null,
-                    description: customDesc
-                })
+                postBookingTasks.push(
+                    postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                        bookingId: primaryBookingId,
+                        roomNumber: roomLabel,
+                        guestName,
+                        amount: splitQrAmount,
+                        paymentMethod: 'qr_digital',
+                        isAdvance: true,
+                        qrCodeId: advance_qr_code_id || null,
+                        description: customDesc
+                    })
+                )
             }
         } else if (paidAmount > 0) {
             const paymentMethodMapped = advMethod === 'cash' ? 'cash' : 'qr_digital'
-
-            await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                bookingId: primaryBookingId,
-                roomNumber: roomLabel,
-                guestName,
-                amount: paidAmount,
-                paymentMethod: paymentMethodMapped,
-                isAdvance: true,
-                qrCodeId: paymentMethodMapped === 'qr_digital' ? (advance_qr_code_id || null) : null,
-                description: customDesc
-            })
+            postBookingTasks.push(
+                postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                    bookingId: primaryBookingId,
+                    roomNumber: roomLabel,
+                    guestName,
+                    amount: paidAmount,
+                    paymentMethod: paymentMethodMapped,
+                    isAdvance: true,
+                    qrCodeId: paymentMethodMapped === 'qr_digital' ? (advance_qr_code_id || null) : null,
+                    description: customDesc
+                })
+            )
         }
 
         if (paidAmount > 0) {
-            await supabase.from('booking_payments').insert({
-                restaurant_id: currentUser.restaurantId,
-                booking_id: primaryBookingId,
-                amount: paidAmount,
-                payment_method: advMethod,
-                cash_amount: isSplitAdvance ? splitCashAmount : (advMethod === 'cash' ? paidAmount : 0),
-                qr_amount: isSplitAdvance ? splitQrAmount : (advMethod === 'qr_digital' ? paidAmount : 0),
-                note: noteText,
-                created_by: currentUser.id
-            })
+            postBookingTasks.push(
+                supabase.from('booking_payments').insert({
+                    restaurant_id: currentUser.restaurantId,
+                    booking_id: primaryBookingId,
+                    amount: paidAmount,
+                    payment_method: advMethod,
+                    cash_amount: isSplitAdvance ? splitCashAmount : (advMethod === 'cash' ? paidAmount : 0),
+                    qr_amount: isSplitAdvance ? splitQrAmount : (advMethod === 'qr_digital' ? paidAmount : 0),
+                    note: noteText,
+                    created_by: currentUser.id
+                })
+            )
         }
+
+        // Wait for all non-critical background tasks to finish
+        await Promise.all(postBookingTasks)
+
 
 
         // `data` stays the single primary booking so existing callers that read
@@ -421,6 +428,206 @@ export async function POST(req: Request) {
             data: bookings[0],
             group_id: groupId,
             bookings,
+        })
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 })
+    }
+}
+
+/**
+ * Edit active booking details (custom room rate, guest information, KYC, dates, guest mix, parking).
+ */
+export async function PATCH(req: Request) {
+    try {
+        const currentUser = await getOptionalUser()
+        if (!currentUser || !currentUser.restaurantId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+
+        const body = await req.json().catch(() => ({}))
+        const { bookingId, reason } = body
+
+        if (!bookingId || typeof bookingId !== 'string') {
+            return NextResponse.json({ error: 'Missing bookingId' }, { status: 400 })
+        }
+
+        const supabase = await createAdminClient()
+
+        // 1. Fetch existing booking
+        const { data: existing, error: fetchErr } = await supabase
+            .from('bookings')
+            .select('*')
+            .eq('id', bookingId)
+            .eq('restaurant_id', currentUser.restaurantId)
+            .maybeSingle()
+
+        if (fetchErr || !existing) {
+            return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+        }
+
+        if (!['pending', 'checked_in'].includes(existing.status)) {
+            return NextResponse.json(
+                { error: 'Cannot edit a stay that is already closed or cancelled' },
+                { status: 409 }
+            )
+        }
+
+        const updates: Record<string, any> = {}
+
+        // Guest info
+        if (body.guest_name !== undefined) {
+            const name = String(body.guest_name).trim()
+            if (!name) return NextResponse.json({ error: 'Guest name cannot be empty' }, { status: 400 })
+            updates.guest_name = name
+        }
+        if (body.guest_phone !== undefined) {
+            const phone = String(body.guest_phone).trim()
+            if (!phone) return NextResponse.json({ error: 'Guest phone cannot be empty' }, { status: 400 })
+            updates.guest_phone = phone
+        }
+        if (body.guest_email !== undefined) {
+            updates.guest_email = typeof body.guest_email === 'string' && body.guest_email.trim() ? body.guest_email.trim() : null
+        }
+        if (body.guest_address !== undefined) {
+            updates.guest_address = typeof body.guest_address === 'string' && body.guest_address.trim()
+                ? body.guest_address.trim().slice(0, 200)
+                : null
+        }
+
+        // Guest mix
+        if (body.adult_male !== undefined || body.adult_female !== undefined || body.children !== undefined) {
+            const male = Math.max(0, Math.trunc(Number(body.adult_male ?? existing.adult_male) || 0))
+            const female = Math.max(0, Math.trunc(Number(body.adult_female ?? existing.adult_female) || 0))
+            const children = Math.max(0, Math.trunc(Number(body.children ?? existing.children) || 0))
+            if (male + female < 1) {
+                return NextResponse.json({ error: 'At least one adult guest is required' }, { status: 400 })
+            }
+            updates.adult_male = male
+            updates.adult_female = female
+            updates.children = children
+            updates.adults = male + female
+        }
+
+        // Dates
+        let checkInISO = existing.check_in
+        let checkOutISO = existing.check_out
+        if (body.check_in) {
+            try {
+                checkInISO = nepalInputToISO(body.check_in)
+            } catch {
+                return NextResponse.json({ error: 'Invalid check-in date' }, { status: 400 })
+            }
+        }
+        if (body.check_out) {
+            try {
+                checkOutISO = nepalInputToISO(body.check_out)
+            } catch {
+                return NextResponse.json({ error: 'Invalid check-out date' }, { status: 400 })
+            }
+        }
+        if (new Date(checkOutISO) <= new Date(checkInISO)) {
+            return NextResponse.json({ error: 'Check-out must be after check-in' }, { status: 400 })
+        }
+        updates.check_in = checkInISO
+        updates.check_out = checkOutISO
+
+        // Parking
+        if (body.parking_required !== undefined) {
+            updates.parking_required = body.parking_required === true || body.parking_required === 'true'
+        }
+        if (body.parking_vehicle_no !== undefined) {
+            updates.parking_vehicle_no = typeof body.parking_vehicle_no === 'string' && body.parking_vehicle_no.trim()
+                ? body.parking_vehicle_no.trim().slice(0, 32)
+                : null
+        }
+        if (body.parking_fee !== undefined) {
+            const fee = Math.max(0, Number(body.parking_fee) || 0)
+            if (!Number.isFinite(fee)) return NextResponse.json({ error: 'Invalid parking fee' }, { status: 400 })
+            
+            // Update parking charge in room_charges table instead of non-existent column on bookings
+            await supabase.from('room_charges').delete().eq('booking_id', bookingId).eq('charge_type', 'parking')
+            if (fee > 0) {
+                const vehicleNo = updates.parking_vehicle_no !== undefined ? updates.parking_vehicle_no : existing.parking_vehicle_no
+                await supabase.from('room_charges').insert({
+                    restaurant_id: currentUser.restaurantId,
+                    booking_id: bookingId,
+                    description: vehicleNo ? `Parking (${vehicleNo})` : 'Parking',
+                    amount: fee,
+                    charge_type: 'parking',
+                    charged_by: currentUser.id,
+                })
+            }
+        }
+
+        // Handle Notes (KYC + Custom Rate)
+        let currentNotes = existing.notes || ''
+        let hasNotesChange = false
+
+        if (body.kyc !== undefined) {
+            hasNotesChange = true
+            const kycStr = typeof body.kyc === 'string' ? body.kyc.trim() : ''
+            // Strip existing KYC prefix
+            currentNotes = currentNotes.replace(/^KYC:\s*[^|]*/, '').replace(/^\|\s*/, '').trim()
+            if (kycStr) {
+                currentNotes = `KYC: ${kycStr}${currentNotes ? ' | ' + currentNotes : ''}`
+            }
+        }
+
+        if (body.custom_room_price !== undefined) {
+            hasNotesChange = true
+            const priceNum = Number(body.custom_room_price)
+            const customPrice = Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null
+            // Strip existing [CUSTOM_RATE:x]
+            currentNotes = currentNotes.replace(/\[CUSTOM_RATE:[^\]]*\]/g, '').replace(/\|\s*$/, '').trim()
+            if (customPrice) {
+                currentNotes = `${currentNotes ? currentNotes + ' | ' : ''}[CUSTOM_RATE:${customPrice}]`
+            }
+        }
+
+        if (hasNotesChange) {
+            updates.notes = currentNotes || null
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+        }
+
+        // Apply update to booking
+        const { data: updated, error: updateErr } = await supabase
+            .from('bookings')
+            .update(updates)
+            .eq('id', bookingId)
+            .eq('restaurant_id', currentUser.restaurantId)
+            .select()
+            .single()
+
+        if (updateErr) throw updateErr
+
+        // Audit logging
+        void logAudit({
+            restaurantId: currentUser.restaurantId,
+            userId: currentUser.id,
+            action: 'booking_edited',
+            entityType: 'booking',
+            entityId: bookingId,
+            oldValue: {
+                guest_name: existing.guest_name,
+                guest_phone: existing.guest_phone,
+                guest_address: existing.guest_address,
+                check_in: existing.check_in,
+                check_out: existing.check_out,
+                notes: existing.notes,
+                parking_fee: existing.parking_fee,
+            },
+            newValue: {
+                ...updates,
+                reason: reason || 'Booking details updated by cashier/admin',
+            },
+        })
+
+        return NextResponse.json({
+            success: true,
+            data: updated,
         })
     } catch (e: any) {
         return NextResponse.json({ error: e.message || 'Server error' }, { status: 500 })

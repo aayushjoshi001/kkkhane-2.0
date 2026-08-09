@@ -43,7 +43,10 @@ export interface Role {
 }
 
 export type SubscriptionTier = 'free' | 'basic' | 'premium' | 'platinum' | 'enterprise'
-export type SubscriptionStatus = 'active' | 'past_due' | 'suspended' | 'cancelled'
+// 'trialing' = inside the 14-day signup trial. It is a distinct status from
+// 'active' because a trial running out is not a billing failure: it downgrades
+// the tenant to Free rather than suspending them (see lib/trial.ts).
+export type SubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'suspended' | 'cancelled'
 export type PaymentMethod = 'qr_scan' | 'esewa' | 'khalti' | 'fonepay' | 'cash' | 'card'
 
 export interface Restaurant {
@@ -76,6 +79,9 @@ export interface Restaurant {
     subscription_tier: SubscriptionTier
     subscription_status: SubscriptionStatus
     subscription_expires_at: string | null
+    /** When the signup trial ends/ended. Kept after the downgrade clears
+     *  subscription_expires_at, so NULL means "never had a trial". */
+    trial_ends_at: string | null
     stripe_customer_id: string | null
     stripe_subscription_id: string | null
     // Subscription limits
@@ -1021,6 +1027,8 @@ export interface Booking {
     guest_name: string
     guest_phone: string | null
     guest_email: string | null
+    /** Address written at the desk. Null means it was never asked for. */
+    guest_address?: string | null
     check_in: string
     check_out: string
     /** Total adults — kept as `adult_male + adult_female` for new bookings. */

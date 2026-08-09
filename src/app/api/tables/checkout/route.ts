@@ -85,9 +85,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Missing session_id' }, { status: 400 })
         }
 
-        const { getRestaurantFeatures } = await import('@/lib/features')
-        const features = await getRestaurantFeatures(currentUser.restaurantId)
-
         // A bargained table total — same audit-trail rule as the room checkout:
         // any staff can apply one, but a reason is mandatory.
         const discountAmount = Number(discount_amount) || 0
@@ -127,22 +124,38 @@ export async function POST(req: Request) {
         }
 
         const supabase = await createAdminClient()
+
+
+        const { getRestaurantFeatures } = await import('@/lib/features')
+
+        const [features, restResponse, sessionResponse, ordersResponse] = await Promise.all([
+            getRestaurantFeatures(currentUser.restaurantId),
+            supabase
+                .from('restaurants')
+                .select('vat_registered')
+                .eq('id', currentUser.restaurantId)
+                .single(),
+            supabase
+                .from('sessions')
+                .select('id, table_id, booking_id, seat_number, tables:table_id(label)')
+                .eq('id', session_id)
+                .eq('restaurant_id', currentUser.restaurantId)
+                .maybeSingle(),
+            supabase
+                .from('orders')
+                .select('id, total_amount, service_charge_amount')
+                .eq('session_id', session_id)
+                .eq('restaurant_id', currentUser.restaurantId)
+                .neq('status', 'cancelled')
+                .neq('payment_status', 'paid')
+        ])
+
         const isInvoiceEnabled = !!features?.generateInvoiceEnabled
-
-        const { data: restaurant } = await supabase
-            .from('restaurants')
-            .select('vat_registered')
-            .eq('id', currentUser.restaurantId)
-            .single()
-
-        // 0. Fetch the session (with its table label) to confirm it belongs to
-        // this restaurant before touching anything.
-        const { data: session, error: fetchError } = await supabase
-            .from('sessions')
-            .select('id, table_id, booking_id, seat_number, tables:table_id(label)')
-            .eq('id', session_id)
-            .eq('restaurant_id', currentUser.restaurantId)
-            .maybeSingle()
+        const restaurant = restResponse.data
+        const session = sessionResponse.data
+        const fetchError = sessionResponse.error
+        const orders = ordersResponse.data
+        const ordersError = ordersResponse.error
 
         if (fetchError) throw fetchError
         if (!session) {
@@ -158,14 +171,6 @@ export async function POST(req: Request) {
         // session. Each order's own total_amount is reused as-is (already
         // correctly tax/promo/loyalty-adjusted from placement time) — never
         // re-derived from raw line items here.
-        const { data: orders, error: ordersError } = await supabase
-            .from('orders')
-            .select('id, total_amount, service_charge_amount')
-            .eq('session_id', session_id)
-            .eq('restaurant_id', currentUser.restaurantId)
-            .neq('status', 'cancelled')
-            .neq('payment_status', 'paid')
-
         if (ordersError) throw ordersError
         const subtotal = round2((orders || []).reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0))
 
@@ -216,15 +221,19 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Table session is already closed' }, { status: 409 })
         }
 
-        await markTableDirtyForSession(supabase, session_id)
+        const postCheckoutTasks: PromiseLike<any>[] = []
+
+        postCheckoutTasks.push(markTableDirtyForSession(supabase, session_id))
 
         // The customer's "send a waiter to collect cash" request is now fulfilled.
-        await supabase
-            .from('service_requests')
-            .update({ status: 'completed', completed_at: new Date().toISOString() })
-            .eq('session_id', session_id)
-            .eq('request_type', 'request_bill')
-            .in('status', ['pending', 'acknowledged'])
+        postCheckoutTasks.push(
+            supabase
+                .from('service_requests')
+                .update({ status: 'completed', completed_at: new Date().toISOString() })
+                .eq('session_id', session_id)
+                .eq('request_type', 'request_bill')
+                .in('status', ['pending', 'acknowledged'])
+        )
 
         // 1. Settle every order — cash/QR draw from their pools in order and
         // record a per-order payment_verifications row (so the EOD
@@ -248,87 +257,101 @@ export async function POST(req: Request) {
 
         // 1b. If this session was linked to a hotel room booking, credit the table payment to the booking's paid_amount
         if (session.booking_id) {
-            const { data: booking } = await supabase
-                .from('bookings')
-                .select('paid_amount')
-                .eq('id', session.booking_id)
-                .single()
-            
-            if (booking) {
-                const currentPaid = Number(booking.paid_amount || 0)
-                const addPaid = cashPaid + qrPaid
-                await supabase
+            postCheckoutTasks.push((async () => {
+                const { data: booking } = await supabase
                     .from('bookings')
-                    .update({ paid_amount: currentPaid + addPaid })
+                    .select('paid_amount')
                     .eq('id', session.booking_id)
-            }
+                    .single()
+                
+                if (booking) {
+                    const currentPaid = Number(booking.paid_amount || 0)
+                    const addPaid = cashPaid + qrPaid
+                    await supabase
+                        .from('bookings')
+                        .update({ paid_amount: currentPaid + addPaid })
+                        .eq('id', session.booking_id)
+                }
+            })())
         }
 
         // 2. Post the actual money collected / owed.
         if (isInvoiceEnabled) {
             if (cashPaid > 0) {
-                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                    guestName: customerName || 'Table Guest',
-                    amount: cashPaid,
-                    paymentMethod: 'cash',
-                    isAdvance: false,
-                    incomeCategoryName: 'Restaurant Sales',
-                    dayBookCategory: 'order_payment',
-                    description: `Table ${tableLabel} bill settled (Cash)`,
-                })
+                postCheckoutTasks.push(
+                    postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                        guestName: customerName || 'Table Guest',
+                        amount: cashPaid,
+                        paymentMethod: 'cash',
+                        isAdvance: false,
+                        incomeCategoryName: 'Restaurant Sales',
+                        dayBookCategory: 'order_payment',
+                        description: `Table ${tableLabel} bill settled (Cash)`,
+                    })
+                )
             }
             if (qrPaid > 0) {
-                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                    guestName: customerName || 'Table Guest',
-                    amount: qrPaid,
-                    paymentMethod: 'qr_digital',
-                    isAdvance: false,
-                    qrCodeId: qr_code_id || null,
-                    incomeCategoryName: 'Restaurant Sales',
-                    dayBookCategory: 'order_payment',
-                    description: `Table ${tableLabel} bill settled (QR/Digital)`,
-                })
+                postCheckoutTasks.push(
+                    postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                        guestName: customerName || 'Table Guest',
+                        amount: qrPaid,
+                        paymentMethod: 'qr_digital',
+                        isAdvance: false,
+                        qrCodeId: qr_code_id || null,
+                        incomeCategoryName: 'Restaurant Sales',
+                        dayBookCategory: 'order_payment',
+                        description: `Table ${tableLabel} bill settled (QR/Digital)`,
+                    })
+                )
             }
             if (creditAmount > 0) {
-                // The session is already claimed/closed and orders already settled
-                // above — a failure here is logged, not surfaced as a failed
-                // checkout, matching the cash/qr postings' best-effort treatment.
-                const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
-                    name: customerName,
-                    phone: customerPhone,
-                })
-                if ('error' in account) {
-                    console.error('Failed to create/find customer credit account:', account.error)
-                } else {
-                    await postCreditCharge(supabase, currentUser.restaurantId, currentUser.id, {
-                        customerCreditAccountId: account.id,
-                        amount: creditAmount,
-                        description: `Table ${tableLabel} bill on credit (${customerName || 'Customer'})`,
-                        incomeCategoryName: 'Restaurant Sales',
+                postCheckoutTasks.push((async () => {
+                    // The session is already claimed/closed and orders already settled
+                    // above — a failure here is logged, not surfaced as a failed
+                    // checkout, matching the cash/qr postings' best-effort treatment.
+                    const account = await findOrCreateCustomerCreditAccount(supabase, currentUser.restaurantId, currentUser.id, {
+                        name: customerName,
+                        phone: customerPhone,
                     })
-                }
+                    if ('error' in account) {
+                        console.error('Failed to create/find customer credit account:', account.error)
+                    } else {
+                        await postCreditCharge(supabase, currentUser.restaurantId, currentUser.id, {
+                            customerCreditAccountId: account.id,
+                            amount: creditAmount,
+                            description: `Table ${tableLabel} bill on credit (${customerName || 'Customer'})`,
+                            incomeCategoryName: 'Restaurant Sales',
+                        })
+                    }
+                })())
             }
             if (discountAmount > 0) {
-                await postBargainDiscountExpense(supabase, currentUser.restaurantId, currentUser.id, {
-                    guestName: customerName || 'Table Guest',
-                    locationLabel: `Table ${tableLabel}`,
-                    amount: discountAmount,
-                    reason: discountReason,
-                })
+                postCheckoutTasks.push(
+                    postBargainDiscountExpense(supabase, currentUser.restaurantId, currentUser.id, {
+                        guestName: customerName || 'Table Guest',
+                        locationLabel: `Table ${tableLabel}`,
+                        amount: discountAmount,
+                        reason: discountReason,
+                    })
+                )
             }
 
             // Handle loyalty points (5% earn on Cash/QR payments). settleLoyalty
             // creates the guest's CRM record if this is their first visit — read
             // only, a cash-paying guest never had one and so never earned anything.
-            await settleLoyalty(supabase, currentUser.restaurantId, currentUser.id, {
-                name: customerName ? customerName.trim() : 'Table Guest',
-                phone: customerPhone ? customerPhone.trim() : '',
-                earnPoints: Math.round((cashPaid + qrPaid) * 0.05),
-                redeemPoints: Number(redeemed_points) || 0,
-                earnDescription: `Earned from Table ${tableLabel} bill`,
-                redeemDescription: `Redeemed on Table ${tableLabel} bill`,
-            })
+            postCheckoutTasks.push(
+                settleLoyalty(supabase, currentUser.restaurantId, currentUser.id, {
+                    name: customerName ? customerName.trim() : 'Table Guest',
+                    phone: customerPhone ? customerPhone.trim() : '',
+                    earnPoints: Math.round((cashPaid + qrPaid) * 0.05),
+                    redeemPoints: Number(redeemed_points) || 0,
+                    earnDescription: `Earned from Table ${tableLabel} bill`,
+                    redeemDescription: `Redeemed on Table ${tableLabel} bill`,
+                })
+            )
         }
+
+        await Promise.all(postCheckoutTasks)
 
         void logAudit({
             restaurantId: currentUser.restaurantId,

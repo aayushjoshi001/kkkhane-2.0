@@ -33,44 +33,25 @@ export interface EodReportNotes {
     topSellers: Array<{ name: string; quantity: number; revenue: number }>
     paymentBreakdown: Record<string, number>
 
-    // The business-day session this report was actually scoped to. Null means
-    // no session was found for the date and the report fell back to a plain
-    // calendar-day window (e.g. a historical date from before the day book
-    // existed).
     sessionOpenedAt: string | null
     sessionClosedAt: string | null
 
-    // Who collected how much, by payment channel.
     cashByPerson: PersonAmount[]
     qrByPerson: PersonAmount[]
     creditByPerson: PersonAmount[]
 
-    // Restaurant (food & drink) sales vs. room sales, as two components of
-    // total revenue rather than two separate totals — restaurantSales +
-    // roomSales does not have to equal total_revenue when a booking's food
-    // orders are billed through the room folio.
     restaurantSales: number
     roomSales: number
     topRooms: TopRoom[]
 
-    // Expense, split by how it left the till and who logged it.
     totalExpense: number
     expenseByPerson: PersonSplitAmount[]
 
-    // Manual income postings (Income & Expenses), not order/booking revenue.
     totalIncomeEntries: number
     incomeByPerson: PersonAmount[]
 
-    // Cancellations, attributed to whoever cancelled at the till — best
-    // effort: only cancellations that posted an "Order Cancellation" expense
-    // (i.e. food already cost something) carry an amount and a name.
     cancelledByPerson: PersonCancellation[]
-
-    // Discounts: hotel bargain discounts (posted as an expense) plus food
-    // order discounts, both attributed to the cashier who applied them.
     discountByPerson: PersonAmount[]
-
-    // Service charge, attributed to whichever cashier checked the order out.
     serviceChargeByPerson: PersonAmount[]
 }
 
@@ -103,19 +84,6 @@ function toPersonAmountList(map: Map<string, number>, nameById: Map<string, stri
         .sort((a, b) => b.amount - a.amount)
 }
 
-/**
- * Generates an End-of-Day report for a given restaurant and date.
- *
- * Scoped to the business day *session* that date's day_book_sessions row
- * covers — from the moment a cashier or manager opened the business to the
- * moment it was closed (or "now" if it's still open) — rather than a plain
- * calendar day. That's what lets the report answer "what happened between
- * open and close" instead of "what happened between two midnights", which
- * matters the moment a business trades across midnight or opens late.
- * Falls back to a calendar-day window when no session row exists for the
- * date (a date from before the day book feature, or one that was never
- * opened).
- */
 export async function generateEodReport(restaurantId: string, reportDate: string) {
     const supabase = await createAdminClient()
 
@@ -135,10 +103,10 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         ? new Date(session.closed_at || Date.now()).toISOString()
         : new Date(`${reportDate}T23:59:59.999+05:45`).toISOString()
 
-    // 2. Fetch all orders for this window (only the columns the aggregation needs)
+    // 2. Fetch all orders for this window
     const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, total_amount, tax_amount, tip_amount, discount_amount, service_charge_amount, payment_status, status, session_id, placed_at, cashier_id')
+        .select('id, total_amount, tax_amount, tip_amount, discount_amount, service_charge_amount, payment_status, status, session_id, placed_at, cashier_id, booking_id, sessions(table_id, tables:table_id(room_id))')
         .eq('restaurant_id', restaurantId)
         .gte('placed_at', start)
         .lte('placed_at', end)
@@ -155,7 +123,6 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     const totalRevenue = paidOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0)
     const totalTax = paidOrders.reduce((sum, o) => sum + (o.tax_amount || 0), 0)
     const totalTips = paidOrders.reduce((sum, o) => sum + (o.tip_amount || 0), 0)
-    const totalDiscounts = paidOrders.reduce((sum, o) => sum + (o.discount_amount || 0), 0)
     const netRevenue = totalRevenue - totalTax
     const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
 
@@ -163,7 +130,7 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     const refundsCount = refundedOrders.length
     const voidsCount = allOrders.filter(o => o.payment_status === 'unpaid' && o.status === 'cancelled').length
 
-    // 4. Unique Customers estimation (by session_id or separate order)
+    // 4. Unique Customers estimation
     const uniqueSessions = new Set(paidOrders.map(o => o.session_id).filter(Boolean))
     const ordersWithoutSession = paidOrders.filter(o => !o.session_id).length
     const uniqueCustomers = uniqueSessions.size + ordersWithoutSession
@@ -218,7 +185,6 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         ...(unverifiedTotal > 0.005 ? { unverified: unverifiedTotal } : {}),
     }
 
-    // Fetch each paid order's line items ONCE; both best-sellers and COGS reuse it.
     type SoldItem = { menu_item_id: string; menu_item_variation_id: string | null; quantity: number | null; unit_price: number | null; menu_items: { name?: string; estimated_cost_price?: number | null } | { name?: string; estimated_cost_price?: number | null }[] | null }
     let soldItems: SoldItem[] = []
     if (paidOrderIds.length > 0) {
@@ -277,7 +243,7 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         rushHourStr = `${startHourStr} - ${endHourStr} (${stats.count} orders, Rs. ${stats.revenue.toFixed(2)})`
     }
 
-    // 8. COGS and Gross Profit calculation (reuses the single soldItems fetch above)
+    // 8. COGS and Gross Profit calculation
     let totalCogs = 0
     if (soldItems.length > 0) {
         const menuItemIds = Array.from(new Set(soldItems.map(item => item.menu_item_id).filter(Boolean)))
@@ -331,8 +297,6 @@ export async function generateEodReport(restaurantId: string, reportDate: string
 
     const grossProfit = netRevenue - totalCogs
 
-    // ── Everything below is new: the per-person / per-channel breakdowns ──────
-
     const cancellationExpensesPromise = supabase
         .from('expenses')
         .select('amount, created_by, expense_categories!inner(name)')
@@ -371,9 +335,6 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         .gte('created_at', start)
         .lte('created_at', end)
 
-    // Bookings settled inside this window — the room side of the day. A stay
-    // settled early (bill_settled_at) or at departure (checked_out_at) both
-    // count; whichever is set is when the money actually moved.
     const bookingsPromise = supabase
         .from('bookings')
         .select('id, total_amount, bill_settled_at, checked_out_at, room_id, rooms(room_number, room_type)')
@@ -398,7 +359,6 @@ export async function generateEodReport(restaurantId: string, reportDate: string
 
     const totalCancellationCost = (cancellationExpenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
 
-    // ── Collections by person (cash / QR-bank / credit) ────────────────────
     const revenueCategories = new Set(['order_payment', 'room_deposit', 'booking_payment'])
     const entries = (dayBookEntries || []) as { type: string; category: string; amount: number; created_by: string | null }[]
 
@@ -410,7 +370,6 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         .map(e => ({ person: e.created_by, amount: Number(e.amount) || 0 }))
     const creditRows = (receivableCharges || []).map(r => ({ person: r.created_by, amount: Number(r.amount) || 0 }))
 
-    // ── Expense by person, split cash vs. bank/cheque ──────────────────────
     const expenseCashRows = entries.filter(e => e.type === 'cash_out' && e.category === 'expense')
     const expenseBankRows = entries.filter(e => e.type === 'bank_out' && e.category === 'expense')
     const expenseCashMap = sumByPerson(expenseCashRows.map(e => ({ person: e.created_by, amount: Number(e.amount) || 0 })))
@@ -420,11 +379,9 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         expenseBankRows.reduce((s, e) => s + (Number(e.amount) || 0), 0)
     )
 
-    // ── Income by person ────────────────────────────────────────────────────
     const incomeRows = (incomeEntries || []).map(i => ({ person: i.created_by, amount: Number(i.amount) || 0 }))
     const totalIncomeEntries = round2(incomeRows.reduce((s, r) => s + r.amount, 0))
 
-    // ── Cancellations by person ─────────────────────────────────────────────
     const cancellationByPersonRaw = new Map<string, { count: number; amount: number }>()
     for (const e of cancellationExpenses || []) {
         const key = e.created_by || '__unknown__'
@@ -434,21 +391,33 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         cancellationByPersonRaw.set(key, existing)
     }
 
-    // ── Discounts by person: hotel bargain-discount expenses + food order discounts ──
     const discountRows = (discountExpenses || []).map(e => ({ person: e.created_by, amount: Number(e.amount) || 0 }))
     for (const o of paidOrders) {
         if ((o.discount_amount || 0) > 0) discountRows.push({ person: o.cashier_id, amount: o.discount_amount })
     }
 
-    // ── Service charge by person: attributed to the checkout cashier ───────
+    const totalDiscounts = round2(discountRows.reduce((s, r) => s + r.amount, 0))
+
     const serviceChargeRows = paidOrders
         .filter(o => (o.service_charge_amount || 0) > 0)
         .map(o => ({ person: o.cashier_id, amount: o.service_charge_amount }))
 
-    // ── Restaurant vs. room sales, and top 5 rooms ──────────────────────────
+    const isOrderLinkedToRoom = (o: any): boolean => {
+        if (o.booking_id) return true
+        const sess = Array.isArray(o.sessions) ? o.sessions[0] : o.sessions
+        if (!sess) return false
+        const tbl = Array.isArray(sess.tables) ? sess.tables[0] : sess.tables
+        return !!tbl?.room_id
+    }
+
     const bookings = (settledBookings || []) as { id: string; total_amount: number; room_id: string | null; rooms: { room_number?: string; room_type?: string } | { room_number?: string; room_type?: string }[] | null }[]
-    const roomSales = round2(bookings.reduce((s, b) => s + (Number(b.total_amount) || 0), 0))
-    const restaurantSales = round2(totalRevenue)
+    const roomBookingsSales = round2(bookings.reduce((s, b) => s + (Number(b.total_amount) || 0), 0))
+    const roomOrders = paidOrders.filter(o => isOrderLinkedToRoom(o))
+    const roomOrdersSales = round2(roomOrders.reduce((s, o) => s + (o.total_amount || 0), 0))
+    const roomSales = round2(roomBookingsSales + roomOrdersSales)
+
+    const tableOrders = paidOrders.filter(o => !isOrderLinkedToRoom(o))
+    const restaurantSales = round2(tableOrders.reduce((s, o) => s + (o.total_amount || 0), 0))
 
     const roomAgg = new Map<string, { roomNumber: string; roomType: string | null; bookings: number; revenue: number }>()
     for (const b of bookings) {
@@ -461,7 +430,6 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     }
     const topRooms = Array.from(roomAgg.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 5)
 
-    // ── Resolve every staff id referenced above in one batch query ─────────
     const staffIds = new Set<string>()
     for (const r of [...cashInRows, ...bankInRows, ...creditRows, ...incomeRows, ...discountRows, ...serviceChargeRows]) {
         if (r.person) staffIds.add(r.person)

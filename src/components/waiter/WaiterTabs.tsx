@@ -33,7 +33,10 @@ export default function WaiterTabs({
     floorStatsElement,
 }: WaiterTabsProps) {
     const features = useFeatures()
-    const isKot = !!features?.kotEnabled
+    // The Kitchen and Customer tabs show live prep status, which only a KDS
+    // produces. Printing tickets as well doesn't take that away, so this asks
+    // whether the KDS is off — not whether the printer is on.
+    const isKot = !(features?.kdsEnabled ?? true)
     const [activeTab, setActiveTab] = useState<TabID>(isHotel ? 'rooms' : 'space')
 
     const tabs: { id: TabID; label: string; count: number }[] = isHotel ? [

@@ -128,6 +128,9 @@ async function recordSettlementPayment(
     cash: number,
     qr: number,
     credit: number,
+    /** Who handed the money over, when that is not obvious from the booking —
+     *  the rooms of a combined reservation each have their own occupant. */
+    paidBy?: string | null,
 ) {
     const amount = round2(cash + qr + credit)
     if (amount <= 0) return
@@ -141,6 +144,9 @@ async function recordSettlementPayment(
         qr_amount: round2(qr),
         note: 'Settlement',
         created_by: userId,
+        // created_by is the cashier; this is the guest. Null when nobody typed
+        // one, which reads correctly as "not recorded".
+        paid_by: paidBy?.trim() || null,
     })
     if (error) console.error('Failed to record settlement payment:', error)
 }
@@ -207,7 +213,16 @@ export async function POST(req: Request) {
             discount_amount, discount_reason, credit_amount, customer_name, customer_phone,
             redeemed_points, extra_hour_charge, service_charge_override,
             close_stay,
+            // Settle this room of a combined reservation on its own, leaving the
+            // others open. Ignored on a booking that is not part of a group.
+            settle_member_only,
+            // The guest who paid, recorded against the payment. Matters most
+            // alongside settle_member_only, where each room may be paid by a
+            // different person.
+            paid_by,
         } = body
+        const settleMemberOnly = settle_member_only === true
+        const paidBy = typeof paid_by === 'string' ? paid_by.trim() : ''
 
         if (!booking_id || !room_id) {
             return NextResponse.json({ error: 'Missing booking_id or room_id' }, { status: 400 })
@@ -266,31 +281,32 @@ export async function POST(req: Request) {
 
         const supabase = await createAdminClient()
 
-        // Resolve target restaurant IDs for fetching the booking
-        const { data: currentRest } = await supabase
-            .from('restaurants')
-            .select('linked_restaurant_id, linked_hotel_id')
-            .eq('id', currentUser.restaurantId)
-            .maybeSingle()
+        // 0. Fetch the restaurant details and booking concurrently
+        const [restResponse, bookingResponse] = await Promise.all([
+            supabase
+                .from('restaurants')
+                .select('ledger_split_mode, billing_commission_rate, linked_restaurant_id, linked_hotel_id, vat_registered, vat_number')
+                .eq('id', currentUser.restaurantId)
+                .single(),
+            supabase
+                .from('bookings')
+                .select('id, paid_amount, status, check_in, check_out, checked_out_at, bill_settled_at, room_id, group_id, guest_name, guest_phone, guest_email, restaurant_id')
+                .eq('id', booking_id)
+                .maybeSingle()
+        ])
 
-        const partnerId = currentRest?.linked_restaurant_id || currentRest?.linked_hotel_id
-        const targetRestaurantIds = [currentUser.restaurantId]
-        if (partnerId) {
-            targetRestaurantIds.push(partnerId)
-        }
-
-        // 0. Fetch the booking (with stay dates + room) to combine the settlement
-        // with the advance already collected and to recompute its folio.
-        const { data: booking, error: fetchError } = await supabase
-            .from('bookings')
-            .select('id, paid_amount, status, check_in, check_out, checked_out_at, bill_settled_at, room_id, group_id, guest_name, guest_phone, guest_email, restaurant_id')
-            .eq('id', booking_id)
-            .in('restaurant_id', targetRestaurantIds)
-            .maybeSingle()
+        const currentRest = restResponse.data
+        const booking = bookingResponse.data
+        const fetchError = bookingResponse.error
 
         if (fetchError) throw fetchError
         if (!booking) {
             return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+        }
+
+        const partnerId = currentRest?.linked_restaurant_id || currentRest?.linked_hotel_id
+        if (booking.restaurant_id !== currentUser.restaurantId && booking.restaurant_id !== partnerId) {
+             return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
         }
 
         // 0a. Resolve every room being settled. A multi-room reservation checks
@@ -316,7 +332,21 @@ export async function POST(req: Request) {
             paid_amount: booking.paid_amount,
         }]
 
-        if (booking.group_id) {
+        // settle_member_only settles just this room of a combined reservation and
+        // leaves the rest of the folio open.
+        //
+        // Everything downstream is derived from `members` — the folio, which RPC
+        // runs, which rooms are sent to housekeeping, what the invoice itemizes —
+        // so narrowing it here is the whole feature. The room is then settled by
+        // exactly the path a standalone booking takes, rather than through a
+        // second money path written specially for it.
+        //
+        // What it owes is what computeFolioForStays returns for this stay alone:
+        // its own nights, its own room charges, and the orders carrying its
+        // booking_id. Anything belonging to the reservation rather than to a room
+        // stays on the folio for whoever settles last. The siblings keep their
+        // group_id and are untouched.
+        if (booking.group_id && !settleMemberOnly) {
             const { data: groupRows } = await supabase
                 .from('bookings')
                 .select('id, room_id, check_in, check_out, checked_out_at, status, paid_amount')
@@ -429,8 +459,20 @@ export async function POST(req: Request) {
 
             await recordSettlementPayment(
                 supabase, booking.restaurant_id, booking_id, currentUser.id,
-                Number(cash_paid) || 0, Number(qr_paid) || 0, creditAmount,
+                Number(cash_paid) || 0, Number(qr_paid) || 0, creditAmount, paidBy,
             )
+
+            const priorPaidNoInvoice = members.reduce((s, m) => s + (Number(m.paid_amount) || 0), 0)
+            const returnToGuestNoInvoice = round2(priorPaidNoInvoice + settledNow - authoritativeTotal)
+            if (returnToGuestNoInvoice > 0) {
+                const { postFinancialTransaction } = await import('@/lib/ledger')
+                await postFinancialTransaction(supabase, { restaurantId: booking.restaurant_id, id: currentUser.id }, {
+                    type: 'cash_out',
+                    amount: returnToGuestNoInvoice,
+                    category: 'refund',
+                    description: `Return to Guest (Refund): ${booking.guest_name || 'Guest'}`,
+                })
+            }
 
             return NextResponse.json({
                 success: true,
@@ -454,13 +496,9 @@ export async function POST(req: Request) {
                 : newPaidAmount > 0 ? 'partial'
                     : 'unpaid'
 
-        // 1. Fetch current restaurant linkage & split settings (from the booking's hotel)
-        const { data: restaurant } = await supabase
-            .from('restaurants')
-            .select('ledger_split_mode, billing_commission_rate, linked_restaurant_id, vat_registered, vat_number')
-            .eq('id', booking.restaurant_id)
-            .single()
-
+        // 1. We already fetched the restaurant details at the top (currentRest).
+        // Reuse it.
+        const restaurant = currentRest
         const partnerRestaurantId = restaurant?.linked_restaurant_id
         
         // 2. Fetch room details. The folio already resolved a number for every
@@ -615,9 +653,13 @@ export async function POST(req: Request) {
         // cashPaid/qrPaid are what the guest actually handed over, before the
         // hotel/restaurant partner split above — that split only decides whose
         // books the money lands in, not how much cash vs QR was received.
-        await recordSettlementPayment(
-            supabase, booking.restaurant_id, booking_id, currentUser.id,
-            cashPaid, qrPaid, creditAmount,
+        const postCheckoutTasks: PromiseLike<any>[] = []
+
+        postCheckoutTasks.push(
+            recordSettlementPayment(
+                supabase, booking.restaurant_id, booking_id, currentUser.id,
+                cashPaid, qrPaid, creditAmount, paidBy,
+            )
         )
 
         // Written after the settling transaction rather than inside it: the RPC
@@ -627,12 +669,33 @@ export async function POST(req: Request) {
         // stored charge stale, which is why it is not allowed to fail the
         // checkout — the audit log records the override either way.
         if (serviceChargeOverride !== null) {
-            const { error: scErr } = await supabase
-                .from('bookings')
-                .update({ service_charge_override: serviceChargeOverride })
-                .in('id', memberIds)
-            if (scErr) console.error('Failed to store service charge override:', scErr)
+            postCheckoutTasks.push(
+                supabase
+                    .from('bookings')
+                    .update({ service_charge_override: serviceChargeOverride })
+                    .in('id', memberIds)
+                    .then(({ error: scErr }) => {
+                        if (scErr) console.error('Failed to store service charge override:', scErr)
+                    })
+            )
         }
+
+        // Handle loyalty points (5% earn on Cash/QR payments). settleLoyalty
+        // creates the guest's CRM record if this is their first visit — read
+        // only, a cash-paying guest never had one and so never earned anything.
+        postCheckoutTasks.push(
+            settleLoyalty(supabase, booking.restaurant_id, currentUser.id, {
+                name: customer_name ? customer_name.trim() : (booking.guest_name ? booking.guest_name.trim() : 'Guest'),
+                phone: customer_phone ? customer_phone.trim() : (booking.guest_phone ? booking.guest_phone.trim() : ''),
+                earnPoints: Math.round((cashPaid + qrPaid) * 0.05),
+                redeemPoints: Number(redeemed_points) || 0,
+                earnDescription: `Earned from Room ${roomNumber} stay`,
+                redeemDescription: `Redeemed on Room ${roomNumber} stay`,
+            })
+        )
+
+        // Wait for post-RPC updates
+        await Promise.all(postCheckoutTasks)
 
         // Trigger IRD CBMS Synchronization
         const isVatRegistered = !!restaurant?.vat_registered
@@ -682,18 +745,6 @@ export async function POST(req: Request) {
                 split_mode: restaurant?.ledger_split_mode || 'direct',
                 commission_rate: Number(restaurant?.billing_commission_rate) || 0
             },
-        })
-
-        // Handle loyalty points (5% earn on Cash/QR payments). settleLoyalty
-        // creates the guest's CRM record if this is their first visit — read
-        // only, a cash-paying guest never had one and so never earned anything.
-        await settleLoyalty(supabase, booking.restaurant_id, currentUser.id, {
-            name: customer_name ? customer_name.trim() : (booking.guest_name ? booking.guest_name.trim() : 'Guest'),
-            phone: customer_phone ? customer_phone.trim() : (booking.guest_phone ? booking.guest_phone.trim() : ''),
-            earnPoints: Math.round((cashPaid + qrPaid) * 0.05),
-            redeemPoints: Number(redeemed_points) || 0,
-            earnDescription: `Earned from Room ${roomNumber} stay`,
-            redeemDescription: `Redeemed on Room ${roomNumber} stay`,
         })
 
         return NextResponse.json({ success: true, total: authoritativeTotal, breakdown: folio, closed: closeStay })

@@ -26,11 +26,33 @@ import {
     DEFAULT_FEATURES_V1,
     buildFeaturesV2,
 } from '@/lib/tiers'
-import { getBusinessMode } from '@/lib/businessMode'
+import { TRIAL_TIER, TRIAL_STATUS, trialExpiryFrom } from '@/lib/trial'
+import { getBusinessMode, type BusinessMode } from '@/lib/businessMode'
 import type { StationKind } from '@/lib/stations'
 
 const MANAGER_ROLE_ID = 2 // roles: 1=super_admin 2=manager 3=kitchen 4=waiter 5=customer
 const DEFAULT_TABLE_COUNT = 6
+
+/**
+ * Starter room categories for a hotel.
+ *
+ * A restaurant was provisioned able to trade — a menu to sell and tables to
+ * seat — while a hotel got the same menu and tables and nothing at all for the
+ * rooms it actually lets. That was not merely an empty screen: POST /api/rooms
+ * rejects a room with no type ("Room number and Room Type are required"), and
+ * no type existed, so the first thing a new hotel had to do was work out that
+ * rooms hang off a category it had to invent first.
+ *
+ * Two are enough to make the Add Room form usable on day one and to show what a
+ * category is for. base_price stays 0 so nobody bills a guest at a rate this
+ * file guessed — the hotel sets its own, and the room form makes the price
+ * obvious. Renaming or deleting these is a click; needing them and finding none
+ * is a dead end.
+ */
+const SAMPLE_ROOM_TYPES: Array<{ name: string; capacity: number; description: string }> = [
+    { name: 'Standard', capacity: 2, description: 'Standard room — set your own rate and amenities.' },
+    { name: 'Deluxe', capacity: 3, description: 'Larger room — set your own rate and amenities.' },
+]
 
 export interface ProvisionInput {
     /** Existing auth user id (created by signup before calling, or already logged in for onboarding). */
@@ -44,6 +66,15 @@ export interface ProvisionInput {
     /** Restaurant category selected during onboarding (FastFood/Hotel/Cafe/etc). */
     businessType?: string | null
     tier?: Tier
+    /**
+     * Start this tenant on the 14-day full-access trial, overriding `tier`.
+     *
+     * Opt-in rather than the default because only self-serve onboarding earns a
+     * trial. A demo tenant and a tenant a super admin creates by hand both come
+     * with a deliberate plan already chosen, and silently converting those into
+     * expiring platinum would suspend or downgrade them a fortnight later.
+     */
+    trial?: boolean
     // Optional signup-only business fields
     contactEmail?: string | null
     slogan?: string | null
@@ -148,7 +179,17 @@ const DEFAULT_UNGROUPED_CATEGORIES: { name: string; isStock?: boolean }[] = [
 
 export async function provisionRestaurant(input: ProvisionInput): Promise<ProvisionResult> {
     const supabase = await createAdminClient()
-    const tier: Tier = input.tier ?? 'free'
+    // A trial tenant really is on TRIAL_TIER — the caps, the seeded feature
+    // flags and every tier check downstream all read the same value, so nothing
+    // below has to know a trial is what put it there. Only the status and the
+    // expiry date mark it, and those are what the nightly job reads to end it.
+    const onTrial = input.trial === true
+    const tier: Tier = onTrial ? TRIAL_TIER : (input.tier ?? 'free')
+    // One timestamp, written to both columns. They diverge later — the
+    // downgrade clears the expiry and keeps the trial marker — but they must
+    // start out agreeing or the countdown and the plan would disagree on the
+    // day it ends.
+    const trialEndsAt = onTrial ? trialExpiryFrom() : null
     const mode = getBusinessMode(input.businessType)
     const limits = TIER_LIMITS[tier]
     const seed = input.seedSample !== false
@@ -184,7 +225,17 @@ export async function provisionRestaurant(input: ProvisionInput): Promise<Provis
                 latitude: input.latitude ?? null,
                 longitude: input.longitude ?? null,
                 subscription_tier: tier,
-                subscription_status: 'active',
+                subscription_status: onTrial ? TRIAL_STATUS : 'active',
+                // Only ever set for a trial. A paid subscription leaves this
+                // null until billing writes a real renewal date, and
+                // auto-suspend only looks at rows that have one — so a null
+                // here is what keeps a paying tenant from being suspended by a
+                // date nobody set.
+                subscription_expires_at: trialEndsAt,
+                // Survives the downgrade that clears subscription_expires_at,
+                // so the app can still tell a tenant whose trial just ran out
+                // from one that has always been on Free.
+                trial_ends_at: trialEndsAt,
                 max_staff: limits.max_staff,
                 max_menu_items: limits.max_menu_items,
                 max_tables: limits.max_tables,
@@ -220,7 +271,7 @@ export async function provisionRestaurant(input: ProvisionInput): Promise<Provis
                 features_v2: buildFeaturesV2(tier, mode),
                 business_hours: null,
             }),
-            seed ? seedStarterData(supabase, rid, tableCount) : Promise.resolve(),
+            seed ? seedStarterData(supabase, rid, tableCount, mode) : Promise.resolve(),
         ])
         if (userRes.error) throw new Error(userRes.error.message)
         if (settingsRes.error) throw new Error(settingsRes.error.message)
@@ -242,6 +293,7 @@ async function seedStarterData(
     supabase: SupabaseClient,
     restaurantId: string,
     tableCount: number,
+    mode: BusinessMode,
 ): Promise<void> {
     // Categories
     const categoryRows = SAMPLE_MENU.map((c, i) => ({
@@ -318,12 +370,26 @@ async function seedStarterData(
         is_stock_category: !!u.isStock,
     }))
 
-    const [{ error: itemError }, tableRes, expenseCatRes] = await Promise.all([
+    // Only a hotel lets rooms, so only a hotel needs the categories they hang
+    // off. Everything else here is shared, and none of these depend on each
+    // other, so they go together.
+    const roomTypeRows = mode === 'hotel'
+        ? SAMPLE_ROOM_TYPES.map(t => ({
+            restaurant_id: restaurantId,
+            name: t.name,
+            capacity: t.capacity,
+            description: t.description,
+        }))
+        : []
+
+    const [{ error: itemError }, tableRes, expenseCatRes, roomTypeRes] = await Promise.all([
         supabase.from('menu_items').insert(itemRows),
         tableRows.length ? supabase.from('tables').insert(tableRows) : Promise.resolve({ error: null }),
         supabase.from('expense_categories').insert([...subCategoryRows, ...ungroupedCategoryRows]),
+        roomTypeRows.length ? supabase.from('room_types').insert(roomTypeRows) : Promise.resolve({ error: null }),
     ])
     if (itemError) throw new Error(`Seed menu items failed: ${itemError.message}`)
     if (tableRes.error) throw new Error(`Seed tables failed: ${tableRes.error.message}`)
     if (expenseCatRes.error) throw new Error(`Seed expense categories failed: ${expenseCatRes.error.message}`)
+    if (roomTypeRes.error) throw new Error(`Seed room types failed: ${roomTypeRes.error.message}`)
 }

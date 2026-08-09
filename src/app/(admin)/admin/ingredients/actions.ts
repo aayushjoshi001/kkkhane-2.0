@@ -189,7 +189,8 @@ export async function addStockMovementAction(input: {
     // Update stock. Applied as a single atomic UPDATE inside the database —
     // reading the quantity here and writing back read + delta would lose one
     // of two movements recorded at the same time.
-    const delta = input.movement_type === 'purchase' ? input.quantity : -input.quantity
+    const isAddition = input.movement_type === 'purchase' || input.movement_type === 'adjustment'
+    const delta = isAddition ? input.quantity : -input.quantity
     const { error: stockErr } = await supabase.rpc('adjust_ingredient_stock', {
         p_ingredient_id: input.ingredient_id,
         p_delta: delta

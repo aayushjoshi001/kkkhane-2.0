@@ -29,6 +29,7 @@ export type AuditAction =
     | 'booking_bill_separated'
     | 'booking_bill_settled'
     | 'booking_room_departed'
+    | 'booking_edited'
     | 'table_session_checked_out'
     | 'order_checked_out'
     | 'financial_event_created'

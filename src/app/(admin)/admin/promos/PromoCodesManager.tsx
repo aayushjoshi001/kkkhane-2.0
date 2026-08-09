@@ -196,54 +196,59 @@ export default function PromoCodesManager({ initialPromos, restaurantId }: {
             )}
 
             <div className="bg-surface rounded-card border border-hairline overflow-hidden shadow-sm">
-                <table className="w-full text-sm">
-                    <thead className="bg-surface-muted/50 text-ink-subtle uppercase tracking-wider text-[10px] font-bold border-b border-hairline">
-                        <tr>
-                            <th className="text-left px-5 py-4">Code</th>
-                            <th className="text-left px-5 py-4">Type</th>
-                            <th className="text-left px-5 py-4">Value</th>
-                            <th className="text-left px-5 py-4 hidden md:table-cell">Uses</th>
-                            <th className="text-left px-5 py-4 hidden md:table-cell">Expires</th>
-                            <th className="text-left px-5 py-4">Status</th>
-                            <th className="text-right px-5 py-4">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-hairline">
-                        {promos.map(promo => (
-                            <tr key={promo.id} className="hover:bg-surface-muted/30 transition-colors">
-                                <td className="px-5 py-4 font-mono font-bold text-ink tracking-wide">{promo.code}</td>
-                                <td className="px-5 py-4 capitalize text-ink-subtle">{promo.promo_type.replace('_', ' ')}</td>
-                                <td className="px-5 py-4 font-bold tabular-nums text-ink">{promo.promo_type === 'percentage_off' ? `${promo.value}%` : `$${promo.value}`}</td>
-                                <td className="px-5 py-4 text-ink-subtle font-medium tabular-nums hidden md:table-cell">{promo.current_uses} / {promo.max_uses || '∞'}</td>
-                                <td className="px-5 py-4 text-ink-subtle hidden md:table-cell">{promo.valid_until ? <DateCell value={promo.valid_until} /> : '—'}</td>
-                                <td className="px-5 py-4">
-                                    <label className="relative inline-flex items-center cursor-pointer group">
-                                        <input 
-                                            type="checkbox" 
-                                            className="sr-only peer" 
-                                            checked={promo.is_active} 
-                                            onChange={() => toggleActive(promo)}
-                                        />
-                                        <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
-                                    </label>
-                                </td>
-                                <td className="px-5 py-4 text-right">
-                                    <div className="flex gap-1.5 justify-end">
-                                        <button onClick={() => openEdit(promo)} className="p-2 text-ink-subtle hover:text-ink hover:bg-surface-muted rounded-[var(--r-md)] transition-colors" title="Edit promo code">
-                                            <Pencil size={16} />
-                                        </button>
-                                        <button onClick={() => handleDelete(promo.id)} className="p-2 text-ink-subtle hover:text-danger-fg hover:bg-danger-bg rounded-[var(--r-md)] transition-colors" title="Delete promo code">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                </td>
+                {/* Horizontal scroll: the card around this clips with
+                    overflow-hidden, so on a narrow screen the right-hand
+                    columns were cut off with no way to reach them. */}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead className="bg-surface-muted/50 text-ink-subtle uppercase tracking-wider text-[10px] font-bold border-b border-hairline">
+                            <tr>
+                                <th className="text-left px-5 py-4">Code</th>
+                                <th className="text-left px-5 py-4">Type</th>
+                                <th className="text-left px-5 py-4">Value</th>
+                                <th className="text-left px-5 py-4 hidden md:table-cell">Uses</th>
+                                <th className="text-left px-5 py-4 hidden md:table-cell">Expires</th>
+                                <th className="text-left px-5 py-4">Status</th>
+                                <th className="text-right px-5 py-4">Actions</th>
                             </tr>
-                        ))}
-                        {promos.length === 0 && (
-                            <tr><td colSpan={7} className="px-5 py-12 text-center font-bold text-ink-subtle/70">No promo codes yet. Create your first one!</td></tr>
-                        )}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-hairline">
+                            {promos.map(promo => (
+                                <tr key={promo.id} className="hover:bg-surface-muted/30 transition-colors">
+                                    <td className="px-5 py-4 font-mono font-bold text-ink tracking-wide">{promo.code}</td>
+                                    <td className="px-5 py-4 capitalize text-ink-subtle">{promo.promo_type.replace('_', ' ')}</td>
+                                    <td className="px-5 py-4 font-bold tabular-nums text-ink">{promo.promo_type === 'percentage_off' ? `${promo.value}%` : `$${promo.value}`}</td>
+                                    <td className="px-5 py-4 text-ink-subtle font-medium tabular-nums hidden md:table-cell">{promo.current_uses} / {promo.max_uses || '∞'}</td>
+                                    <td className="px-5 py-4 text-ink-subtle hidden md:table-cell">{promo.valid_until ? <DateCell value={promo.valid_until} /> : '—'}</td>
+                                    <td className="px-5 py-4">
+                                        <label className="relative inline-flex items-center cursor-pointer group">
+                                            <input 
+                                                type="checkbox" 
+                                                className="sr-only peer" 
+                                                checked={promo.is_active} 
+                                                onChange={() => toggleActive(promo)}
+                                            />
+                                            <div className="w-11 h-6 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-shadow"></div>
+                                        </label>
+                                    </td>
+                                    <td className="px-5 py-4 text-right">
+                                        <div className="flex gap-1.5 justify-end">
+                                            <button onClick={() => openEdit(promo)} className="p-2 text-ink-subtle hover:text-ink hover:bg-surface-muted rounded-[var(--r-md)] transition-colors" title="Edit promo code">
+                                                <Pencil size={16} />
+                                            </button>
+                                            <button onClick={() => handleDelete(promo.id)} className="p-2 text-ink-subtle hover:text-danger-fg hover:bg-danger-bg rounded-[var(--r-md)] transition-colors" title="Delete promo code">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                            {promos.length === 0 && (
+                                <tr><td colSpan={7} className="px-5 py-12 text-center font-bold text-ink-subtle/70">No promo codes yet. Create your first one!</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     )

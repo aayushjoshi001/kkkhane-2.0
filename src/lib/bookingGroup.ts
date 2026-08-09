@@ -31,6 +31,19 @@ export type GroupBill = {
          *  with the rest of it. Their nights are frozen at `departedAt`. */
         departed: boolean
         departedAt: string | null
+        /**
+         * What this room alone would settle for — its own nights, its own
+         * charges, and the orders carrying its booking id. Whatever belongs to
+         * the reservation rather than to a room is not in here, so these
+         * deliberately sum to less than the combined bill; the remainder stays
+         * on the folio for whoever settles last.
+         *
+         * Null when the folio for that room could not be computed, which the
+         * till reads as "offer the combined settle only".
+         */
+        ownTotal: number | null
+        /** Already settled on its own — no longer owes anything to this bill. */
+        settled: boolean
     }>
     /** Every room's stay cost added up — what the guest owes for rooms. */
     stayCost: number

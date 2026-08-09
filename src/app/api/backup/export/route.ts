@@ -137,18 +137,24 @@ export async function POST(request: Request) {
 
         const supabase = await createAdminClient()
 
-        // 1. Verify backup password from Settings
-        const { data: settings, error: settingsError } = await supabase
-            .from('settings')
-            .select('features_v2')
+        // 1. Verify the backup password.
+        //
+        // Read from restaurant_backup_secrets, not settings.features_v2: settings
+        // is world-readable (public_read_settings, SELECT USING (true)) so the
+        // customer QR menu can load currency and flags without logging in, and a
+        // credential kept there is handed to anyone who asks for the row. The
+        // secrets table has RLS on with no policies, so only this service_role
+        // client can see it.
+        const { data: secret } = await supabase
+            .from('restaurant_backup_secrets')
+            .select('backup_password')
             .eq('restaurant_id', restaurantId)
-            .single()
+            .maybeSingle()
 
-        if (settingsError || !settings) {
-            return NextResponse.json({ error: 'Settings not found' }, { status: 404 })
-        }
-
-        const correctPassword = settings.features_v2?.backup_password
+        // No password set yet means nobody has opened Profile to generate one.
+        // Refuse rather than allow: this endpoint returns the restaurant's whole
+        // order, booking and finance history.
+        const correctPassword = secret?.backup_password
         if (!correctPassword || password !== correctPassword) {
             return NextResponse.json({ error: 'Incorrect backup password' }, { status: 403 })
         }

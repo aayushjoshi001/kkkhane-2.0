@@ -190,44 +190,49 @@ export default function ShiftsManager({ activeShifts, recentShifts }: {
                 {active.length === 0 ? (
                     <div className="px-5 py-12 text-center text-ink-muted font-bold text-sm">No staff currently clocked in.</div>
                 ) : (
-                    <table className="w-full text-sm">
-                        <thead className="bg-surface-muted/30 border-b border-hairline">
-                            <tr>
-                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Staff</th>
-                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Role</th>
-                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Clocked In</th>
-                                <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Duration</th>
-                                <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-hairline">
-                            {active.map(s => (
-                                <tr key={s.id} className="hover:bg-surface-muted/30 transition-colors">
-                                    <td className="px-5 py-4 flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-surface-muted border border-hairline flex items-center justify-center text-ink-subtle shrink-0">
-                                            <User size={14} />
-                                        </div>
-                                        <span className="font-extrabold text-ink">{getStaffName(s)}</span>
-                                    </td>
-                                    <td className="px-5 py-4 text-ink-subtle font-medium capitalize hidden md:table-cell">{getStaffRole(s)}</td>
-                                    <td className="px-5 py-4 text-ink font-bold tabular-nums">{new Date(s.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                                    <td className="px-5 py-4 text-right font-bold text-brand-500 tabular-nums">{duration(s.clock_in)}</td>
-                                    <td className="px-5 py-4">
-                                        <div className="flex items-center gap-2 justify-end">
-                                            <button onClick={() => setCorrecting(s)}
-                                                className="px-3 py-1.5 rounded-[var(--r-md)] border border-hairline text-[11px] font-bold text-ink-subtle uppercase tracking-wider hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200 transition-all flex items-center gap-1.5 shadow-sm bg-surface focus-ring">
-                                                <Pencil size={12} /> Correct
-                                            </button>
-                                            <button onClick={() => handleForceClockOut(s)}
-                                                className="px-3 py-1.5 rounded-[var(--r-md)] border border-hairline text-[11px] font-bold text-danger-fg uppercase tracking-wider hover:bg-danger-bg hover:border-danger-fg/30 transition-all flex items-center gap-1.5 shadow-sm bg-surface focus-ring">
-                                                <LogOut size={12} /> Force Out
-                                            </button>
-                                        </div>
-                                    </td>
+                    <div className="overflow-x-auto">
+                        {/* The card around this clips with overflow-hidden, so on a
+                            narrow screen the right-hand columns were cut off with no
+                            way to reach them. */}
+                        <table className="w-full text-sm">
+                            <thead className="bg-surface-muted/30 border-b border-hairline">
+                                <tr>
+                                    <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Staff</th>
+                                    <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Role</th>
+                                    <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Clocked In</th>
+                                    <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Duration</th>
+                                    <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Actions</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-hairline">
+                                {active.map(s => (
+                                    <tr key={s.id} className="hover:bg-surface-muted/30 transition-colors">
+                                        <td className="px-5 py-4 flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-surface-muted border border-hairline flex items-center justify-center text-ink-subtle shrink-0">
+                                                <User size={14} />
+                                            </div>
+                                            <span className="font-extrabold text-ink">{getStaffName(s)}</span>
+                                        </td>
+                                        <td className="px-5 py-4 text-ink-subtle font-medium capitalize hidden md:table-cell">{getStaffRole(s)}</td>
+                                        <td className="px-5 py-4 text-ink font-bold tabular-nums">{new Date(s.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                                        <td className="px-5 py-4 text-right font-bold text-brand-500 tabular-nums">{duration(s.clock_in)}</td>
+                                        <td className="px-5 py-4">
+                                            <div className="flex items-center gap-2 justify-end">
+                                                <button onClick={() => setCorrecting(s)}
+                                                    className="px-3 py-1.5 rounded-[var(--r-md)] border border-hairline text-[11px] font-bold text-ink-subtle uppercase tracking-wider hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200 transition-all flex items-center gap-1.5 shadow-sm bg-surface focus-ring">
+                                                    <Pencil size={12} /> Correct
+                                                </button>
+                                                <button onClick={() => handleForceClockOut(s)}
+                                                    className="px-3 py-1.5 rounded-[var(--r-md)] border border-hairline text-[11px] font-bold text-danger-fg uppercase tracking-wider hover:bg-danger-bg hover:border-danger-fg/30 transition-all flex items-center gap-1.5 shadow-sm bg-surface focus-ring">
+                                                    <LogOut size={12} /> Force Out
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </div>
 
@@ -236,60 +241,65 @@ export default function ShiftsManager({ activeShifts, recentShifts }: {
                 <div className="px-5 py-4 border-b border-hairline bg-surface-muted/30">
                     <h2 className="text-sm font-extrabold text-ink">Recent Shifts</h2>
                 </div>
-                <table className="w-full text-sm">
-                    <thead className="bg-surface-muted/30 border-b border-hairline">
-                        <tr>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Staff</th>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Role</th>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Date</th>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">In/Out</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Hours</th>
-                            <th className="text-center px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Status</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-hairline">
-                        {recent.map(s => (
-                            <tr key={s.id} className="hover:bg-surface-muted/30 transition-colors">
-                                <td className="px-5 py-4 font-extrabold text-ink">{getStaffName(s)}</td>
-                                <td className="px-5 py-4 text-ink-subtle font-medium capitalize hidden md:table-cell">{getStaffRole(s)}</td>
-                                <td className="px-5 py-4 text-ink-subtle font-medium hidden md:table-cell"><DateCell value={s.clock_in} /></td>
-                                <td className="px-5 py-4 text-ink-subtle font-bold tabular-nums">
-                                    {new Date(s.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    {' → '}
-                                    {s.clock_out ? new Date(s.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
-                                </td>
-                                <td className="px-5 py-4 text-right font-bold text-brand-500 tabular-nums">
-                                    {s.hours_worked != null ? `${s.hours_worked.toFixed(1)}h` : '—'}
-                                </td>
-                                <td className="px-5 py-4 text-center">
-                                    {s.is_approved ? (
-                                        <span className="text-[11px] font-bold uppercase tracking-wider bg-success-bg/20 text-success-fg px-3 py-1 rounded-full border border-success-bg inline-block">Approved</span>
-                                    ) : (
-                                        <span className="text-[11px] font-bold uppercase tracking-wider bg-amber-50/50 text-amber-700/80 px-3 py-1 rounded-full border border-amber-200/50 inline-block">Pending</span>
-                                    )}
-                                </td>
-                                <td className="px-5 py-4">
-                                    <div className="flex items-center gap-2 justify-end">
-                                        <button onClick={() => setCorrecting(s)}
-                                            className="px-3 py-1.5 rounded-[var(--r-md)] border border-hairline text-[11px] font-bold text-ink-subtle uppercase tracking-wider hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200 transition-all flex items-center gap-1.5 shadow-sm bg-surface focus-ring">
-                                            <Pencil size={12} /> Correct
-                                        </button>
-                                        {!s.is_approved && (
-                                            <button onClick={() => handleApprove(s)}
-                                                className="px-3 py-1.5 rounded-[var(--r-md)] border border-hairline text-[11px] font-bold text-success-fg uppercase tracking-wider hover:bg-success-bg/20 hover:border-success-bg transition-all flex items-center gap-1.5 shadow-sm bg-surface focus-ring">
-                                                <CheckCircle size={12} /> Approve
-                                            </button>
-                                        )}
-                                    </div>
-                                </td>
+                <div className="overflow-x-auto">
+                    {/* The card around this clips with overflow-hidden, so on a
+                        narrow screen the right-hand columns were cut off with no
+                        way to reach them. */}
+                    <table className="w-full text-sm">
+                        <thead className="bg-surface-muted/30 border-b border-hairline">
+                            <tr>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Staff</th>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Role</th>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Date</th>
+                                <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">In/Out</th>
+                                <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Hours</th>
+                                <th className="text-center px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Status</th>
+                                <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Actions</th>
                             </tr>
-                        ))}
-                        {recent.length === 0 && (
-                            <tr><td colSpan={7} className="px-5 py-12 text-center text-ink-muted font-bold text-sm">No completed shifts yet.</td></tr>
-                        )}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-hairline">
+                            {recent.map(s => (
+                                <tr key={s.id} className="hover:bg-surface-muted/30 transition-colors">
+                                    <td className="px-5 py-4 font-extrabold text-ink">{getStaffName(s)}</td>
+                                    <td className="px-5 py-4 text-ink-subtle font-medium capitalize hidden md:table-cell">{getStaffRole(s)}</td>
+                                    <td className="px-5 py-4 text-ink-subtle font-medium hidden md:table-cell"><DateCell value={s.clock_in} /></td>
+                                    <td className="px-5 py-4 text-ink-subtle font-bold tabular-nums">
+                                        {new Date(s.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        {' → '}
+                                        {s.clock_out ? new Date(s.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                                    </td>
+                                    <td className="px-5 py-4 text-right font-bold text-brand-500 tabular-nums">
+                                        {s.hours_worked != null ? `${s.hours_worked.toFixed(1)}h` : '—'}
+                                    </td>
+                                    <td className="px-5 py-4 text-center">
+                                        {s.is_approved ? (
+                                            <span className="text-[11px] font-bold uppercase tracking-wider bg-success-bg/20 text-success-fg px-3 py-1 rounded-full border border-success-bg inline-block">Approved</span>
+                                        ) : (
+                                            <span className="text-[11px] font-bold uppercase tracking-wider bg-amber-50/50 text-amber-700/80 px-3 py-1 rounded-full border border-amber-200/50 inline-block">Pending</span>
+                                        )}
+                                    </td>
+                                    <td className="px-5 py-4">
+                                        <div className="flex items-center gap-2 justify-end">
+                                            <button onClick={() => setCorrecting(s)}
+                                                className="px-3 py-1.5 rounded-[var(--r-md)] border border-hairline text-[11px] font-bold text-ink-subtle uppercase tracking-wider hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200 transition-all flex items-center gap-1.5 shadow-sm bg-surface focus-ring">
+                                                <Pencil size={12} /> Correct
+                                            </button>
+                                            {!s.is_approved && (
+                                                <button onClick={() => handleApprove(s)}
+                                                    className="px-3 py-1.5 rounded-[var(--r-md)] border border-hairline text-[11px] font-bold text-success-fg uppercase tracking-wider hover:bg-success-bg/20 hover:border-success-bg transition-all flex items-center gap-1.5 shadow-sm bg-surface focus-ring">
+                                                    <CheckCircle size={12} /> Approve
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                            {recent.length === 0 && (
+                                <tr><td colSpan={7} className="px-5 py-12 text-center text-ink-muted font-bold text-sm">No completed shifts yet.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     )

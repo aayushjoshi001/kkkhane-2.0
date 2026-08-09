@@ -92,28 +92,31 @@ export async function POST(req: Request) {
         // `checked_out_at` is stamped by the bookings_stamp_checked_out_at
         // trigger the moment status flips, and that timestamp is what freezes
         // this room's nights on the shared folio (see resolveDeparture).
-        const { error: closeError } = await supabase
-            .from('bookings')
-            .update({ status: 'checked_out' })
-            .eq('id', bookingId)
-            .eq('restaurant_id', currentUser.restaurantId)
-        if (closeError) throw closeError
+        const [closeRes, sessionRes, roomRes] = await Promise.all([
+            supabase
+                .from('bookings')
+                .update({ status: 'checked_out' })
+                .eq('id', bookingId)
+                .eq('restaurant_id', currentUser.restaurantId),
+            
+            // This guest is gone, so their in-room QR must stop ordering onto the
+            // bill — and the room may have someone new in it within the hour, who
+            // needs a session of their own rather than inheriting this one.
+            supabase
+                .from('sessions')
+                .update({ status: 'closed', closed_at: new Date().toISOString() })
+                .eq('booking_id', bookingId)
+                .eq('status', 'active'),
+                
+            supabase
+                .from('rooms')
+                .update({ status: 'dirty' })
+                .eq('id', booking.room_id)
+                .eq('restaurant_id', currentUser.restaurantId)
+        ])
 
-        // This guest is gone, so their in-room QR must stop ordering onto the
-        // bill — and the room may have someone new in it within the hour, who
-        // needs a session of their own rather than inheriting this one.
-        await supabase
-            .from('sessions')
-            .update({ status: 'closed', closed_at: new Date().toISOString() })
-            .eq('booking_id', bookingId)
-            .eq('status', 'active')
-
-        const { error: roomError } = await supabase
-            .from('rooms')
-            .update({ status: 'dirty' })
-            .eq('id', booking.room_id)
-            .eq('restaurant_id', currentUser.restaurantId)
-        if (roomError) throw roomError
+        if (closeRes.error) throw closeRes.error
+        if (roomRes.error) throw roomRes.error
 
         void logAudit({
             restaurantId: currentUser.restaurantId,

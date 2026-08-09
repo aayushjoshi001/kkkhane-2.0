@@ -24,9 +24,14 @@ export function initSentryClient() {
     // "[Tracing] …" flood). Opt in explicitly with SENTRY_DEBUG=true.
     debug: process.env.SENTRY_DEBUG === 'true',
 
-    // Session replays: only in prod.
-    replaysSessionSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 0,
-    replaysOnErrorSampleRate: process.env.NODE_ENV === 'production' ? 1.0 : 0,
+    // No session replay. `replaysSessionSampleRate`/`replaysOnErrorSampleRate`
+    // used to be set here, but sample rates alone do nothing: since v8 the SDK
+    // only records when `replayIntegration()` is passed in `integrations`, and
+    // it is not one of the browser or Next.js defaults. So no replay was ever
+    // captured, and rrweb was never in the bundle. Dropped rather than left to
+    // read like a feature that exists. To actually turn it on, add the
+    // integration — preferably through `Sentry.lazyLoadIntegration()` so the
+    // recorder is fetched from the CDN instead of shipped to every page.
 
     // Security: Don't send personal data
     beforeSend(event) {

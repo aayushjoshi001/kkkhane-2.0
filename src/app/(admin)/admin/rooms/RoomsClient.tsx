@@ -82,6 +82,8 @@ export default function RoomsClient({
     const [bookingForm, setBookingForm] = useState({
         guest_name: '',
         guest_phone: '',
+        guest_address: '',
+        kyc_type: '',
         kyc: '',
         check_in: '',
         check_out: '',
@@ -331,6 +333,8 @@ export default function RoomsClient({
         setBookingForm({
             guest_name: '',
             guest_phone: '',
+            guest_address: '',
+            kyc_type: '',
             kyc: '',
             check_in: checkIn,
             check_out: checkOut,
@@ -383,6 +387,10 @@ export default function RoomsClient({
             return
         }
 
+        const formattedKyc = bookingForm.kyc_type
+            ? (bookingForm.kyc.trim() ? `${bookingForm.kyc_type}: ${bookingForm.kyc.trim()}` : bookingForm.kyc_type)
+            : bookingForm.kyc.trim()
+
         setIsSubmittingBooking(true)
         try {
             const res = await fetch('/api/bookings', {
@@ -399,7 +407,8 @@ export default function RoomsClient({
                     })),
                     guest_name: bookingForm.guest_name,
                     guest_phone: bookingForm.guest_phone,
-                    kyc: bookingForm.kyc,
+                    guest_address: bookingForm.guest_address.trim() || undefined,
+                    kyc: formattedKyc || null,
                     check_in: bookingForm.check_in,
                     check_out: bookingForm.check_out,
                     custom_room_price: bookingForm.custom_room_price.trim() !== '' ? (parseFloat(bookingForm.custom_room_price) || undefined) : undefined,
@@ -788,6 +797,12 @@ export default function RoomsClient({
                                                 <Phone size={10} /> {activeBooking.guest_phone}
                                             </a>
                                         </div>
+                                        {activeBooking.guest_address && (
+                                            <div className="flex items-start justify-between gap-3">
+                                                <span className="text-ink-subtle font-bold uppercase tracking-wide shrink-0">Address:</span>
+                                                <span className="font-extrabold text-ink text-right">{activeBooking.guest_address}</span>
+                                            </div>
+                                        )}
                                         <div className="flex items-center justify-between">
                                             <span className="text-ink-subtle font-bold uppercase tracking-wide">Total Guests:</span>
                                             <span className="font-extrabold text-ink">{describeGuestMix(activeBooking)}</span>
@@ -974,24 +989,51 @@ export default function RoomsClient({
                                 />
                             </div>
 
+                            <div>
+                                <label className="block text-small font-bold text-ink mb-1.5">Phone Number *</label>
+                                <input
+                                    type="tel"
+                                    value={bookingForm.guest_phone}
+                                    onChange={e => setBookingForm(b => ({ ...b, guest_phone: e.target.value }))}
+                                    placeholder="e.g. 9812345678"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-small font-bold text-ink mb-1.5">Address (Optional)</label>
+                                <input
+                                    type="text"
+                                    value={bookingForm.guest_address}
+                                    onChange={e => setBookingForm(b => ({ ...b, guest_address: e.target.value }))}
+                                    maxLength={200}
+                                    placeholder="e.g. Ward 5, Bharatpur, Chitwan"
+                                    className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
+                                />
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-small font-bold text-ink mb-1.5">Phone Number *</label>
-                                    <input
-                                        type="tel"
-                                        value={bookingForm.guest_phone}
-                                        onChange={e => setBookingForm(b => ({ ...b, guest_phone: e.target.value }))}
-                                        placeholder="e.g. 9812345678"
+                                    <label className="block text-small font-bold text-ink mb-1.5">Document Type (Optional)</label>
+                                    <select
+                                        value={bookingForm.kyc_type || ''}
+                                        onChange={e => setBookingForm(b => ({ ...b, kyc_type: e.target.value }))}
                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
-                                    />
+                                    >
+                                        <option value="">Select Document Type</option>
+                                        <option value="Citizenship / NID">Citizenship / NID</option>
+                                        <option value="Passport">Passport</option>
+                                        <option value="Driving License">Driving License</option>
+                                        <option value="Other KYC">Other KYC</option>
+                                    </select>
                                 </div>
                                 <div>
-                                    <label className="block text-small font-bold text-ink mb-1.5">KYC Document No. (Optional)</label>
+                                    <label className="block text-small font-bold text-ink mb-1.5">Document No. (Optional)</label>
                                     <input
                                         type="text"
                                         value={bookingForm.kyc}
                                         onChange={e => setBookingForm(b => ({ ...b, kyc: e.target.value }))}
-                                        placeholder="Citizenship / Passport"
+                                        placeholder="e.g. 123-456-789"
                                         className="w-full border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all"
                                     />
                                 </div>

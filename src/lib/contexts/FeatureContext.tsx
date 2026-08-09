@@ -34,7 +34,7 @@ const defaultFeatures: Features = {
     staffManagementEnabled: true,
     tableManagementEnabled: true,
     irdSyncEnabled: false,
-    kotEnabled: false,
+    kotEnabled: true,
     kdsEnabled: true,
 }
 
@@ -49,7 +49,11 @@ export function FeatureProvider({ features, children }: { features: Features | n
         generateInvoiceEnabled: isIrd ? true : (rawFeatures.generateInvoiceEnabled ?? true),
         printInvoiceEnabled: isIrd ? true : (rawFeatures.printInvoiceEnabled ?? true),
         vatEnabled: isIrd ? rawFeatures.vatEnabled : false,
-        kdsEnabled: rawFeatures.kotEnabled ? false : (rawFeatures.kdsEnabled ?? true),
+        // KOT and KDS are independent: the screen is how the kitchen works a
+        // ticket, the printer is how the ticket reaches the pass. A restaurant
+        // may run either, both, or neither, so neither flag clears the other.
+        kotEnabled: rawFeatures.kotEnabled ?? true,
+        kdsEnabled: rawFeatures.kdsEnabled ?? true,
     }
 
     return (

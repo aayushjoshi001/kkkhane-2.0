@@ -140,7 +140,7 @@ export default function SettingsManager({
             manualEntryEnabled: true,
             printBillEnabled: true,
             showInvoiceEnabled: true,
-            kotEnabled: false,
+            kotEnabled: true,
             kdsEnabled: true,
             roomServiceChargeEnabled: false,
             roomServiceChargeRooms: [],
@@ -381,12 +381,9 @@ export default function SettingsManager({
         if (!canEdit) return
         const newValue = !features[key]
         
-        let updatePayload: Partial<Features> = { [key]: newValue }
-        if (key === 'kotEnabled' && newValue) {
-            updatePayload.kdsEnabled = false
-        } else if (key === 'kdsEnabled' && newValue) {
-            updatePayload.kotEnabled = false
-        }
+        // KOT and KDS no longer clear each other: a kitchen can work the board
+        // and still have a ticket at the pass, which is the default now.
+        const updatePayload: Partial<Features> = { [key]: newValue }
 
         const updated = { ...features, ...updatePayload }
         setFeatures(updated)
@@ -401,6 +398,32 @@ export default function SettingsManager({
         }
         setIsSavingFeatures(false)
     }
+
+    // Which preferences are worth showing this tenant.
+    //
+    // Read from the form's own business_type and feature state, not from the
+    // saved context, so the list reacts as soon as either is changed here —
+    // the same source the "changing business type changes your mode" warning
+    // below already uses.
+    //
+    // A toggle is hidden only when the business cannot act on it at all. Mode
+    // decides that just once, for the room-service call button: a restaurant
+    // has no rooms to put a QR in. Everything else that looks mode-specific is
+    // really dine-in-specific, so it follows dineInEnabled and stays available
+    // to a hotel that also runs a restaurant. Gating those on mode instead
+    // would re-create the trap this screen was fixing — a hotel with 24 tables
+    // being told the table settings are not for it.
+    const businessMode = getBusinessMode(formData.business_type)
+    const isHotelMode = businessMode === 'hotel'
+    const dineInOn = features.dineInEnabled ?? true
+
+    // Hiding a toggle that is switched on would strand it — the flag keeps its
+    // stored value with no control left to clear it. Real cases exist: a
+    // FastFood tenant has roomServiceCallEnabled true, and four hotels have
+    // selfOrderRequestEnabled true with both dine-in and waiter sessions off.
+    // So a toggle stays visible whenever it is on, even once it stops applying,
+    // and only a flag that is already off can be tidied out of sight.
+    const shown = (applies: boolean, current: unknown) => applies || !!current
 
     // Manager-configurable quick-serve items (water, cold drinks, tissue…).
     const [newQuickItem, setNewQuickItem] = useState('')
@@ -986,11 +1009,21 @@ export default function SettingsManager({
             <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {([
+                        // Listed first because it decides whether most of the
+                        // toggles under it mean anything. It had no control at
+                        // all before: business type set it once at onboarding
+                        // and nothing could change it afterwards, so a hotel
+                        // that also runs a restaurant was stuck with dine-in off
+                        // — no table QR entry point for guests and no Live
+                        // Orders in the nav — while its tables, menu and orders
+                        // all existed. Not a plan-gated key, so a manager owns
+                        // it, and a tier change leaves it alone.
+                        { key: 'dineInEnabled' as const, label: 'Dine-In Ordering', desc: 'Guests scan a table QR and order at the table. Turn on for a hotel that also runs a restaurant; off for delivery-only kitchens' },
                         { key: 'serviceRequestsEnabled' as const, label: 'Service Requests', desc: 'Customers can call waiter, request bill, etc.' },
-                        { key: 'waiterSessionEnabled' as const, label: 'Waiter-Managed Sessions', desc: 'Require a waiter to open a table before guests can order. Off = guests scan & order instantly' },
+                        { key: 'waiterSessionEnabled' as const, label: 'Waiter-Managed Sessions', desc: 'Require a waiter to open a table before guests can order. Off = guests scan & order instantly', show: shown(dineInOn, features.waiterSessionEnabled) },
                         { key: 'waiterOrderConfirmation' as const, label: 'Waiter Order Confirmation', desc: 'Orders wait for a waiter to confirm before the kitchen sees them. Off = orders go straight to the kitchen' },
-                        { key: 'selfOrderRequestEnabled' as const, label: 'Ring for Service', desc: 'When waiter-managed sessions are on, let customers ring to request the table be opened' },
-                        { key: 'roomServiceCallEnabled' as const, label: 'In-Room Service Call', desc: 'Hotel room QR asks the guest to confirm their booking phone, then shows a Call-for-Service button to reception' },
+                        { key: 'selfOrderRequestEnabled' as const, label: 'Ring for Service', desc: 'When waiter-managed sessions are on, let customers ring to request the table be opened', show: shown(dineInOn && !!features.waiterSessionEnabled, features.selfOrderRequestEnabled) },
+                        { key: 'roomServiceCallEnabled' as const, label: 'In-Room Service Call', desc: 'Hotel room QR asks the guest to confirm their booking phone, then shows a Call-for-Service button to reception', show: shown(isHotelMode, features.roomServiceCallEnabled) },
                         { key: 'splitBillingEnabled' as const, label: 'Split Billing', desc: 'Allow customers to split bills at checkout' },
                         { key: 'nepalPayEnabled' as const, label: 'Nepal QR Pay', desc: 'eSewa/Khalti/Fonepay QR payment' },
                         { key: 'vatEnabled' as const, label: 'VAT on Invoices', desc: 'Show 13% VAT on printed invoices' },
@@ -999,7 +1032,7 @@ export default function SettingsManager({
                         { key: 'manualEntryEnabled' as const, label: 'Manual Finance Entry', desc: 'Allow manual debit/credit journal entries and vouchers under the Finance section' },
                         { key: 'printBillEnabled' as const, label: 'Print Checkout Bill', desc: 'Show button to print checkout invoices or receipts' },
                         { key: 'showInvoiceEnabled' as const, label: 'Show/Generate Invoices', desc: 'Allow generating official invoices at checkout' },
-                    ]).map(({ key, label, desc }) => (
+                    ]).filter((t) => !('show' in t) || t.show).map(({ key, label, desc }) => (
                         <button
                             type="button"
                             key={key}

@@ -66,11 +66,15 @@ export default async function AdminDashboardPage() {
     const totalTurnover = (turnoverRes.data || []).reduce((sum, r) => sum + Number(r.amount), 0)
     const showVatWarning = totalTurnover > 2000000 && !restaurant?.vat_registered
 
-    const currencyFeatures = restaurantSettings?.features_v2 as { currency?: string; currencySymbol?: string | null; dineInEnabled?: boolean } | null
+    const currencyFeatures = restaurantSettings?.features_v2 as { currency?: string; currencySymbol?: string | null } | null
     const money: Money = (amount) => formatCurrency(amount, currencyFeatures?.currency, currencyFeatures?.currencySymbol)
-    // Same safe default as elsewhere — restaurants provisioned before this flag
-    // existed have no dineInEnabled key in their stored features_v2.
-    const dineInEnabled = currencyFeatures?.dineInEnabled ?? true
+    // Take the flag from the resolved features this page already loaded, not
+    // from the raw settings row beside it. getRestaurantFeatures runs the same
+    // absent-key defaults the client's useFeatureEnabled does, so reading the
+    // row directly meant this one screen could disagree with the sidebar about
+    // whether a tenant has dine-in. The `?? true` covers only the case where
+    // the whole fetch failed and features is null.
+    const dineInEnabled = features?.dineInEnabled ?? true
 
     const hour = new Date().getHours()
     const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
@@ -227,19 +231,33 @@ async function KpiCardsSection({ restaurantId, money, isHotel = false }: { resta
         sessionsCountRes,
         todayOrdersRes,
         activeShiftCountRes,
+        todayBookingsRes,
     ] = await Promise.all([
         adminSupabase.from('orders').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
         adminSupabase.from('sessions').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('status', 'active'),
-        adminSupabase.from('orders').select('total_amount, status').eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
+        adminSupabase.from('orders').select('total_amount, status, payment_status').eq('restaurant_id', restaurantId).gte('placed_at', today.toISOString()),
         adminSupabase.from('staff_shifts').select('id', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).is('clock_out', null),
+        isHotel
+            ? adminSupabase
+                .from('bookings')
+                .select('total_amount')
+                .eq('restaurant_id', restaurantId)
+                .or(`and(bill_settled_at.gte.${today.toISOString()}),and(bill_settled_at.is.null,checked_out_at.gte.${today.toISOString()})`)
+            : Promise.resolve({ data: [] }),
     ])
 
     const totalOrdersToday = ordersCountRes.count || 0
     const activeSessionCount = sessionsCountRes.count || 0
     const todayOrders = todayOrdersRes.data || []
+    const todayBookings = (todayBookingsRes.data || []) as { total_amount: number }[]
     const activeShiftCount = activeShiftCountRes.count || 0
 
-    const totalRevenueToday = todayOrders.filter(o => o.status === 'delivered').reduce((s, o) => s + (o.total_amount || 0), 0)
+    const ordersRevenue = todayOrders
+        .filter(o => o.payment_status === 'paid' || o.status === 'delivered' || o.status === 'completed')
+        .reduce((s, o) => s + (o.total_amount || 0), 0)
+    const roomRevenueToday = todayBookings.reduce((s, b) => s + (Number(b.total_amount) || 0), 0)
+
+    const totalRevenueToday = ordersRevenue + roomRevenueToday
 
     if (isHotel) {
         let occupiedRooms = 0

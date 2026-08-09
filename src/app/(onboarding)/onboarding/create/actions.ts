@@ -63,7 +63,11 @@ export async function createOnboardingRestaurant(formData: FormData) {
         telephone: data.telephone || null,
         latitude: data.latitude ?? null,
         longitude: data.longitude ?? null,
-        tier: 'free',
+        // Every self-serve tenant opens on the 14-day full-access trial rather
+        // than on Free. They land on a system that actually does everything it
+        // was sold as doing, and it falls back to Free on its own when the
+        // trial lapses — see lib/trial.ts.
+        trial: true,
     })
 
     if (result.error) {

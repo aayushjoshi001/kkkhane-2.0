@@ -78,14 +78,47 @@ function classifyError(err: unknown, fallback: QzStatus): QzStatus {
     return fallback
 }
 
+// Everything that can stop a till connecting reports the same 'not-running',
+// which is only one of the reasons and usually not the right one. A machine
+// whose DNS cannot resolve localhost.qz.io, one missing override.crt so the
+// trust dialog is sat waiting for a click, one with 8181 firewalled and one
+// where QZ genuinely is not open all show the cashier the same red banner —
+// and the reason is thrown away, so the till cannot tell anyone which it is.
+// That is the whole difficulty of a printer that works on two machines and
+// not on a third. The status stays as it was (callers switch on it), but the
+// reason is written to the console under a tag worth screenshotting.
+function reportConnectFailure(err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    // qz-tray tries wss://localhost then wss://localhost.qz.io. From an https
+    // page the ws:// fallback is mixed content and the browser refuses it, so
+    // localhost.qz.io resolving is what the secure handshake rests on.
+    const hint = /timed out/i.test(message)
+        ? 'Connect timed out. QZ Tray may be showing an unanswered Allow/Block dialog — install override.crt on this machine to make it silent.'
+        : 'Could not open wss://localhost:8181 or wss://localhost.qz.io:8181. Check QZ Tray is running, that this machine resolves localhost.qz.io to 127.0.0.1 (add it to the hosts file if not), and that 8181 is not firewalled.'
+    console.warn(`[QZ] connect failed on this device: ${message}\n[QZ] ${hint}`)
+}
+
 // The browser's WebSocket has no built-in connect timeout — if the handshake
 // hangs instead of failing outright (rare, but possible on a misconfigured
 // network), this stops a caller (e.g. a cashier settling a bill) from
 // waiting forever on a connection that will never resolve either way.
-// A real, running QZ Tray agent answers in well under a second, so this only
-// needs to be long enough to absorb that — not long enough to make settling
-// a bill visibly hang when the till simply doesn't have QZ Tray open.
-const CONNECT_TIMEOUT_MS = 1500
+//
+// This is a backstop for a *hang*, not how we detect "QZ Tray isn't running":
+// nothing listening on the port refuses the connection immediately, so
+// qz.websocket.connect() rejects on its own long before this fires. Raising
+// the ceiling therefore costs a till without QZ nothing.
+//
+// It has to clear the SLOW trust path, not just the fast one. QZ only reads
+// the first certificate in its override.crt, and this install carries another
+// tenant's cert in that slot, so ours falls through to the "user previously
+// allowed" (allowed.dat) route — which spins up the dialog machinery, and Gtk
+// is broken on the till, so each authorization stalls before auto-allowing.
+// Measured on the real hardware: ~4.2s to connect, then ~1.5s per print,
+// against an actual print of 0.03–0.3s. At the old 1500ms every connect timed
+// out, printRawEscPos bailed before sending, and tickets diverted to the
+// window.print() fallback — which cannot render to a raw CUPS queue, so
+// nothing came out at all. 10s clears 4.2s with room for a cold JVM.
+const CONNECT_TIMEOUT_MS = 10_000
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -97,13 +130,32 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
     })
 }
 
+// Shared in-flight connect. A single screen can hold several printer roles at
+// once — the cashier has invoice, kot and bot — and they all reach for the
+// socket together on mount. Without this each one sees isActive() === false,
+// each calls connect(), and qz-tray races several handshakes for one agent.
+// Everyone awaits the same attempt instead, and the slow trust path is walked
+// exactly once.
+let connecting: Promise<QzResult> | null = null
+
 /** Ensures an active QZ Tray connection, connecting if needed. */
 export async function ensureConnected(): Promise<QzResult> {
     try {
         const qz = await getQz()
         if (qz.websocket.isActive()) return { ok: true, status: 'connected' }
-        await withTimeout(qz.websocket.connect({ retries: 1, delay: 1 }), CONNECT_TIMEOUT_MS, 'Timed out connecting to QZ Tray')
-        return { ok: true, status: 'connected' }
+        if (connecting) return connecting
+        connecting = withTimeout(qz.websocket.connect({ retries: 1, delay: 1 }), CONNECT_TIMEOUT_MS, 'Timed out connecting to QZ Tray')
+            .then<QzResult, QzResult>(
+                () => ({ ok: true, status: 'connected' }),
+                (err) => {
+                    reportConnectFailure(err)
+                    return { ok: false, status: 'not-running' as const, error: err instanceof Error ? err.message : String(err) }
+                }
+            )
+            // Clear only after the attempt settles, so callers arriving mid-flight
+            // join it and the next one after it starts fresh.
+            .finally(() => { connecting = null })
+        return connecting
     } catch (err) {
         return { ok: false, status: 'not-running', error: err instanceof Error ? err.message : String(err) }
     }

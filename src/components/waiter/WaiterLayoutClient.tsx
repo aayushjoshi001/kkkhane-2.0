@@ -90,7 +90,17 @@ export default function WaiterLayoutClient({
     return (
         <div className="min-h-screen bg-canvas flex flex-col">
             <header className="bg-surface border-b border-hairline sticky top-0 z-30 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 md:px-6 h-14 flex items-center justify-between gap-4">
+                {/* Three columns rather than a flex row with an absolutely
+                    positioned middle. The clock used to be `absolute left-1/2`,
+                    which takes it out of flow entirely, so the layout had no way
+                    to know it was there: as soon as the right-hand group grew
+                    past the centre line — and it does, once the command hint,
+                    printer, calendar toggle, sound button and staff card are all
+                    in it — the two drew over each other and the time sat on top
+                    of the search. The outer columns are minmax(0,1fr) so they
+                    can shrink below their content instead of pushing the bar
+                    wider than the screen. */}
+                <div className="max-w-7xl mx-auto px-4 md:px-6 h-14 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4">
                     {/* Left */}
                     <div className="flex items-center gap-3 min-w-0">
                         <Logo className="h-7 shrink-0" />
@@ -102,15 +112,18 @@ export default function WaiterLayoutClient({
                         )}
                     </div>
 
-                    {/* Center — clock */}
-                    <div className="absolute left-1/2 -translate-x-1/2">
+                    {/* Center — clock. Hidden on the narrowest screens for the
+                        same reason the restaurant name is: on a phone the right
+                        group needs the room more than the time does, and the
+                        till shows a clock of its own. */}
+                    <div className="hidden sm:block justify-self-center">
                         <span className="font-mono text-sm font-bold text-ink-muted tabular-nums tracking-wider">
                             {time}
                         </span>
                     </div>
 
                     {/* Right */}
-                    <div className="flex items-center gap-1.5 md:gap-2.5 shrink-0">
+                    <div className="flex items-center justify-end gap-1.5 md:gap-2.5">
                         <CommandHint />
                         {commandRole === 'cashier' && <PrinterSettingsButton role="invoice" variant="light" />}
                         {/* Not `hidden sm:*`: the cashier works the desk on a phone

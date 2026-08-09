@@ -70,55 +70,72 @@ export async function POST(req: Request) {
         const noteText = note && String(note).trim() ? String(note).trim() : 'Advance'
         const customDesc = `Room Advance (${noteText}): ${booking.guest_name} (Room ${roomNumber})`
 
+        const postTasks: PromiseLike<any>[] = []
+
         if (isSplit) {
             if (splitCash > 0) {
-                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                    bookingId: booking.id,
-                    roomNumber,
-                    guestName: booking.guest_name,
-                    amount: splitCash,
-                    paymentMethod: 'cash',
-                    isAdvance: true,
-                    description: customDesc
-                })
+                postTasks.push(
+                    postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                        bookingId: booking.id,
+                        roomNumber,
+                        guestName: booking.guest_name,
+                        amount: splitCash,
+                        paymentMethod: 'cash',
+                        isAdvance: true,
+                        description: customDesc
+                    })
+                )
             }
             if (splitQr > 0) {
-                await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                    bookingId: booking.id,
-                    roomNumber,
-                    guestName: booking.guest_name,
-                    amount: splitQr,
-                    paymentMethod: 'qr_digital',
-                    isAdvance: true,
-                    qrCodeId: qrCodeId || null,
-                    description: customDesc
-                })
+                postTasks.push(
+                    postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                        bookingId: booking.id,
+                        roomNumber,
+                        guestName: booking.guest_name,
+                        amount: splitQr,
+                        paymentMethod: 'qr_digital',
+                        isAdvance: true,
+                        qrCodeId: qrCodeId || null,
+                        description: customDesc
+                    })
+                )
             }
         } else {
             const methodMapped = paymentMethod === 'cash' ? 'cash' : 'qr_digital'
-            await postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
-                bookingId: booking.id,
-                roomNumber,
-                guestName: booking.guest_name,
-                amount: addAmount,
-                paymentMethod: methodMapped,
-                isAdvance: true,
-                qrCodeId: methodMapped === 'qr_digital' ? (qrCodeId || null) : null,
-                description: customDesc
-            })
+            postTasks.push(
+                postHotelPaymentIncomeAndLedger(supabase, currentUser.restaurantId, currentUser.id, {
+                    bookingId: booking.id,
+                    roomNumber,
+                    guestName: booking.guest_name,
+                    amount: addAmount,
+                    paymentMethod: methodMapped,
+                    isAdvance: true,
+                    qrCodeId: methodMapped === 'qr_digital' ? (qrCodeId || null) : null,
+                    description: customDesc
+                })
+            )
         }
 
         // 5. Insert payment record into booking_payments table
-        await supabase.from('booking_payments').insert({
-            restaurant_id: currentUser.restaurantId,
-            booking_id: booking.id,
-            amount: addAmount,
-            payment_method: paymentMethod,
-            cash_amount: isSplit ? splitCash : (paymentMethod === 'cash' ? addAmount : 0),
-            qr_amount: isSplit ? splitQr : (paymentMethod === 'qr_digital' ? addAmount : 0),
-            note: noteText,
-            created_by: currentUser.id
-        })
+        postTasks.push(
+            supabase.from('booking_payments').insert({
+                restaurant_id: currentUser.restaurantId,
+                booking_id: booking.id,
+                amount: addAmount,
+                payment_method: paymentMethod,
+                cash_amount: isSplit ? splitCash : (paymentMethod === 'cash' ? addAmount : 0),
+                qr_amount: isSplit ? splitQr : (paymentMethod === 'qr_digital' ? addAmount : 0),
+                note: noteText,
+                created_by: currentUser.id
+            })
+                .then(({ error: paymentError }) => {
+                    if (paymentError) {
+                        console.error('Failed to record booking payment for booking', booking.id, paymentError)
+                    }
+                })
+        )
+
+        await Promise.all(postTasks)
 
         return NextResponse.json({ success: true, newPaidTotal })
     } catch (e: any) {
