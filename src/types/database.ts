@@ -767,6 +767,13 @@ export interface StaffShift {
     approved_by: string | null
     is_approved: boolean
     created_at: string
+    // Cash reconciliation
+    expected_cash_amount: number | null
+    counted_cash_amount: number | null
+    cash_variance: number | null
+    cash_reconciled_at: string | null
+    cash_reconciled_by: string | null
+    deduction_ledger_id: string | null
     // Joined fields
     users?: User
 }

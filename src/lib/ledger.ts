@@ -298,7 +298,7 @@ export function computeCashierBreakdown<T extends {
         }
 
         const amount = Number(e.amount) || 0
-        const isQr = e.category === 'qr_payment'
+        const isQr = e.category === 'qr_payment' || e.category === 'order_payment' || e.category === 'booking_payment' || e.category === 'room_deposit'
 
         switch (e.type) {
             case 'cash_in':

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { getOptionalUser } from '@/lib/auth'
+import { ensureAutoClockIn } from '@/lib/autoClockIn'
 import { ROLE_LANDING } from '@/lib/roleLanding'
 
 // Handles the redirect back from an OAuth provider (Google, etc). Supabase
@@ -24,6 +25,9 @@ export async function GET(request: Request) {
             // transparent /onboarding redirect for a brand-new Google user
             // who doesn't have a restaurant yet.
             const currentUser = await getOptionalUser()
+            if (currentUser?.id && currentUser?.restaurantId) {
+                await ensureAutoClockIn(currentUser.id, currentUser.restaurantId)
+            }
             const landing = currentUser ? (ROLE_LANDING[currentUser.role] || '/admin/dashboard') : '/login'
             return NextResponse.redirect(`${origin}${landing}`)
         }

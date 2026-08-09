@@ -112,6 +112,7 @@ const MANAGER_GROUPS: CommandGroup[] = [
             { label: 'Ingredients', href: '/admin/ingredients', icon: Package, keywords: ['stock', 'inventory'] },
             { label: 'Staff', href: '/admin/staff', icon: Users, keywords: ['employees', 'team'] },
             { label: 'Staff Shifts', href: '/admin/shifts', icon: Clock, keywords: ['rota', 'schedule'] },
+            { label: 'Shift Cash', href: '/admin/shift-cash', icon: Banknote, keywords: ['cash collection', 'reconcile', 'shortfall', 'deduction'] },
         ],
     },
     {

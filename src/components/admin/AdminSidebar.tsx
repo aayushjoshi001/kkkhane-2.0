@@ -7,7 +7,7 @@ import {
     TrendingUp, ShoppingBag, Tag, Heart, DollarSign, Package,
     FileText, Truck, Clock, CreditCard, Sparkles, Sun, Moon, X,
     Bed, CalendarRange, Hotel, BookOpen, Wallet, Landmark, HandCoins, PenLine,
-    AlertTriangle, Printer, Activity
+    AlertTriangle, Printer, Activity, Banknote
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -181,6 +181,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
                         {staffManagementEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/staff"       icon={Users}           label="Staff Members"   path={pathname} />}
                         {financeEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/suppliers"   icon={Truck}           label="Suppliers Ledger" path={pathname} />}
                         {staffShiftsEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shifts"      icon={Clock}           label="Schedule"        path={pathname} />}
+                        {staffShiftsEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shift-cash"  icon={Banknote}        label="Shift Cash"      path={pathname} />}
                     </>
                 )}
 

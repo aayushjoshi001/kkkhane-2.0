@@ -22,10 +22,15 @@ import { BusinessSessionProvider } from '@/lib/contexts/BusinessSessionContext'
 import BusinessGuard from '@/components/shared/BusinessGuard'
 import BusinessDayReminder from '@/components/shared/BusinessDayReminder'
 
+import { ensureAutoClockIn } from '@/lib/autoClockIn'
+
 export default async function AdminLayout({ children }: { children: ReactNode }) {
     // requireRole() uses the React.cache-wrapped getCurrentUser — no duplicate DB call
     // when the page also calls getCurrentUser().
     const currentUser = await requireRoleWithOptions(['super_admin', 'manager'], { allowSuspended: true })
+    if (currentUser.id && currentUser.restaurantId) {
+        await ensureAutoClockIn(currentUser.id, currentUser.restaurantId)
+    }
     const roleNameRaw = currentUser.role || 'unknown'
 
     const roleDisplay = roleNameRaw
