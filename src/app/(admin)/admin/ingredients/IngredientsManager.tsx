@@ -4,7 +4,11 @@ import { useState, useMemo, Fragment } from 'react'
 import Modal from '@/components/ui/Modal'
 import { createIngredientAction, addStockMovementAction, deleteIngredientAction, updateIngredientAction, createIngredientCategoryAction, createIngredientSupplierAction } from './actions'
 import { createSupplierBillAction } from '../suppliers/actions'
-import { Plus, Trash2, Edit2, AlertTriangle, Package, PackagePlus, X, Check, Loader2, Boxes, History } from 'lucide-react'
+import {
+    Plus, Trash2, Edit2, AlertTriangle, Package, PackagePlus, X, Check, Loader2, Boxes, History,
+    Apple, Carrot, Drumstick, Fish, Milk, CupSoda, Wheat, Croissant, Egg, Wine, Popcorn, Nut,
+    Sprout, ShoppingBasket, type LucideIcon,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import useSWR from 'swr'
 import type { Ingredient, ExpenseCategory, Supplier, BankAccount } from '@/types/database'
@@ -34,6 +38,53 @@ const MOVEMENT_TYPE_LABEL: Record<string, string> = {
     waste: 'Waste / Spoilage',
     adjustment: 'Adjustment',
     transfer: 'Transfer',
+}
+
+// Ingredient categories are free-text and restaurant-created (no color/icon
+// column on ExpenseCategory), so each one is assigned a color deterministically
+// from its id — same category always lands on the same hue across reloads,
+// without needing a database migration just to make the stock table's group
+// headers distinguishable from each other.
+const CATEGORY_PALETTE = [
+    { row: 'bg-indigo-50/70', text: 'text-indigo-700', border: 'border-indigo-200', chip: 'bg-indigo-100 text-indigo-700' },
+    { row: 'bg-emerald-50/70', text: 'text-emerald-700', border: 'border-emerald-200', chip: 'bg-emerald-100 text-emerald-700' },
+    { row: 'bg-amber-50/70', text: 'text-amber-700', border: 'border-amber-200', chip: 'bg-amber-100 text-amber-700' },
+    { row: 'bg-rose-50/70', text: 'text-rose-700', border: 'border-rose-200', chip: 'bg-rose-100 text-rose-700' },
+    { row: 'bg-teal-50/70', text: 'text-teal-700', border: 'border-teal-200', chip: 'bg-teal-100 text-teal-700' },
+    { row: 'bg-purple-50/70', text: 'text-purple-700', border: 'border-purple-200', chip: 'bg-purple-100 text-purple-700' },
+    { row: 'bg-blue-50/70', text: 'text-blue-700', border: 'border-blue-200', chip: 'bg-blue-100 text-blue-700' },
+    { row: 'bg-orange-50/70', text: 'text-orange-700', border: 'border-orange-200', chip: 'bg-orange-100 text-orange-700' },
+] as const
+
+function categoryStyle(id: string) {
+    let hash = 0
+    for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+    return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length]
+}
+
+// A generic folder glyph reads as a placeholder, not a designed category — so
+// this reaches for a real icon that matches what the category actually is,
+// keyed off common grocery/kitchen category words. Falls back to a shopping
+// basket (still specific to "this holds stock items", not just "a folder")
+// for anything that doesn't match.
+const CATEGORY_ICON_KEYWORDS: [RegExp, LucideIcon][] = [
+    [/fruit/i, Apple],
+    [/veg/i, Carrot],
+    [/(meat|poultry|chicken|mutton|pork|beef)/i, Drumstick],
+    [/(seafood|fish)/i, Fish],
+    [/(dairy|milk|cheese|butter|paneer|yogurt|yoghurt)/i, Milk],
+    [/(beverage|drink|juice|soda)/i, CupSoda],
+    [/(alcohol|beer|wine|liquor|spirit)/i, Wine],
+    [/(grain|rice|flour|cereal)/i, Wheat],
+    [/(bakery|bread|bun|pastry)/i, Croissant],
+    [/egg/i, Egg],
+    [/(spice|herb|masala|seasoning)/i, Sprout],
+    [/(snack|nut|dry\s?fruit)/i, Nut],
+    [/(popcorn|chips)/i, Popcorn],
+]
+
+function categoryIcon(name: string): LucideIcon {
+    return CATEGORY_ICON_KEYWORDS.find(([re]) => re.test(name))?.[1] ?? ShoppingBasket
 }
 
 export default function IngredientsManager({
@@ -1088,12 +1139,22 @@ export default function IngredientsManager({
                         {categories.map(cat => {
                             const items = categorizedIngredients[cat.id] || []
                             if (items.length === 0) return null // Hide empty category!
-                        
+                            const style = categoryStyle(cat.id)
+                            const Icon = categoryIcon(cat.name)
+
                             return (
                                 <Fragment key={cat.id}>
-                                    <tr className="bg-surface-muted/30">
-                                        <td colSpan={6} className="px-5 py-2.5 text-xs font-black text-indigo-700 uppercase tracking-wider bg-surface-muted/20">
-                                            📁 {cat.name} ({items.length} {items.length === 1 ? 'item' : 'items'})
+                                    <tr>
+                                        <td colSpan={6} className={`px-5 py-2.5 border-y ${style.border} ${style.row}`}>
+                                            <div className="flex items-center gap-2.5">
+                                                <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full ${style.chip} shrink-0`}>
+                                                    <Icon size={13} strokeWidth={2.5} />
+                                                </span>
+                                                <span className={`text-xs font-black uppercase tracking-wider ${style.text}`}>{cat.name}</span>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${style.border} ${style.chip}`}>
+                                                    {items.length} {items.length === 1 ? 'item' : 'items'}
+                                                </span>
+                                            </div>
                                         </td>
                                     </tr>
                                     {items.map(ing => {
@@ -1137,9 +1198,17 @@ export default function IngredientsManager({
                         {/* Uncategorized items at the bottom */}
                         {categorizedIngredients[''] && categorizedIngredients[''].length > 0 && (
                             <Fragment>
-                                <tr className="bg-surface-muted/30">
-                                    <td colSpan={6} className="px-5 py-2.5 text-xs font-black text-ink-subtle uppercase tracking-wider bg-surface-muted/20">
-                                        📦 Uncategorized Items ({categorizedIngredients[''].length} {categorizedIngredients[''].length === 1 ? 'item' : 'items'})
+                                <tr>
+                                    <td colSpan={6} className="px-5 py-2.5 border-y border-hairline bg-surface-muted/40">
+                                        <div className="flex items-center gap-2.5">
+                                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-ink-subtle border border-hairline shrink-0">
+                                                <Package size={13} strokeWidth={2.5} />
+                                            </span>
+                                            <span className="text-xs font-black uppercase tracking-wider text-ink-subtle">Uncategorized</span>
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border border-hairline bg-surface-muted text-ink-subtle">
+                                                {categorizedIngredients[''].length} {categorizedIngredients[''].length === 1 ? 'item' : 'items'}
+                                            </span>
+                                        </div>
                                     </td>
                                 </tr>
                                 {categorizedIngredients[''].map(ing => {

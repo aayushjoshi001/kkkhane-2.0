@@ -3,6 +3,7 @@
 import { X } from 'lucide-react'
 import { NepaliDateInput } from './NepaliDateInput'
 import { getNstDateString } from '@/lib/timezone'
+import { adIsoToBs, bsToAdIso } from '@/lib/calendar'
 import { cn } from '@/lib/utils'
 
 /**
@@ -18,19 +19,31 @@ export interface DateRange {
 
 type PresetKey = 'today' | 'week' | 'month' | 'year' | 'all'
 
-/** Monday of the week containing `iso`, matching the week-start convention
- *  already used by Income & Expenses' own preset filter. */
-function mondayOf(iso: string): string {
+/** Sunday of the week containing `iso` — Nepali calendars start the week on
+ *  Sunday (see bsMonthStartWeekday in lib/calendar.ts), not the ISO Monday
+ *  this used to use. */
+function sundayOf(iso: string): string {
     const [y, m, d] = iso.split('-').map(Number)
     const date = new Date(y, m - 1, d)
-    const day = date.getDay() // 0=Sun..6=Sat
-    date.setDate(date.getDate() + (day === 0 ? -6 : 1 - day))
+    date.setDate(date.getDate() - date.getDay())
     const pad = (n: number) => String(n).padStart(2, '0')
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-const firstOfMonth = (iso: string) => `${iso.slice(0, 7)}-01`
-const firstOfYear = (iso: string) => `${iso.slice(0, 4)}-01-01`
+/** Day 1 of the Bikram Sambat month/year containing `iso` — the app's
+ *  primary calendar, so "This Month"/"This Year" mean the BS one, not
+ *  wherever the Gregorian month/year happens to fall across it. Falls back
+ *  to the Gregorian start on an unconvertible date rather than throwing. */
+function firstOfBsMonth(iso: string): string {
+    const bs = adIsoToBs(iso)
+    if (!bs) return `${iso.slice(0, 7)}-01`
+    return bsToAdIso({ year: bs.year, month: bs.month, day: 1 }) ?? `${iso.slice(0, 7)}-01`
+}
+function firstOfBsYear(iso: string): string {
+    const bs = adIsoToBs(iso)
+    if (!bs) return `${iso.slice(0, 4)}-01-01`
+    return bsToAdIso({ year: bs.year, month: 1, day: 1 }) ?? `${iso.slice(0, 4)}-01-01`
+}
 
 const PRESETS: { key: PresetKey; label: string }[] = [
     { key: 'today', label: 'Today' },
@@ -45,9 +58,9 @@ export function presetRange(preset: PresetKey): DateRange {
     const today = getNstDateString()
     switch (preset) {
         case 'today': return { from: today, to: today }
-        case 'week': return { from: mondayOf(today), to: today }
-        case 'month': return { from: firstOfMonth(today), to: today }
-        case 'year': return { from: firstOfYear(today), to: today }
+        case 'week': return { from: sundayOf(today), to: today }
+        case 'month': return { from: firstOfBsMonth(today), to: today }
+        case 'year': return { from: firstOfBsYear(today), to: today }
         case 'all': return { from: null, to: null }
     }
 }

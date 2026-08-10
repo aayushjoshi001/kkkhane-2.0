@@ -49,7 +49,10 @@ export interface ShiftFinancialMetrics {
     discountTotal: number
     restaurantSalesTotal: number
     roomSalesTotal: number
-    creditSalesTotal: number
+    /** Standalone table/dine-in orders left unpaid (put on the customer's tab). */
+    unpaidOrdersTotal: number
+    /** Room stays checked out with a balance still owing on the folio. */
+    folioOutstandingTotal: number
     roomCheckIns: RoomCheckInItem[]
     roomCheckOuts: RoomCheckOutItem[]
     uncollectedHandovers: UncollectedHandoverItem[]
@@ -142,7 +145,8 @@ export async function computeShiftCashBreakdown(
     let discountTotal = 0
     let restaurantSalesTotal = 0
     let roomSalesTotal = 0
-    let creditSalesTotal = 0
+    let unpaidOrdersTotal = 0
+    let folioOutstandingTotal = 0
     const uncollectedHandovers: UncollectedHandoverItem[] = []
 
     for (const o of ordersData || []) {
@@ -162,7 +166,7 @@ export async function computeShiftCashBreakdown(
         }
 
         if (o.payment_status !== 'paid') {
-            creditSalesTotal += total
+            unpaidOrdersTotal += total
             const roomNum = (o.booking as { rooms?: { room_number?: string } | null } | null)?.rooms?.room_number
             uncollectedHandovers.push({
                 id: o.id,
@@ -187,6 +191,57 @@ export async function computeShiftCashBreakdown(
         .select('id, guest_name, total_amount, paid_amount, discount_amount, checked_in_at, checked_out_at, bill_settled_at, created_at, status, cashier_id, checked_in_by, rooms(room_number)')
         .eq('restaurant_id', restaurantId)
         .or(`checked_out_at.gte.${exactClockIn},bill_settled_at.gte.${exactClockIn}`)
+
+    // 3b. What was actually collected AT each checkout — not the booking's
+    // cumulative paid_amount, which also bundles in any advance taken at
+    // check-in (often a different shift, sometimes a different cashier).
+    // Counting the whole stay against whoever happened to run the checkout
+    // overstated both "Settled" per room and this shift's Room Sales total.
+    const checkoutBookingIds = (rawCheckOutBookings || []).map(b => b.id)
+    const { data: settlementRows } = checkoutBookingIds.length > 0
+        ? await supabase
+            .from('booking_payments')
+            .select('booking_id, cash_amount, qr_amount, created_at')
+            .in('booking_id', checkoutBookingIds)
+            .eq('note', 'Settlement')
+        : { data: [] as { booking_id: string; cash_amount: number; qr_amount: number; created_at: string }[] }
+
+    const settlementsByBooking = new Map<string, { cash_amount: number; qr_amount: number; created_at: string }[]>()
+    for (const row of settlementRows || []) {
+        const list = settlementsByBooking.get(row.booking_id) ?? []
+        list.push(row)
+        settlementsByBooking.set(row.booking_id, list)
+    }
+
+    // booking_payments only started being written 2026-07-28 — before that,
+    // there's no per-checkout record to read, so the cumulative paid_amount
+    // is the best number available for those.
+    const BOOKING_PAYMENTS_START = new Date('2026-07-28T00:00:00Z').getTime()
+
+    /**
+     * The settlement collected at this specific checkout. A booking can carry
+     * more than one 'Settlement' row over its life (an earlier "Settle, Keep
+     * Room" plus the final checkout), so this picks whichever one landed
+     * closest to this checkout's own timestamp — the one this event created.
+     *
+     * Falls back to the booking's cumulative paid_amount only for checkouts
+     * that predate booking_payments; after that cutoff, no matching row means
+     * nothing new was collected here (e.g. the stay was already fully paid),
+     * so it correctly reads as 0 rather than re-attributing an old advance.
+     */
+    function checkoutSettledAmount(bookingId: string, checkoutTime: string, cumulativePaid: number): number {
+        const rows = settlementsByBooking.get(bookingId)
+        const targetTs = new Date(checkoutTime).getTime()
+        if (rows && rows.length > 0) {
+            const closest = rows.reduce((best, row) => {
+                const diff = Math.abs(new Date(row.created_at).getTime() - targetTs)
+                const bestDiff = Math.abs(new Date(best.created_at).getTime() - targetTs)
+                return diff < bestDiff ? row : best
+            })
+            return round2((Number(closest.cash_amount) || 0) + (Number(closest.qr_amount) || 0))
+        }
+        return targetTs < BOOKING_PAYMENTS_START ? cumulativePaid : 0
+    }
 
     // Collect booking IDs and descriptions associated with day_book_entries created by THIS user during this shift
     const userDayBookBookingIds = new Set<string>()
@@ -288,8 +343,9 @@ export async function computeShiftCashBreakdown(
             const disc = Number(b.discount_amount) || 0
             const total = rawTotal > 0 ? rawTotal : paid
             const outstanding = Math.max(0, total - paid)
+            const settledAtCheckout = checkoutSettledAmount(b.id, checkoutTime, paid)
 
-            roomSalesTotal += total
+            roomSalesTotal += settledAtCheckout
             discountTotal += disc
 
             roomCheckOuts.push({
@@ -297,12 +353,12 @@ export async function computeShiftCashBreakdown(
                 roomNumber: displayRoomNum,
                 guestName: b.guest_name || 'Guest',
                 checkOutTime: checkoutTime,
-                settledAmount: paid,
+                settledAmount: settledAtCheckout,
                 outstandingAmount: outstanding,
             })
 
             if (outstanding > 0) {
-                creditSalesTotal += outstanding
+                folioOutstandingTotal += outstanding
             }
         }
     }
@@ -314,7 +370,8 @@ export async function computeShiftCashBreakdown(
         discountTotal: round2(discountTotal),
         restaurantSalesTotal: round2(restaurantSalesTotal),
         roomSalesTotal: round2(roomSalesTotal),
-        creditSalesTotal: round2(creditSalesTotal),
+        unpaidOrdersTotal: round2(unpaidOrdersTotal),
+        folioOutstandingTotal: round2(folioOutstandingTotal),
         roomCheckIns,
         roomCheckOuts,
         uncollectedHandovers,
