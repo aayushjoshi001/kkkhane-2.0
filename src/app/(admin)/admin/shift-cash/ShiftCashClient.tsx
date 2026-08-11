@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useTransition, Fragment } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Wallet, User, CheckCircle, Loader2, X, ChevronDown, ChevronUp, Receipt, Banknote, QrCode, Utensils, Zap, Tag, CreditCard, Key, LogOut, Clock } from 'lucide-react'
+import { Wallet, User, Loader2, X, ChevronDown, Receipt, ReceiptText, Banknote, QrCode, Utensils, Zap, Tag, CreditCard, Key, LogOut, Clock, Hotel, BedDouble, RotateCcw, HandCoins } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Modal from '@/components/ui/Modal'
 import { useConfirmStore } from '@/lib/stores/confirm'
@@ -64,25 +64,29 @@ function StatusPill({ row }: { row: ShiftCashRow }) {
 function CategoryBadge({ category }: { category: string }) {
     switch (category) {
         case 'room_deposit':
-            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">🏨 Advance Payment</span>
+            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200"><Hotel size={11} /> Advance Payment</span>
         case 'booking_payment':
-            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">🛏️ Room Settlement</span>
+            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"><BedDouble size={11} /> Room Settlement</span>
         case 'order_payment':
-            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">🍽️ Dine-In / Order</span>
+            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"><Utensils size={11} /> Dine-In / Order</span>
         case 'qr_payment':
-            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200">📱 Direct QR</span>
+            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200"><QrCode size={11} /> Direct QR</span>
         case 'refund':
-            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">🔄 Guest Refund</span>
+            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200"><RotateCcw size={11} /> Guest Refund</span>
         case 'expense':
-            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">💸 Expense / Payout</span>
+            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"><HandCoins size={11} /> Expense / Payout</span>
         default:
-            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-surface-muted text-ink-subtle border border-hairline">🧾 Billing Entry</span>
+            return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-surface-muted text-ink-subtle border border-hairline"><ReceiptText size={11} /> Billing Entry</span>
     }
 }
 
-function CollectCashModal({ row, onClose, onSaved }: {
+// The Check & Collect form — an inline section inside the shift modal,
+// toggled on by the "Check & Collect" button at the top, rather than its own
+// popup. Its own Save action lives in a header pinned to the top of this
+// section (not buried under the cash/QR fields) so it's reachable the
+// instant the section is expanded.
+function CollectCashPanel({ row, onSaved }: {
     row: ShiftCashRow
-    onClose: () => void
     onSaved: (updated: ShiftCashRow) => void
 }) {
     const expectedCash = row.breakdown ? Math.round((row.breakdown.cashInTotal - row.breakdown.cashOutTotal) * 100) / 100 : row.expected
@@ -135,99 +139,95 @@ function CollectCashModal({ row, onClose, onSaved }: {
             variance: result.variance ?? totalVariance,
             reconciledAt: new Date().toISOString(),
         })
-        onClose()
     }
 
     return (
-        <Modal open onClose={onClose} size="md" ariaLabel={`Collect & Reconcile — ${row.staffName}`}>
-            <div className="px-6 py-5 border-b border-hairline bg-surface-muted/30 flex justify-between items-center">
-                <h2 className="text-h3 font-extrabold text-ink flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 border border-brand-100 shadow-[inset_0_2px_4px_rgba(251,99,3,0.05)]">
-                        <Wallet size={16} />
-                    </div>
-                    Collect & Reconcile — {row.staffName}
-                </h2>
-                <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface border border-hairline flex items-center justify-center text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors shadow-sm focus-ring">
-                    <X size={16} />
+        <div>
+            {/* Save sits in this section's own header, at its top — reachable
+                the instant the section is expanded rather than below a
+                scroll of form fields. */}
+            <div className="px-4 py-3 border-b border-hairline bg-brand-50/30 flex items-center justify-between gap-2">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-ink flex items-center gap-1.5">
+                    <Wallet size={14} className="text-brand-600" />
+                    Check & Collect
+                </span>
+                <button onClick={handleSave} disabled={saving || countedCashStr === '' || countedQrStr === ''}
+                    className="px-3.5 py-1.5 text-xs font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] transition-all disabled:opacity-50 flex items-center gap-1.5 focus-ring">
+                    {saving && <Loader2 size={13} className="animate-spin" />}
+                    Save
                 </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="p-4 space-y-4">
                 {/* 1. Physical Cash Section */}
-                <div className="bg-surface rounded-xl border border-hairline p-4 space-y-3 shadow-xs">
+                <div className="bg-surface rounded-xl border border-hairline p-3.5 space-y-2.5 shadow-xs">
                     <div className="flex items-center justify-between border-b border-hairline pb-2">
-                        <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                                <Banknote size={14} />
+                        <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                                <Banknote size={12} />
                             </div>
-                            <span className="text-xs font-extrabold uppercase tracking-wider text-ink">1. Physical Cash Handed Over</span>
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-ink">Cash Handed Over</span>
                         </div>
-                        <div className="text-xs font-bold text-ink-subtle">
-                            Expected Cash: <span className="font-extrabold text-ink tabular-nums">{formatCurrency(expectedCash)}</span>
+                        <div className="text-[10px] font-bold text-ink-subtle">
+                            Expected: <span className="font-extrabold text-ink tabular-nums">{formatCurrency(expectedCash)}</span>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-                        <div>
-                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Cash Counted (Rs)</label>
-                            <input
-                                type="number" min="0" step="0.01" value={countedCashStr}
-                                onChange={e => setCountedCashStr(e.target.value)}
-                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink p-2.5 tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
-                            />
-                        </div>
-                        <div className="p-2.5 bg-surface-muted/30 rounded-[var(--r-md)] border border-hairline flex justify-between items-center">
-                            <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Cash Variance</span>
-                            <span className={`text-sm font-extrabold tabular-nums ${cashVariance < 0 ? 'text-danger-fg' : cashVariance > 0 ? 'text-brand-600' : 'text-emerald-600'}`}>
-                                {cashVariance === 0 ? 'Balanced' : `${cashVariance > 0 ? '+' : ''}${formatCurrency(cashVariance)}`}
-                            </span>
-                        </div>
+                    <div>
+                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1">Cash Counted (Rs)</label>
+                        <input
+                            type="number" min="0" step="0.01" value={countedCashStr}
+                            onChange={e => setCountedCashStr(e.target.value)}
+                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink p-2 tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                        />
+                    </div>
+                    <div className="px-2.5 py-1.5 bg-surface-muted/30 rounded-[var(--r-md)] border border-hairline flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Variance</span>
+                        <span className={`text-xs font-extrabold tabular-nums ${cashVariance < 0 ? 'text-danger-fg' : cashVariance > 0 ? 'text-brand-600' : 'text-emerald-600'}`}>
+                            {cashVariance === 0 ? 'Balanced' : `${cashVariance > 0 ? '+' : ''}${formatCurrency(cashVariance)}`}
+                        </span>
                     </div>
                 </div>
 
                 {/* 2. QR / Digital Section */}
-                <div className="bg-surface rounded-xl border border-hairline p-4 space-y-3 shadow-xs">
+                <div className="bg-surface rounded-xl border border-hairline p-3.5 space-y-2.5 shadow-xs">
                     <div className="flex items-center justify-between border-b border-hairline pb-2">
-                        <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
-                                <QrCode size={14} />
+                        <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+                                <QrCode size={12} />
                             </div>
-                            <span className="text-xs font-extrabold uppercase tracking-wider text-ink">2. QR / Digital Verified</span>
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-ink">QR / Digital Verified</span>
                         </div>
-                        <div className="text-xs font-bold text-ink-subtle">
-                            Expected QR: <span className="font-extrabold text-ink tabular-nums">{formatCurrency(expectedQr)}</span>
+                        <div className="text-[10px] font-bold text-ink-subtle">
+                            Expected: <span className="font-extrabold text-ink tabular-nums">{formatCurrency(expectedQr)}</span>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-                        <div>
-                            <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-1">QR Verified (Rs)</label>
-                            <input
-                                type="number" min="0" step="0.01" value={countedQrStr}
-                                onChange={e => setCountedQrStr(e.target.value)}
-                                className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink p-2.5 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
-                            />
-                        </div>
-                        <div className="p-2.5 bg-surface-muted/30 rounded-[var(--r-md)] border border-hairline flex justify-between items-center">
-                            <span className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider">QR Variance</span>
-                            <span className={`text-sm font-extrabold tabular-nums ${qrVariance < 0 ? 'text-danger-fg' : qrVariance > 0 ? 'text-brand-600' : 'text-teal-600'}`}>
-                                {qrVariance === 0 ? 'Verified' : `${qrVariance > 0 ? '+' : ''}${formatCurrency(qrVariance)}`}
-                            </span>
-                        </div>
+                    <div>
+                        <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1">QR Verified (Rs)</label>
+                        <input
+                            type="number" min="0" step="0.01" value={countedQrStr}
+                            onChange={e => setCountedQrStr(e.target.value)}
+                            className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink p-2 tabular-nums focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]"
+                        />
+                    </div>
+                    <div className="px-2.5 py-1.5 bg-surface-muted/30 rounded-[var(--r-md)] border border-hairline flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Variance</span>
+                        <span className={`text-xs font-extrabold tabular-nums ${qrVariance < 0 ? 'text-danger-fg' : qrVariance > 0 ? 'text-brand-600' : 'text-teal-600'}`}>
+                            {qrVariance === 0 ? 'Verified' : `${qrVariance > 0 ? '+' : ''}${formatCurrency(qrVariance)}`}
+                        </span>
                     </div>
                 </div>
 
                 {/* Net Summary Bar */}
-                <div className="p-4 rounded-xl border border-brand-200 bg-brand-50/30 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
-                    <div>
-                        <div className="text-xs font-extrabold text-ink uppercase tracking-wider">Net Shift Summary</div>
-                        <div className="text-xs text-ink-subtle font-semibold mt-0.5">
-                            Total Expected: <span className="text-ink font-bold tabular-nums">{formatCurrency(totalExpected)}</span> | Handed Over: <span className="text-ink font-bold tabular-nums">{formatCurrency(totalCounted)}</span>
-                        </div>
+                <div className="p-3.5 rounded-xl border border-brand-200 bg-brand-50/30 space-y-2 shadow-xs">
+                    <div className="text-[11px] font-extrabold text-ink uppercase tracking-wider">Net Shift Summary</div>
+                    <div className="text-[10px] text-ink-subtle font-semibold">
+                        Expected: <span className="text-ink font-bold tabular-nums">{formatCurrency(totalExpected)}</span> · Handed Over: <span className="text-ink font-bold tabular-nums">{formatCurrency(totalCounted)}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-ink-subtle uppercase tracking-wider">Net Variance:</span>
-                        <span className={`text-sm font-extrabold tabular-nums px-3 py-1 rounded-full border ${
+                        <span className="text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Net Variance:</span>
+                        <span className={`text-xs font-extrabold tabular-nums px-2.5 py-0.5 rounded-full border ${
                             totalVariance < 0
                                 ? 'bg-danger-bg text-danger-fg border-danger-fg/30'
                                 : totalVariance > 0
@@ -240,24 +240,15 @@ function CollectCashModal({ row, onClose, onSaved }: {
                 </div>
 
                 <div>
-                    <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Note <span className="text-ink-muted">(optional)</span></label>
+                    <label className="block text-[10px] font-bold text-ink-subtle uppercase tracking-wider mb-1.5">Note <span className="text-ink-muted normal-case">(optional)</span></label>
                     <input
                         type="text" value={note} onChange={e => setNote(e.target.value)}
-                        placeholder="e.g. cash till discrepancy, QR reference verified…"
-                        className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-3"
+                        placeholder="e.g. cash till discrepancy…"
+                        className="w-full bg-surface border border-hairline rounded-[var(--r-md)] text-xs font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all p-2.5"
                     />
                 </div>
             </div>
-
-            <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
-                <button onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors focus-ring" disabled={saving}>Cancel</button>
-                <button onClick={handleSave} disabled={saving || countedCashStr === '' || countedQrStr === ''}
-                    className="px-6 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 flex items-center gap-2 focus-ring">
-                    {saving && <Loader2 size={16} className="animate-spin" />}
-                    Save Reconciliation
-                </button>
-            </div>
-        </Modal>
+        </div>
     )
 }
 
@@ -265,7 +256,7 @@ function ShiftTransactionsPanel({ breakdown }: { breakdown: ShiftCashBreakdown }
     const { metrics } = breakdown
 
     return (
-        <div className="p-5 space-y-5 bg-surface-muted/20 border-t border-b border-hairline">
+        <div className="p-5 space-y-5 bg-surface-muted/20">
             {/* 1. Cash & Collection Summary Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="p-3.5 bg-surface rounded-xl border border-hairline flex items-center gap-3 shadow-xs">
@@ -311,8 +302,13 @@ function ShiftTransactionsPanel({ breakdown }: { breakdown: ShiftCashBreakdown }
                 </div>
             </div>
 
-            {/* 2. Secondary Financial Metrics Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* 2. Secondary Financial Metrics Grid — Credit and Folio used to
+                share one "Credit / Folio Sales" card, which read as a single
+                figure when they're actually two different things: money owed
+                on standalone orders (credit) vs. money still owing on a
+                room's own bill at checkout (folio). Split so each is its own
+                number with its own label. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="bg-surface p-3 rounded-xl border border-hairline shadow-xs flex items-center justify-between">
                     <div>
                         <div className="text-[10px] font-extrabold uppercase tracking-wider text-ink-subtle">Service Charge Collected</div>
@@ -335,11 +331,21 @@ function ShiftTransactionsPanel({ breakdown }: { breakdown: ShiftCashBreakdown }
 
                 <div className="bg-surface p-3 rounded-xl border border-hairline shadow-xs flex items-center justify-between">
                     <div>
-                        <div className="text-[10px] font-extrabold uppercase tracking-wider text-ink-subtle">Credit / Folio Sales</div>
-                        <div className="text-sm font-extrabold text-blue-600 tabular-nums mt-0.5">{formatCurrency(metrics.creditSalesTotal)}</div>
+                        <div className="text-[10px] font-extrabold uppercase tracking-wider text-ink-subtle">Credit (Unpaid Orders)</div>
+                        <div className="text-sm font-extrabold text-blue-600 tabular-nums mt-0.5">{formatCurrency(metrics.unpaidOrdersTotal)}</div>
                     </div>
                     <div className="w-7 h-7 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
                         <CreditCard size={14} />
+                    </div>
+                </div>
+
+                <div className="bg-surface p-3 rounded-xl border border-hairline shadow-xs flex items-center justify-between">
+                    <div>
+                        <div className="text-[10px] font-extrabold uppercase tracking-wider text-ink-subtle">Folio (Room Balance Owing)</div>
+                        <div className="text-sm font-extrabold text-indigo-600 tabular-nums mt-0.5">{formatCurrency(metrics.folioOutstandingTotal)}</div>
+                    </div>
+                    <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                        <BedDouble size={14} />
                     </div>
                 </div>
             </div>
@@ -473,11 +479,11 @@ function ShiftTransactionsPanel({ breakdown }: { breakdown: ShiftCashBreakdown }
                                             <td className="px-3 py-2 text-center">
                                                 {item.isCash ? (
                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                        💵 Cash
+                                                        <Banknote size={11} /> Cash
                                                     </span>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
-                                                        📱 QR / Digital {item.bankName ? `(${item.bankName})` : ''}
+                                                        <QrCode size={11} /> QR / Digital {item.bankName ? `(${item.bankName})` : ''}
                                                     </span>
                                                 )}
                                             </td>
@@ -504,8 +510,11 @@ export default function ShiftCashClient({ rows: initialRows, from, to }: {
     const router = useRouter()
     const [, startNavigating] = useTransition()
     const [rows, setRows] = useState(initialRows)
-    const [collecting, setCollecting] = useState<ShiftCashRow | null>(null)
-    const [expandedShiftId, setExpandedShiftId] = useState<string | null>(null)
+    const [viewingShiftId, setViewingShiftId] = useState<string | null>(null)
+    // Hidden by default — the table only has a "View" action now; the Check
+    // & Collect form lives exclusively inside that modal, behind its own
+    // toggle at the top.
+    const [showCollectForm, setShowCollectForm] = useState(false)
 
     function goToRange(range: { from: string | null; to: string | null }) {
         const f = range.from ?? from
@@ -513,105 +522,142 @@ export default function ShiftCashClient({ rows: initialRows, from, to }: {
         startNavigating(() => router.push(`/admin/shift-cash?from=${f}&to=${t}`))
     }
 
-    function toggleExpand(shiftId: string) {
-        setExpandedShiftId(prev => prev === shiftId ? null : shiftId)
+    function openView(shiftId: string) {
+        setViewingShiftId(shiftId)
+        setShowCollectForm(false)
     }
+
+    const viewingRow = viewingShiftId ? rows.find(r => r.id === viewingShiftId) ?? null : null
 
     return (
         <div className="space-y-6">
-            {collecting && (
-                <CollectCashModal
-                    row={collecting}
-                    onClose={() => setCollecting(null)}
-                    onSaved={(updated) => setRows(prev => prev.map(r => r.id === updated.id ? updated : r))}
-                />
-            )}
-
             <div className="bg-surface p-4 rounded-xl border border-hairline-strong shadow-sm">
                 <DateRangePicker from={from} to={to} onChange={goToRange} allowAll={false} />
             </div>
 
-            <div className="bg-surface rounded-card border border-hairline overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
-                <table className="w-full text-sm">
+            <div className="bg-surface rounded-card border border-hairline overflow-x-auto shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
+                <table className="w-full text-xs whitespace-nowrap">
                     <thead className="bg-surface-muted/30 border-b border-hairline">
                         <tr>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Staff</th>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider hidden md:table-cell">Date</th>
-                            <th className="text-left px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">In/Out</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Expected</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Counted</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Variance</th>
-                            <th className="text-center px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Status</th>
-                            <th className="text-right px-5 py-4 text-[11px] font-bold text-ink-subtle uppercase tracking-wider">Actions</th>
+                            <th className="text-left px-3 py-2.5 text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Staff</th>
+                            <th className="text-left px-3 py-2.5 text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Date</th>
+                            <th className="text-left px-3 py-2.5 text-[10px] font-bold text-ink-subtle uppercase tracking-wider">In/Out</th>
+                            <th className="text-right px-3 py-2.5 text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Expected</th>
+                            <th className="text-right px-3 py-2.5 text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Counted</th>
+                            <th className="text-right px-3 py-2.5 text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Variance</th>
+                            <th className="text-center px-3 py-2.5 text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Status</th>
+                            <th className="text-right px-3 py-2.5 text-[10px] font-bold text-ink-subtle uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-hairline">
                         {rows.map(row => {
-                            const isExpanded = expandedShiftId === row.id
                             const itemCount = row.breakdown?.items.length ?? 0
 
                             return (
-                                <Fragment key={row.id}>
-                                    <tr className={`hover:bg-surface-muted/30 transition-colors ${isExpanded ? 'bg-surface-muted/20' : ''}`}>
-                                        <td className="px-5 py-4 flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-surface-muted border border-hairline flex items-center justify-center text-ink-subtle shrink-0">
-                                                <User size={14} />
+                                <tr key={row.id} className="hover:bg-surface-muted/30 transition-colors">
+                                    <td className="px-3 py-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded-full bg-surface-muted border border-hairline flex items-center justify-center text-ink-subtle shrink-0">
+                                                <User size={11} />
                                             </div>
-                                            <div>
-                                                <span className="font-extrabold text-ink block">{row.staffName}</span>
-                                                {itemCount > 0 && (
-                                                    <span className="text-[11px] font-bold text-brand-600">
-                                                        {itemCount} billing transaction{itemCount > 1 ? 's' : ''}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-5 py-4 text-ink-subtle font-medium hidden md:table-cell"><DateCell value={row.clockIn} /></td>
-                                        <td className="px-5 py-4 text-ink-subtle font-bold tabular-nums">
-                                            {fmtTime(row.clockIn)}
-                                            {' → '}
-                                            {row.clockOut ? fmtTime(row.clockOut) : 'Ongoing'}
-                                        </td>
-                                        <td className="px-5 py-4 text-right font-bold text-ink tabular-nums">{formatCurrency(row.expected)}</td>
-                                        <td className="px-5 py-4 text-right font-bold text-ink tabular-nums">{row.counted != null ? formatCurrency(row.counted) : '—'}</td>
-                                        <td className={`px-5 py-4 text-right font-bold tabular-nums ${row.variance == null ? 'text-ink-muted' : row.variance < 0 ? 'text-danger-fg' : row.variance > 0 ? 'text-brand-600' : 'text-success-fg'}`}>
-                                            {row.variance != null ? formatCurrency(row.variance) : '—'}
-                                        </td>
-                                        <td className="px-5 py-4 text-center"><StatusPill row={row} /></td>
-                                        <td className="px-5 py-4">
-                                            <div className="flex items-center gap-2 justify-end">
-                                                {row.breakdown && (
-                                                    <button onClick={() => toggleExpand(row.id)}
-                                                        className="px-2.5 py-1.5 rounded-[var(--r-md)] border border-hairline text-[11px] font-bold text-ink-subtle hover:text-ink hover:bg-surface-muted transition-all flex items-center gap-1 shadow-xs bg-surface focus-ring">
-                                                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                                        {isExpanded ? 'Hide Billing' : 'View Billing'}
-                                                    </button>
-                                                )}
-                                                <button onClick={() => setCollecting(row)}
-                                                    className="px-3 py-1.5 rounded-[var(--r-md)] border border-hairline text-[11px] font-bold text-ink-subtle uppercase tracking-wider hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200 transition-all flex items-center gap-1.5 shadow-sm bg-surface focus-ring">
-                                                    {row.reconciledAt ? <CheckCircle size={12} /> : <Wallet size={12} />}
-                                                    {row.reconciledAt ? 'Re-check' : 'Check & Collect'}
+                                            <span className="font-extrabold text-ink text-xs">{row.staffName}</span>
+                                            {itemCount > 0 && (
+                                                <span className="text-[9px] font-bold text-brand-600">
+                                                    · {itemCount} txn{itemCount > 1 ? 's' : ''}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-3 py-2 text-ink-subtle font-medium"><DateCell value={row.clockIn} /></td>
+                                    <td className="px-3 py-2 text-ink-subtle font-bold tabular-nums">
+                                        {fmtTime(row.clockIn)}
+                                        {' → '}
+                                        {row.clockOut ? fmtTime(row.clockOut) : 'Ongoing'}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-bold text-ink tabular-nums">{formatCurrency(row.expected)}</td>
+                                    <td className="px-3 py-2 text-right font-bold text-ink tabular-nums">{row.counted != null ? formatCurrency(row.counted) : '—'}</td>
+                                    <td className={`px-3 py-2 text-right font-bold tabular-nums ${row.variance == null ? 'text-ink-muted' : row.variance < 0 ? 'text-danger-fg' : row.variance > 0 ? 'text-brand-600' : 'text-success-fg'}`}>
+                                        {row.variance != null ? formatCurrency(row.variance) : '—'}
+                                    </td>
+                                    <td className="px-3 py-2 text-center"><StatusPill row={row} /></td>
+                                    <td className="px-3 py-2">
+                                        <div className="flex items-center justify-end">
+                                            {row.breakdown && (
+                                                <button onClick={() => openView(row.id)}
+                                                    className="px-2.5 py-1 rounded-[var(--r-md)] border border-hairline text-[10px] font-bold text-ink-subtle hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200 transition-all flex items-center gap-1 shadow-sm bg-surface focus-ring">
+                                                    <ChevronDown size={12} />
+                                                    View
                                                 </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-
-                                    {isExpanded && row.breakdown && (
-                                        <tr>
-                                            <td colSpan={8} className="p-0 border-b border-hairline">
-                                                <ShiftTransactionsPanel breakdown={row.breakdown} />
-                                            </td>
-                                        </tr>
-                                    )}
-                                </Fragment>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
                             )
                         })}
                         {rows.length === 0 && (
-                            <tr><td colSpan={8} className="px-5 py-12 text-center text-ink-muted font-bold text-sm">No shifts in this range.</td></tr>
+                            <tr><td colSpan={8} className="px-3 py-12 text-center text-ink-muted font-bold text-sm whitespace-normal">No shifts in this range.</td></tr>
                         )}
                     </tbody>
                 </table>
             </div>
+
+            {viewingRow?.breakdown && (
+                <Modal
+                    open
+                    onClose={() => setViewingShiftId(null)}
+                    size="full"
+                    ariaLabel={`Billing — ${viewingRow.staffName}`}
+                    className="max-w-6xl h-[95dvh] sm:h-[92vh] flex flex-col"
+                >
+                    <div className="px-6 py-4 border-b border-hairline bg-surface-muted/30 flex justify-between items-center shrink-0 gap-3">
+                        <div>
+                            <h2 className="text-h3 font-extrabold text-ink">{viewingRow.staffName} — Shift Billing</h2>
+                            <p className="text-xs text-ink-subtle font-semibold mt-0.5">
+                                {fmtTime(viewingRow.clockIn)} → {viewingRow.clockOut ? fmtTime(viewingRow.clockOut) : 'Ongoing'}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            {/* The toggle lives at the top of the modal — the
+                                Check & Collect form only renders (see below)
+                                once this is clicked, whether the modal was
+                                opened via "View" or "Check & Collect". */}
+                            <button onClick={() => setShowCollectForm(v => !v)}
+                                className={`px-3.5 py-2 rounded-[var(--r-md)] border text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm focus-ring ${
+                                    showCollectForm
+                                        ? 'bg-brand-500 border-brand-500 text-white hover:bg-brand-600'
+                                        : 'bg-surface border-hairline text-ink-subtle hover:text-brand-500 hover:bg-brand-50 hover:border-brand-200'
+                                }`}>
+                                <Wallet size={13} />
+                                {showCollectForm ? 'Hide Collect Form' : 'Check & Collect'}
+                            </button>
+                            <button onClick={() => setViewingShiftId(null)} className="w-8 h-8 rounded-full bg-surface border border-hairline flex items-center justify-center text-ink-subtle hover:text-ink hover:bg-surface-muted transition-colors shadow-sm focus-ring">
+                                <X size={16} />
+                            </button>
+                        </div>
+                    </div>
+                    {/* Plain single column for just the view; once Check &
+                        Collect is toggled on, it moves to the right as its
+                        own distinctly-styled sidebar so it never reads as
+                        part of the dashboard it sits beside. */}
+                    <div className={`flex-1 min-h-0 overflow-hidden ${showCollectForm ? 'flex flex-col lg:flex-row' : 'flex flex-col'}`}>
+                        <div className="flex-1 overflow-y-auto">
+                            <ShiftTransactionsPanel breakdown={viewingRow.breakdown} />
+                        </div>
+                        {showCollectForm && (
+                            <div className="w-full lg:w-[380px] shrink-0 overflow-y-auto border-t-4 lg:border-t-0 lg:border-l-4 border-brand-400 bg-brand-50/10">
+                                <CollectCashPanel
+                                    key={viewingRow.id}
+                                    row={viewingRow}
+                                    onSaved={(updated) => {
+                                        setRows(prev => prev.map(r => r.id === updated.id ? updated : r))
+                                        setShowCollectForm(false)
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </div>
+                </Modal>
+            )}
         </div>
     )
 }

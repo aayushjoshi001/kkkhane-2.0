@@ -194,7 +194,12 @@ export default async function ShiftCashPage({
                     Expected cash+QR to collect for each shift — count what was actually handed over, and review all advance, room, and dine-in billing payments received.
                 </p>
             </div>
-            <ShiftCashClient rows={activeRows} from={from} to={to} />
+            {/* Keyed by the date range so a range change remounts the client
+                component with fresh state — its rows/expanded-row state are
+                seeded from props via useState, which React would otherwise
+                keep stale across a same-instance re-render after navigating
+                to a new ?from=&to=. */}
+            <ShiftCashClient key={`${from}_${to}`} rows={activeRows} from={from} to={to} />
         </div>
     )
 }
