@@ -103,32 +103,62 @@ export async function generateEodReport(restaurantId: string, reportDate: string
         ? new Date(session.closed_at || Date.now()).toISOString()
         : new Date(`${reportDate}T23:59:59.999+05:45`).toISOString()
 
-    // 2. Fetch all orders for this window
-    const { data: orders, error: ordersError } = await supabase
+    // 2. Fetch all orders for this window (both placed and paid in window)
+    const selectFields = 'id, total_amount, tax_amount, tip_amount, discount_amount, service_charge_amount, payment_status, status, session_id, placed_at, paid_at, cashier_id, booking_id, sessions(table_id, tables:table_id(room_id))'
+
+    const placedOrdersPromise = supabase
         .from('orders')
-        .select('id, total_amount, tax_amount, tip_amount, discount_amount, service_charge_amount, payment_status, status, session_id, placed_at, cashier_id, booking_id, sessions(table_id, tables:table_id(room_id))')
+        .select(selectFields)
         .eq('restaurant_id', restaurantId)
         .gte('placed_at', start)
         .lte('placed_at', end)
 
-    if (ordersError) throw new Error(`Failed to fetch orders: ${ordersError.message}`)
+    const paidInWindowPromise = supabase
+        .from('orders')
+        .select(selectFields)
+        .eq('restaurant_id', restaurantId)
+        .eq('payment_status', 'paid')
+        .gte('paid_at', start)
+        .lte('paid_at', end)
 
-    const allOrders = orders || []
-    const paidOrders = allOrders.filter(o => o.payment_status === 'paid')
-    const cancelledOrders = allOrders.filter(o => o.status === 'cancelled')
-    const refundedOrders = allOrders.filter(o => o.payment_status === 'refunded')
+    const [{ data: placedOrders, error: placedErr }, { data: paidInWindowOrders, error: paidErr }] = await Promise.all([
+        placedOrdersPromise,
+        paidInWindowPromise,
+    ])
+
+    if (placedErr) throw new Error(`Failed to fetch placed orders: ${placedErr.message}`)
+    if (paidErr) throw new Error(`Failed to fetch paid orders: ${paidErr.message}`)
+
+    const ordersMap = new Map<string, typeof placedOrders[number]>()
+    for (const o of [...(placedOrders || []), ...(paidInWindowOrders || [])]) {
+        ordersMap.set(o.id, o)
+    }
+    const allOrders = Array.from(ordersMap.values())
+
+    const paidOrders = allOrders.filter(o => {
+        if (o.payment_status !== 'paid') return false
+        if (o.paid_at) {
+            return o.paid_at >= start && o.paid_at <= end
+        }
+        return o.placed_at >= start && o.placed_at <= end
+    })
+    const cancelledOrders = (placedOrders || []).filter(o => o.status === 'cancelled')
+    const refundedOrders = allOrders.filter(o => {
+        if (o.payment_status !== 'refunded') return false
+        const t = o.paid_at || o.placed_at
+        return t >= start && t <= end
+    })
 
     // 3. Basic sums
     const totalOrders = paidOrders.length
-    const totalRevenue = paidOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0)
+    const initialOrderRevenue = paidOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0)
     const totalTax = paidOrders.reduce((sum, o) => sum + (o.tax_amount || 0), 0)
     const totalTips = paidOrders.reduce((sum, o) => sum + (o.tip_amount || 0), 0)
-    const netRevenue = totalRevenue - totalTax
-    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
+    const avgOrderValue = totalOrders > 0 ? initialOrderRevenue / totalOrders : 0
 
     const cancelledCount = cancelledOrders.length
     const refundsCount = refundedOrders.length
-    const voidsCount = allOrders.filter(o => o.payment_status === 'unpaid' && o.status === 'cancelled').length
+    const voidsCount = (placedOrders || []).filter(o => o.payment_status === 'unpaid' && o.status === 'cancelled').length
 
     // 4. Unique Customers estimation
     const uniqueSessions = new Set(paidOrders.map(o => o.session_id).filter(Boolean))
@@ -177,7 +207,7 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     }
 
     const verifiedDigitalTotal = Object.values(digitalBreakdown).reduce((s, n) => s + n, 0)
-    const unverifiedTotal = totalRevenue - cashTotal - cardTotal - verifiedDigitalTotal
+    const unverifiedTotal = initialOrderRevenue - cashTotal - cardTotal - verifiedDigitalTotal
     const paymentBreakdown: Record<string, number> = {
         cash: cashTotal,
         card: cardTotal,
@@ -219,7 +249,7 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     // 7. Most Rush Hour calculation
     const hourCounts = new Map<number, { count: number; revenue: number }>()
     for (const o of paidOrders) {
-        const date = new Date(o.placed_at)
+        const date = new Date(o.paid_at || o.placed_at)
         const localTime = new Date(date.getTime() + (5 * 60 + 45) * 60 * 1000)
         const hour = localTime.getUTCHours()
 
@@ -294,8 +324,6 @@ export async function generateEodReport(restaurantId: string, reportDate: string
             }
         }
     }
-
-    const grossProfit = netRevenue - totalCogs
 
     const cancellationExpensesPromise = supabase
         .from('expenses')
@@ -414,10 +442,18 @@ export async function generateEodReport(restaurantId: string, reportDate: string
     const roomBookingsSales = round2(bookings.reduce((s, b) => s + (Number(b.total_amount) || 0), 0))
     const roomOrders = paidOrders.filter(o => isOrderLinkedToRoom(o))
     const roomOrdersSales = round2(roomOrders.reduce((s, o) => s + (o.total_amount || 0), 0))
+
+    const roomDayBookPayments = entries.filter(e => (e.category === 'room_deposit' || e.category === 'booking_payment') && (e.type === 'cash_in' || e.type === 'bank_in'))
+    const roomDayBookTotal = round2(roomDayBookPayments.reduce((s, e) => s + (Number(e.amount) || 0), 0))
+
     const roomSales = round2(roomBookingsSales + roomOrdersSales)
 
     const tableOrders = paidOrders.filter(o => !isOrderLinkedToRoom(o))
     const restaurantSales = round2(tableOrders.reduce((s, o) => s + (o.total_amount || 0), 0))
+
+    const totalRevenue = round2(restaurantSales + roomSales)
+    const netRevenue = round2(totalRevenue - totalTax)
+    const grossProfit = round2(netRevenue - totalCogs)
 
     const roomAgg = new Map<string, { roomNumber: string; roomType: string | null; bookings: number; revenue: number }>()
     for (const b of bookings) {
@@ -506,7 +542,7 @@ export async function generateEodReport(restaurantId: string, reportDate: string
             total_discounts: totalDiscounts,
             net_revenue: netRevenue,
             cash_total: cashTotal,
-            card_total: totalRevenue - cashTotal,
+            card_total: round2(totalRevenue - cashTotal),
             total_voids: voidsCount,
             total_refunds: refundsCount,
             total_cancelled: cancelledCount,

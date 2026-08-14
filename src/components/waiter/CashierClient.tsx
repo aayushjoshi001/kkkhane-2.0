@@ -505,15 +505,9 @@ export default function CashierClient({
     // Table Food Discount: entered directly (like foodDiscount in room service)
     const [tableDiscount, setTableDiscount] = useState<string>('')
     const [tableDiscountReason, setTableDiscountReason] = useState<string>('')
-    // Service charge the cashier typed over the auto-calculated one. Empty
-    // string means "leave it on auto" — an explicit '0' is a real override
-    // that waives the charge, so the two can't be collapsed into a number.
-    const [tableServiceCharge, setTableServiceCharge] = useState<string>('')
-    // Room service charge the cashier typed over the auto figure — same
-    // empty-means-auto convention as tableServiceCharge above. Stamped with the
-    // room it belongs to so switching rooms starts from auto again, and so the
-    // drawer's "Go to Billing" can seed it without an effect racing the reset.
-    const [roomServiceChargeEdit, setRoomServiceChargeEdit] = useState<{ roomId: string; value: string } | null>(null)
+    // Service charge ON/OFF toggles: ON by default (uses auto 10%), OFF waives charge to 0.
+    const [tableServiceChargeWaived, setTableServiceChargeWaived] = useState<boolean>(false)
+    const [roomServiceChargeWaived, setRoomServiceChargeWaived] = useState<Record<string, boolean>>({})
     const [roomDiscount, setRoomDiscount] = useState<string>('')
     const [foodDiscount, setFoodDiscount] = useState<string>('')
     const [discountReason, setDiscountReason] = useState<string>('')
@@ -819,7 +813,7 @@ export default function CashierClient({
         setBillingQrCodeId('')
         setTableDiscount('')
         setTableDiscountReason('')
-        setTableServiceCharge('')
+        setTableServiceChargeWaived(false)
         setCreditCustomerName('')
         setCreditCustomerPhone('')
         setCashReceivedAmount('')
@@ -988,7 +982,11 @@ export default function CashierClient({
         const sessionId = table.activeSession.id
         const allActive = active.filter(o => o.session_id === sessionId)
         const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        const combinedOrders = [...allActive, ...allUnpaid]
+        const ordersMap = new Map<string, any>()
+        for (const o of [...allActive, ...allUnpaid]) {
+            if (o.id) ordersMap.set(o.id, o)
+        }
+        const combinedOrders = Array.from(ordersMap.values())
 
         const itemsMap: Record<string, { id: string; name: string; quantity: number; unitPrice: number; status: string }> = {}
         for (const order of combinedOrders) {
@@ -1029,34 +1027,43 @@ export default function CashierClient({
         const sessionId = table.activeSession.id
         const allActive = active.filter(o => o.session_id === sessionId)
         const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        return [...allActive, ...allUnpaid]
+        const ordersMap = new Map<string, any>()
+        for (const o of [...allActive, ...allUnpaid]) {
+            if (o.id) ordersMap.set(o.id, o)
+        }
+        return Array.from(ordersMap.values())
             .filter(o => o.status !== 'cancelled')
             .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
     }
 
     const getTableSessionOrders = (table: any) => {
         if (!table?.activeSession) return []
-        return [...active, ...unpaid].filter(o => o.session_id === table.activeSession.id && o.status !== 'cancelled')
+        const raw = [...active, ...unpaid].filter(o => o.session_id === table.activeSession.id && o.status !== 'cancelled')
+        const ordersMap = new Map<string, any>()
+        for (const o of raw) {
+            if (o.id) ordersMap.set(o.id, o)
+        }
+        return Array.from(ordersMap.values())
     }
 
-    // The service charge as it stands on the bill: what the orders locked in at
-    // placement time, and what the cashier has decided it should be. `delta` is
-    // the only part that changes the money owed — the auto figure is already
-    // baked into each order's total_amount, so charging the override means
-    // adding the difference on top, never the whole overridden amount.
+    // Service charge applies only to room stay orders. Standard table orders
+    // (no room_id) carry zero service charge. Cashiers can only toggle ON/OFF.
     const resolveTableServiceCharge = (table: any) => {
         const auto = round2(getTableSessionOrders(table).reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0))
-        const isOverridden = tableServiceCharge.trim() !== ''
-        const charged = isOverridden ? round2(Math.max(0, parseFloat(tableServiceCharge) || 0)) : auto
-        return { auto, charged, isOverridden, delta: round2(charged - auto) }
+        if (auto === 0 && !table?.room_id) {
+            return { auto: 0, charged: 0, isOverridden: false, delta: 0 }
+        }
+        const isWaived = tableServiceChargeWaived
+        const charged = isWaived ? 0 : auto
+        return { auto, charged, isOverridden: isWaived, delta: round2(charged - auto) }
     }
 
-    // Mirrors the folio's room service charge rule (src/lib/folio.ts) so the
-    // figure the cashier reads is the one /api/bookings/checkout will bill.
+    // Mirrors the folio's room service charge rule. Toggles ON (auto 10%) vs OFF (0).
     const resolveRoomSc = (room: any) => {
         const auto = autoRoomServiceCharge(billingLinkedOrders, features, room?.id)
-        const typed = roomServiceChargeEdit?.roomId === room?.id ? roomServiceChargeEdit?.value ?? '' : ''
-        return resolveRoomServiceCharge(auto, typed)
+        const isWaived = !!(room?.id && roomServiceChargeWaived[room.id])
+        const charged = isWaived ? 0 : auto
+        return { auto, charged, isOverridden: isWaived, delta: round2(charged - auto) }
     }
 
     const calculateGrandTotal = (room: any, booking: any) => {
@@ -2475,11 +2482,10 @@ export default function CashierClient({
                                 // Carry the drawer's edit over rather than
                                 // silently reverting to auto on the panel that
                                 // actually settles.
-                                setRoomServiceChargeEdit(
-                                    serviceChargeOverride === undefined
-                                        ? null
-                                        : { roomId: room.id, value: String(serviceChargeOverride) }
-                                )
+                                setRoomServiceChargeWaived(prev => ({
+                                    ...prev,
+                                    [room.id]: serviceChargeOverride === 0
+                                }))
                             }}
                             onOrderPlaced={async (orderId) => {
                                 const supabase = supabaseRef.current
@@ -3184,44 +3190,38 @@ export default function CashierClient({
                                                     <div className="flex justify-between items-center gap-3">
                                                         <div className="min-w-0">
                                                             <p className="text-xs font-extrabold text-sky-700 flex items-center gap-1.5">
-                                                                Room Service Charge
+                                                                Room Service Charge (10%)
                                                                 {roomSc.isOverridden && (
-                                                                    <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">
-                                                                        {scIsAutomatic ? 'EDITED' : 'MANUAL'}
+                                                                    <span className="text-[9px] font-black text-rose-700 bg-rose-50 border border-rose-200 rounded px-1 py-0.5">
+                                                                        OFF
                                                                     </span>
                                                                 )}
                                                             </p>
                                                             <p className="text-[10px] text-sky-600/70 font-semibold">
                                                                 {scIsAutomatic
-                                                                    ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room food · auto ${money(roomSc.auto)}`
-                                                                    : 'Not charged automatically for this room — type an amount to add one'}
+                                                                    ? `${ROOM_SERVICE_CHARGE_RATE * 100}% on room food · ${money(roomSc.auto)}`
+                                                                    : 'Not charged automatically for this room'}
                                                             </p>
                                                         </div>
-                                                        <div className="flex items-center gap-1.5 shrink-0">
-                                                            {roomSc.isOverridden && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setRoomServiceChargeEdit(null)}
-                                                                    title={scIsAutomatic ? `Reset to the auto-calculated ${money(roomSc.auto)}` : 'Clear the manual charge'}
-                                                                    className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
-                                                                >
-                                                                    <RotateCcw size={12} />
-                                                                </button>
-                                                            )}
-                                                            <div className="relative w-28">
-                                                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                                <input
-                                                                    type="number"
-                                                                    min="0"
-                                                                    step="0.01"
-                                                                    value={roomSc.isOverridden ? (roomServiceChargeEdit?.value ?? '') : (roomSc.auto ? String(roomSc.auto) : '')}
-                                                                    placeholder={roomSc.auto ? String(roomSc.auto) : '0.00'}
-                                                                    onChange={e => setRoomServiceChargeEdit({ roomId: selectedBillingRoom.id, value: e.target.value })}
-                                                                    aria-label="Room service charge"
-                                                                    className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500"
-                                                                />
-                                                            </div>
-                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (!selectedBillingRoom?.id) return
+                                                                const roomId = selectedBillingRoom.id
+                                                                setRoomServiceChargeWaived(prev => ({
+                                                                    ...prev,
+                                                                    [roomId]: !prev[roomId]
+                                                                }))
+                                                            }}
+                                                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all duration-150 flex items-center gap-1.5 shrink-0 ${
+                                                                !roomSc.isOverridden
+                                                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                                                                    : 'bg-surface-muted border-hairline text-ink-subtle hover:bg-surface-muted/80'
+                                                            }`}
+                                                        >
+                                                            <span className={`w-2 h-2 rounded-full ${!roomSc.isOverridden ? 'bg-emerald-500' : 'bg-ink-muted/40'}`} />
+                                                            {!roomSc.isOverridden ? `ON (${money(roomSc.auto)})` : 'OFF (Rs. 0.00)'}
+                                                        </button>
                                                     </div>
                                                 </div>
                                             )
@@ -3659,46 +3659,24 @@ export default function CashierClient({
                                                 </div>
                                             )}
 
-                                            {sessionOrders.length > 0 && (
+                                            {(sc.auto > 0 || !!selectedBillingTable?.room_id) && (
                                                 <div className="flex justify-between items-center gap-3">
                                                     <span className="text-ink-subtle font-semibold shrink-0">
-                                                        Service Charge
-                                                        {sc.isOverridden && (
-                                                            <span className="ml-1.5 text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 align-middle">EDITED</span>
-                                                        )}
+                                                        Service Charge (10%)
                                                     </span>
-                                                    <div className="flex items-center gap-1.5">
-                                                        {sc.isOverridden && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setTableServiceCharge('')}
-                                                                title={`Reset to the auto-calculated ${money(sc.auto)}`}
-                                                                className="p-1 rounded-md text-ink-subtle hover:text-brand-600 hover:bg-surface-muted transition"
-                                                            >
-                                                                <RotateCcw size={12} />
-                                                            </button>
-                                                        )}
-                                                        <div className="relative w-28">
-                                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-ink-subtle">Rs.</span>
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                step="0.01"
-                                                                value={sc.isOverridden ? tableServiceCharge : (sc.auto ? String(sc.auto) : '')}
-                                                                placeholder={sc.auto ? String(sc.auto) : '0.00'}
-                                                                onChange={e => setTableServiceCharge(e.target.value)}
-                                                                aria-label="Service charge"
-                                                                className="w-full pl-7 pr-2 py-1.5 border border-hairline rounded-lg text-xs font-bold text-right tabular-nums bg-surface focus:outline-none focus:border-brand-500"
-                                                            />
-                                                        </div>
-                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setTableServiceChargeWaived(!tableServiceChargeWaived)}
+                                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all duration-150 flex items-center gap-1.5 ${
+                                                            !tableServiceChargeWaived
+                                                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                                                                : 'bg-surface-muted border-hairline text-ink-subtle hover:bg-surface-muted/80'
+                                                        }`}
+                                                    >
+                                                        <span className={`w-2 h-2 rounded-full ${!tableServiceChargeWaived ? 'bg-emerald-500' : 'bg-ink-muted/40'}`} />
+                                                        {!tableServiceChargeWaived ? `ON (${money(sc.auto)})` : 'OFF (Rs. 0.00)'}
+                                                    </button>
                                                 </div>
-                                            )}
-
-                                            {sc.isOverridden && Math.abs(sc.delta) > 0.001 && (
-                                                <p className="text-[9px] text-ink-subtle font-semibold text-right -mt-1">
-                                                    Auto: {money(sc.auto)} · {sc.delta > 0 ? '+' : '−'}{money(Math.abs(sc.delta))} on the bill
-                                                </p>
                                             )}
 
                                             {sessionTax > 0 && (
