@@ -136,8 +136,15 @@ export async function POST(req: Request) {
         // What actually has to be collected right now, across cash/QR/credit.
         const authoritativeTotal = round2(orderTotal + previousDueAmount)
 
+        // Names both figures rather than just the rule — see the same check in
+        // /api/tables/checkout for why the bare message was a dead end.
         if (isInvoiceEnabled && Math.abs(cashPaid + qrPaid + creditAmount - authoritativeTotal) > 0.01) {
-            return NextResponse.json({ error: 'Cash + QR + Credit must add up to the total' }, { status: 400 })
+            return NextResponse.json({
+                error: `This bill is Rs. ${authoritativeTotal.toFixed(2)}, but Rs. ${round2(cashPaid + qrPaid + creditAmount).toFixed(2)} was entered (cash + QR + credit). Please re-check and try again.`,
+                code: 'TOTAL_MISMATCH',
+                expected_total: authoritativeTotal,
+                submitted_total: round2(cashPaid + qrPaid + creditAmount),
+            }, { status: 400 })
         }
 
         // Previous due is drawn off cash/QR first (whatever's left funds the

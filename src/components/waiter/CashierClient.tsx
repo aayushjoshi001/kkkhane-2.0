@@ -444,6 +444,9 @@ export default function CashierClient({
     const [selectedBillingTable, setSelectedBillingTable] = useState<any | null>(null)
     const [selectedBillingOrder, setSelectedBillingOrder] = useState<UnpaidOrder | null>(null)
     const [activeInvoice, setActiveInvoice] = useState<any | null>(null)
+    // True while a table's bill is being re-read from the server (compileInvoice)
+    // — the Generate Invoice button waits on it rather than billing stale figures.
+    const [isCompilingTableBill, setIsCompilingTableBill] = useState(false)
     const [isSettlingInvoice, setIsSettlingInvoice] = useState(false)
     // Synchronous re-entry guard: state updates from setIsSettlingInvoice are
     // batched/async, so a fast double-click can fire handleMarkPaid twice
@@ -803,6 +806,55 @@ export default function CashierClient({
         }
     }, [billingStayBooking?.id])
 
+    // The two order lists, readable from callbacks that run outside render
+    // (syncSessionBill below) without stale-closure surprises.
+    const activeRef = useRef(active)
+    const unpaidRef = useRef(unpaid)
+    useEffect(() => { activeRef.current = active }, [active])
+    useEffect(() => { unpaidRef.current = unpaid }, [unpaid])
+
+    /**
+     * Re-read one table session's billable orders from the server and fold them
+     * back into the local lists, returning the fresh rows.
+     *
+     * The cashier screen stays open all day and patches its order lists from
+     * realtime events, so it can drift from the database — an event lost to a
+     * sleeping tab, a fetch that came back capped, an order placed seconds ago.
+     * /api/tables/checkout bills off the database, refuses any settlement whose
+     * cash + QR + credit doesn't reconcile against it, and the cashier is then
+     * stuck: the bill on screen is simply not the bill the server holds.
+     *
+     * Returns null if the re-read failed — the caller must not settle off local
+     * state in that case, since that's precisely what the server would reject.
+     */
+    const syncSessionBill = async (sessionId: string): Promise<any[] | null> => {
+        try {
+            const res = await fetch(`/api/tables/session-bill?session_id=${encodeURIComponent(sessionId)}`)
+            const data = await res.json()
+            if (!res.ok || !data?.success) return null
+            const rows: any[] = data.orders || []
+            const freshIds = new Set(rows.map(r => r.id))
+
+            // Drop anything this session no longer owes (paid or cancelled
+            // elsewhere), keep every other session's rows untouched.
+            setActive(prev => prev.filter(o => o.session_id !== sessionId || freshIds.has(o.id)))
+            setUnpaid(prev => prev.filter(o => o.session_id !== sessionId || freshIds.has(o.id)))
+
+            // Add back whatever the local lists never had.
+            const known = new Set([...activeRef.current, ...unpaidRef.current].map(o => o.id))
+            const missing = rows.filter(r => !known.has(r.id))
+            if (missing.length > 0) {
+                setUnpaid(prev => {
+                    const have = new Set(prev.map(o => o.id))
+                    return [...prev, ...(missing.filter(m => !have.has(m.id)) as unknown as UnpaidOrder[])]
+                })
+            }
+            return rows
+        } catch {
+            return null
+        }
+    }
+
     // Same reset for the table billing panel — keyed on the table's id so it
     // also fires when switching straight from one table to another, not just
     // on close.
@@ -820,6 +872,12 @@ export default function CashierClient({
         setQrReceivedAmount('')
         setPreviousDueToAdd('')
         setPreviousDueAmount(null)
+        // Opening the panel re-reads the session's bill from the server, so the
+        // figures the cashier is about to quote are today's, not whatever this
+        // long-lived tab has accumulated since it was opened.
+        if (selectedBillingTable?.activeSession?.id) {
+            void syncSessionBill(selectedBillingTable.activeSession.id)
+        }
     }, [selectedBillingTable?.id])
 
     // A table session has no built-in customer identity, so the previous-due
@@ -977,16 +1035,36 @@ export default function CashierClient({
         ? Math.ceil((currentTime.getTime() - checkOutTime.getTime()) / (1000 * 60 * 60))
         : 0
 
-    const getTableSessionItems = (table: any) => {
-        if (!table || !table.activeSession) return []
+    /**
+     * Every order this table session is still billed for, from whichever local
+     * list happens to hold it — the one place the table bill is derived from.
+     *
+     * Deduped by id (an order can sit in both `active` and `unpaid` at once,
+     * and counting it twice doubles the bill) and filtered to exactly what
+     * /api/tables/checkout bills: not cancelled, not already paid. A prepaid
+     * order left in `active` used to inflate the estimate; an order missing
+     * from both lists used to shrink it. Either way the settlement bounced off
+     * the server's reconciliation check with nothing the cashier could do.
+     *
+     * `override` is the freshly re-read server bill (see syncSessionBill) —
+     * passed straight through so the invoice is compiled off server truth
+     * rather than whatever the tab has accumulated since it was opened.
+     */
+    const getSessionOrderRows = (table: any, override?: any[]): any[] => {
+        if (!table?.activeSession) return []
+        if (override) return override
         const sessionId = table.activeSession.id
-        const allActive = active.filter(o => o.session_id === sessionId)
-        const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        const ordersMap = new Map<string, any>()
-        for (const o of [...allActive, ...allUnpaid]) {
-            if (o.id) ordersMap.set(o.id, o)
+        const byId = new Map<string, any>()
+        for (const o of [...active, ...unpaid] as any[]) {
+            if (o.session_id !== sessionId) continue
+            if (o.status === 'cancelled' || o.payment_status === 'paid') continue
+            byId.set(o.id, o)
         }
-        const combinedOrders = Array.from(ordersMap.values())
+        return [...byId.values()]
+    }
+
+    const getTableSessionItems = (table: any, override?: any[]) => {
+        const combinedOrders = getSessionOrderRows(table, override)
 
         const itemsMap: Record<string, { id: string; name: string; quantity: number; unitPrice: number; status: string }> = {}
         for (const order of combinedOrders) {
@@ -1022,34 +1100,17 @@ export default function CashierClient({
     // must be calculated against this number, not the pre-tax item sum —
     // otherwise a bargain rate entered against the wrong baseline over- or
     // under-charges the guest relative to what's displayed.
-    const getTableSessionOrdersTotal = (table: any) => {
-        if (!table || !table.activeSession) return 0
-        const sessionId = table.activeSession.id
-        const allActive = active.filter(o => o.session_id === sessionId)
-        const allUnpaid = unpaid.filter(o => o.session_id === sessionId)
-        const ordersMap = new Map<string, any>()
-        for (const o of [...allActive, ...allUnpaid]) {
-            if (o.id) ordersMap.set(o.id, o)
-        }
-        return Array.from(ordersMap.values())
-            .filter(o => o.status !== 'cancelled')
+    const getTableSessionOrdersTotal = (table: any, override?: any[]) => {
+        return getSessionOrderRows(table, override)
             .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0)
     }
 
-    const getTableSessionOrders = (table: any) => {
-        if (!table?.activeSession) return []
-        const raw = [...active, ...unpaid].filter(o => o.session_id === table.activeSession.id && o.status !== 'cancelled')
-        const ordersMap = new Map<string, any>()
-        for (const o of raw) {
-            if (o.id) ordersMap.set(o.id, o)
-        }
-        return Array.from(ordersMap.values())
-    }
+    const getTableSessionOrders = (table: any, override?: any[]) => getSessionOrderRows(table, override)
 
     // Service charge applies only to room stay orders. Standard table orders
     // (no room_id) carry zero service charge. Cashiers can only toggle ON/OFF.
-    const resolveTableServiceCharge = (table: any) => {
-        const auto = round2(getTableSessionOrders(table).reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0))
+    const resolveTableServiceCharge = (table: any, override?: any[]) => {
+        const auto = round2(getTableSessionOrders(table, override).reduce((sum, o) => sum + (Number(o.service_charge_amount) || 0), 0))
         if (auto === 0 && !table?.room_id) {
             return { auto: 0, charged: 0, isOverridden: false, delta: 0 }
         }
@@ -1306,7 +1367,10 @@ export default function CashierClient({
     // the result (does this settlement involve credit? is it overpaid?) before
     // deciding whether to open the confirmation popup or go straight to the
     // invoice preview.
-    const buildInvoiceData = (type: 'room' | 'table' | 'takeout' | 'delivery', item: any): any => {
+    // `sessionRows` — a table session's orders as the server just reported them
+    // (see syncSessionBill). Only the 'table' branch uses it; every other branch
+    // already bills off a single server-fetched record.
+    const buildInvoiceData = (type: 'room' | 'table' | 'takeout' | 'delivery', item: any, sessionRows?: any[]): any => {
         if (type === 'room') {
             const room = item
             // Prefer the freshly fetched billingStayBooking (newest checked_in via API)
@@ -1464,10 +1528,10 @@ export default function CashierClient({
             }
         } else if (type === 'table') {
             const table = item
-            const sessionOrders = getTableSessionItems(table)
+            const sessionOrders = getTableSessionItems(table, sessionRows)
             const itemsSubtotal = sessionOrders.reduce((sum, o) => sum + (o.unitPrice * o.quantity), 0)
-            const sessionOrdersList = getTableSessionOrders(table)
-            const sc = resolveTableServiceCharge(table)
+            const sessionOrdersList = getTableSessionOrders(table, sessionRows)
+            const sc = resolveTableServiceCharge(table, sessionRows)
             const serviceCharge = sc.charged
             const taxAmount = sessionOrdersList.reduce((sum, o) => sum + (Number((o as any).tax_amount) || 0), 0)
 
@@ -1481,7 +1545,7 @@ export default function CashierClient({
             // checkTablePreviousDue — same cash/QR-only rule as the other
             // billing types.
             const previousDueApplied = Math.max(0, Math.min(parseFloat(previousDueToAdd) || 0, previousDueAmount ?? 0))
-            const total = Math.max(0, round2(getTableSessionOrdersTotal(table) + sc.delta - discountAmount)) + previousDueApplied
+            const total = Math.max(0, round2(getTableSessionOrdersTotal(table, sessionRows) + sc.delta - discountAmount)) + previousDueApplied
 
             const cashGivenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashReceivedAmount.trim() !== '' ? parseFloat(cashReceivedAmount) : null
             const cashTakenVal = (billingPaymentMethod === 'cash' || billingPaymentMethod === 'both') && cashTakenAmount.trim() !== '' ? parseFloat(cashTakenAmount) : null
@@ -1628,14 +1692,78 @@ export default function CashierClient({
         }
     }
 
+    /**
+     * Last check before a table bill is turned into an invoice: re-read the
+     * session's orders from the server and hand them back, or refuse.
+     *
+     * Refuses in two cases. If the re-read failed we have no idea what the
+     * server holds, and settling off local state is exactly what gets rejected.
+     * If the total moved, the cash/QR split the cashier typed was typed against
+     * the old figure — billing the new one silently would take the wrong amount
+     * off the guest — so the panel is left open with the corrected total for the
+     * cashier to review and click again.
+     */
+    const refreshTableBillForSettlement = async (table: any): Promise<any[] | null> => {
+        if (!table?.activeSession?.id) return null
+        setIsCompilingTableBill(true)
+        const before = round2(getTableSessionOrdersTotal(table))
+        const synced = await syncSessionBill(table.activeSession.id)
+        setIsCompilingTableBill(false)
+        if (!synced) {
+            toast.error("Couldn't re-check this table's bill — check the connection and try again")
+            return null
+        }
+        const after = round2(synced.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0))
+        if (Math.abs(after - before) > 0.01) {
+            toast.error(
+                after > before
+                    ? `This table has orders that weren't on screen — the bill is now ${money(after)}. Please re-check the payment amounts.`
+                    : `Part of this table's bill was already settled — it is now ${money(after)}. Please re-check the payment amounts.`,
+                { duration: 8000 }
+            )
+            return null
+        }
+        return synced
+    }
+
+    /**
+     * True for an invoice that was compiled with no payment method chosen: a
+     * table/takeaway/delivery estimate carrying no cash, no QR and no credit
+     * against a bill that still has to be paid.
+     *
+     * Both /api/tables/checkout and /api/orders/checkout require the payment
+     * split to reconcile to the bill exactly, so settling one of these is a
+     * guaranteed 400 — the cashier has to pick a method first. Room bills are
+     * excluded: a stay legitimately settles with a balance left owing.
+     */
+    const invoiceNeedsPaymentMethod = (invoice: any) =>
+        !!invoice &&
+        invoice.type !== 'room' &&
+        invoice.paymentMethod === 'none' &&
+        Number(invoice.total || 0) > 0.01
+
+    const activeInvoiceNeedsPaymentMethod = invoiceNeedsPaymentMethod(activeInvoice)
+
     // 'cash' and 'qr_digital' are unambiguous (one method, the full amount) —
     // straight to the invoice preview. 'both' and 'credit' always go through
     // the settlement confirmation popup first: 'both' because a typo in the
     // split fields would otherwise silently under- or over-charge, 'credit'
     // (whether the whole bill or a leftover from 'both') because it needs a
     // customer name + phone to post against.
-    const compileInvoice = (type: 'room' | 'table' | 'takeout' | 'delivery', item: any) => {
-        const built = buildInvoiceData(type, item)
+    const compileInvoice = async (type: 'room' | 'table' | 'takeout' | 'delivery', item: any) => {
+        // A table bill is the sum of a session's orders, and that set can have
+        // moved since this screen last heard about it (a waiter's late order, a
+        // realtime event this tab missed). Re-read it from the server first: it
+        // is the same set /api/tables/checkout will bill, so the estimate the
+        // guest is shown, the split amounts the cashier types, and the total
+        // the server demands are all the same number.
+        let sessionRows: any[] | undefined
+        if (type === 'table' && item?.activeSession?.id) {
+            const synced = await refreshTableBillForSettlement(item)
+            if (!synced) return
+            sessionRows = synced
+        }
+        const built = buildInvoiceData(type, item, sessionRows)
         if (!built) return
         // Stamped here, at the one funnel every invoice type passes through,
         // rather than in each of buildInvoiceData's three branches — the
@@ -1814,6 +1942,14 @@ export default function CashierClient({
     const handleMarkPaid = async (directInvoice?: any, overrideCopies?: number) => {
         const invoice = directInvoice || activeInvoice
         if (!invoice || isSettlingRef.current) return
+        // Nothing to settle with: this invoice is an estimate, printed before
+        // the guest said how they were paying. The checkout API would reject it
+        // outright (zero collected against a non-zero bill), so say what's
+        // missing instead of surfacing that rejection.
+        if (invoiceNeedsPaymentMethod(invoice)) {
+            toast.error('Choose how the guest is paying — Cash, QR or Credit — before settling this bill.')
+            return
+        }
         isSettlingRef.current = true
         setIsSettlingInvoice(true)
         try {
@@ -1929,7 +2065,18 @@ export default function CashierClient({
                     })
                 })
                 const data = await res.json()
-                if (!res.ok) throw new Error(data.error || 'Failed to checkout table')
+                if (!res.ok) {
+                    // The bill moved between compiling this invoice and settling
+                    // it. Drop the now-wrong estimate and pull the session's
+                    // orders back in, so the panel the cashier lands on already
+                    // shows the figure the server is asking for.
+                    if (data?.code === 'TOTAL_MISMATCH' && invoice.sessionId) {
+                        setActiveInvoice(null)
+                        await syncSessionBill(invoice.sessionId)
+                        router.refresh()
+                    }
+                    throw new Error(data.error || 'Failed to checkout table')
+                }
 
                 toast.success('Table session settled and closed successfully!')
             } else {
@@ -2138,8 +2285,15 @@ export default function CashierClient({
                     // follow-up write setting delivered_at) would otherwise
                     // push a second copy of it into `unpaid`.
                     setUnpaid(prev => prev.some(o => o.id === data.id) ? prev : [...prev, data as unknown as UnpaidOrder])
+                    setActive(prev => prev.filter(o => o.id !== id))
+                } else {
+                    // The order is still owed — dropping it from `active` when
+                    // nothing took its place in `unpaid` would make it vanish
+                    // from the screen while the checkout API still bills it, and
+                    // the table could then never be settled. Keep it and refetch.
+                    setActive(prev => prev.map(o => o.id === id ? { ...o, status, payment_status } : o))
+                    router.refresh()
                 }
-                setActive(prev => prev.filter(o => o.id !== id))
             } else if (payment_status === 'paid' || status === 'cancelled') {
                 setUnpaid(prev => prev.filter(o => o.id !== id))
                 setActive(prev => prev.filter(o => o.id !== id))
@@ -3893,37 +4047,46 @@ export default function CashierClient({
                                                 variant="primary"
                                                 disabled={
                                                     tableDiscountInvalid ||
-                                                    (tableDiscountAmount > 0 && !tableDiscountReason.trim())
+                                                    (tableDiscountAmount > 0 && !tableDiscountReason.trim()) ||
+                                                    isCompilingTableBill
                                                 }
                                                 onClick={() => compileInvoice('table', selectedBillingTable)}
                                                 className="px-6 text-xs animate-scale-in"
                                             >
-                                                Generate Estimate
+                                                {isCompilingTableBill ? 'Checking bill…' : 'Generate Estimate'}
                                             </Button>
                                         ) : !irdSyncEnabled ? (
                                             <Button
                                                 variant="primary"
-                                                onClick={() => {
-                                                    const data = buildInvoiceData('table', selectedBillingTable)
+                                                disabled={isCompilingTableBill}
+                                                onClick={async () => {
+                                                    // Same re-read as Generate Estimate — this
+                                                    // button skips the settlement popup, not the
+                                                    // check that the bill on screen is the bill
+                                                    // the server will charge.
+                                                    const rows = await refreshTableBillForSettlement(selectedBillingTable)
+                                                    if (!rows) return
+                                                    const data = buildInvoiceData('table', selectedBillingTable, rows)
                                                     if (data) {
-                                                        setActiveInvoice(data)
+                                                        setActiveInvoice({ ...data, cashierName: userName })
                                                     }
                                                 }}
                                                 className="px-6 text-xs animate-scale-in"
                                              >
-                                                 Close Guest
+                                                 {isCompilingTableBill ? 'Checking bill…' : 'Close Guest'}
                                              </Button>
                                         ) : (
                                             <Button
                                                 variant="primary"
                                                 disabled={
                                                     tableDiscountInvalid ||
-                                                    (tableDiscountAmount > 0 && !tableDiscountReason.trim())
+                                                    (tableDiscountAmount > 0 && !tableDiscountReason.trim()) ||
+                                                    isCompilingTableBill
                                                 }
                                                 onClick={() => compileInvoice('table', selectedBillingTable)}
                                                 className="px-6 text-xs animate-scale-in"
                                             >
-                                                Generate Estimate
+                                                {isCompilingTableBill ? 'Checking bill…' : 'Generate Estimate'}
                                             </Button>
                                         )}
                                     </div>
@@ -4294,6 +4457,12 @@ export default function CashierClient({
                     >
                         <InvoiceReceipt invoice={activeInvoice} money={money} formatDate={formatDate} restaurantName={restaurantName} restaurantAddress={restaurantAddress} restaurantPhone={restaurantPhone} />
 
+                        {activeInvoiceNeedsPaymentMethod && (
+                            <p className="print-actions text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                Estimate only — no payment method chosen yet. Print it for the guest, then take the payment to settle the bill.
+                            </p>
+                        )}
+
                         {/* Invoice Footer Actions (Print, Mark Paid, Close) */}
                         <div className="flex gap-2 pt-3 border-t border-gray-100 print-actions flex-wrap">
                             {invoiceSettled ? (
@@ -4318,7 +4487,26 @@ export default function CashierClient({
                                             Print Bill
                                         </button>
                                     )}
-                                    {!irdSyncEnabled ? (
+                                    {/* An estimate compiled before a payment method was
+                                        picked is a quote, not a settlement — it carries
+                                        no cash/QR/credit amounts, so settling it posts
+                                        zero against a non-zero bill and the checkout API
+                                        rejects it ("Cash + QR + Credit must add up to the
+                                        total") with the cashier left staring at a Mark
+                                        Paid button that can never work. Send them back to
+                                        the panel to say how the guest is paying instead. */}
+                                    {activeInvoiceNeedsPaymentMethod ? (
+                                        <Button
+                                            variant="primary"
+                                            onClick={() => {
+                                                setActiveInvoice(null)
+                                                toast('Choose how the guest is paying — Cash, QR or Credit — then settle the bill.', { icon: '💳' })
+                                            }}
+                                            className="font-bold flex-1 bg-brand-500 hover:bg-brand-600 border-brand-500 hover:border-brand-600 text-[10px] text-white py-1.5 min-w-[70px] animate-scale-in"
+                                        >
+                                            Take Payment
+                                        </Button>
+                                    ) : !irdSyncEnabled ? (
                                         <Button
                                             variant="primary"
                                             loading={isSettlingInvoice}
