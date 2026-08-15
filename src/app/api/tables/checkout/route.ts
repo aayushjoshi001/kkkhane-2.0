@@ -213,8 +213,20 @@ export async function POST(req: Request) {
         // A table settles in full, unlike a multi-day hotel stay — cash + QR +
         // credit must reconcile exactly to what's owed, catching a stale/
         // tampered request rather than silently over- or under-charging.
+        // The rejection names both figures instead of just the rule: the usual
+        // cause isn't a typo in the payment fields but a bill that moved under
+        // the cashier (a late order, an order the screen never received), and
+        // "Cash + QR + Credit must add up to the total" alone gave them no way
+        // to tell which total the server meant. The client re-reads the session
+        // before billing (/api/tables/session-bill), so reaching this now means
+        // something changed in the seconds since — code + total let it say so.
         if (isInvoiceEnabled && Math.abs(cashPaid + qrPaid + creditAmount - authoritativeTotal) > 0.01) {
-            return NextResponse.json({ error: 'Cash + QR + Credit must add up to the total' }, { status: 400 })
+            return NextResponse.json({
+                error: `This table's bill is Rs. ${authoritativeTotal.toFixed(2)}, but Rs. ${round2(cashPaid + qrPaid + creditAmount).toFixed(2)} was entered (cash + QR + credit). The bill changed while you were settling it — please re-check and try again.`,
+                code: 'TOTAL_MISMATCH',
+                expected_total: authoritativeTotal,
+                submitted_total: round2(cashPaid + qrPaid + creditAmount),
+            }, { status: 400 })
         }
 
         // Previous due is drawn off cash/QR first (whatever's left funds the

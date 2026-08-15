@@ -862,7 +862,10 @@ export async function placeRoomOrderDirect(
     if (noKot) {
         await adminSupabase
             .from('orders')
-            .update({ status: 'delivered', no_kot: true })
+            // delivered_at too: it was left NULL here, and anything that sorts
+            // or filters delivered orders by it (the cashier's unpaid list, EOD
+            // reporting) then had nothing to sort by.
+            .update({ status: 'delivered', delivered_at: new Date().toISOString(), no_kot: true })
             .eq('id', orderId)
     }
 

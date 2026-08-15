@@ -21,6 +21,7 @@ export default async function CashierPage() {
     const [
         { data: deliveredUnpaidOrders },
         { data: takeoutUnpaidOrders },
+        { data: sessionUnpaidOrders },
         { data: activeOrders },
         { data: tables },
         { data: activeSessions },
@@ -38,14 +39,20 @@ export default async function CashierPage() {
         { data: currentUserRow },
     ] = await Promise.all([
         // (1) Delivered but not yet paid — all order types (dine-in, room service, etc.)
+        //     Capped, so it takes the *newest* ones: the counter-order path marks
+        //     orders delivered without stamping delivered_at, so the old
+        //     `.order('delivered_at')` sorted a column that is NULL on every row —
+        //     an arbitrary 50 of them came back and the rest silently vanished
+        //     from the till. placed_at is always set, and descending keeps today's
+        //     bills rather than the oldest never-settled leftovers.
         adminSupabase
             .from('orders')
             .select(ORDER_SELECT)
             .eq('restaurant_id', restaurantId)
             .eq('status', 'delivered')
             .eq('payment_status', 'unpaid')
-            .order('delivered_at', { ascending: true })
-            .limit(50),
+            .order('placed_at', { ascending: false })
+            .limit(200),
 
         // (2) Unpaid takeout/delivery orders at any kitchen status — so manual
         //     cashier takeaway/delivery bills appear in billing immediately after
@@ -57,8 +64,24 @@ export default async function CashierPage() {
             .in('order_type', ['takeout', 'delivery'])
             .in('status', ['confirmed', 'preparing', 'ready', 'delivered'])
             .eq('payment_status', 'unpaid')
-            .order('placed_at', { ascending: true })
-            .limit(50),
+            .order('placed_at', { ascending: false })
+            .limit(200),
+
+        // (3) Every delivered-unpaid order that still belongs to a session —
+        //     uncapped on purpose. A table bill is settled against ALL of its
+        //     unpaid orders server-side (/api/tables/checkout), so a session
+        //     order missing from this screen makes the cashier bill less than
+        //     the server charges and the settlement is rejected with
+        //     "Cash + QR + Credit must add up to the total". Query (1)'s cap can
+        //     drop one on a busy day; this one never can. Deduped by id below.
+        adminSupabase
+            .from('orders')
+            .select(ORDER_SELECT)
+            .eq('restaurant_id', restaurantId)
+            .eq('status', 'delivered')
+            .eq('payment_status', 'unpaid')
+            .not('session_id', 'is', null)
+            .order('placed_at', { ascending: true }),
 
         adminSupabase
             .from('orders')
@@ -162,9 +185,10 @@ export default async function CashierPage() {
             .maybeSingle(),
     ])
 
-    // Merge delivered unpaid + takeout/delivery unpaid, deduplicating by order id
+    // Merge delivered unpaid + takeout/delivery unpaid + every session's unpaid,
+    // deduplicating by order id
     const unpaidMap = new Map<string, any>()
-    for (const o of [...(deliveredUnpaidOrders || []), ...(takeoutUnpaidOrders || [])]) {
+    for (const o of [...(deliveredUnpaidOrders || []), ...(takeoutUnpaidOrders || []), ...(sessionUnpaidOrders || [])]) {
         unpaidMap.set(o.id, o)
     }
     const unpaidOrders = [...unpaidMap.values()].sort(
