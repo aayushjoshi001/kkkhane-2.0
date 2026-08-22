@@ -1,7 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/server'
-import { getCurrentUser } from '@/lib/auth'
+import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { postFinancialTransaction, findOpenDayBookSessionId, resolveBankAccountId, resolveActiveDayBookSession } from '@/lib/ledger'
@@ -20,9 +20,13 @@ interface CurrentUserType {
     restaurantId: string
 }
 
+// Vouchers move real money: they post to the Day Book, settle supplier bills
+// FIFO and credit staff ledgers. This gate is the role check, not just an
+// authentication check — the /admin layout admits only these two roles, so
+// anything reaching these actions with another role is a direct POST.
 async function requireManager(): Promise<CurrentUserType> {
-    const user = await getCurrentUser()
-    if (!user || !user.restaurantId) throw new Error('Unauthorized')
+    const user = await requireRole('super_admin', 'manager')
+    if (!user.restaurantId) throw new Error('Unauthorized')
     return {
         id: user.id,
         restaurantId: user.restaurantId
