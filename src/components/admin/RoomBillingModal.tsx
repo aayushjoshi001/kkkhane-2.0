@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useSyncExternalStore, useMemo } from 'react'
+import { computeFolioVat } from '@/lib/folioVat'
 import { createPortal } from 'react-dom'
 import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed, RotateCcw, Link2, Unlink, Plus, DoorOpen, BedDouble } from 'lucide-react'
 import AdvancePaymentHistoryModal from './AdvancePaymentHistoryModal'
@@ -335,7 +336,12 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // for a bill reading Rs. 1,000.00 — and `resolvedCash` below clamps what the
     // cashier typed down to that, so a guest handing over a 1000 note settled
     // 999.9999999999999 and the last paisa came back as a phantom credit.
-    const grandTotal = round2(effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount)
+    // VAT on the room + manual charges, from the same helper the server folio
+    // uses. This preview carried no tax term at all, so a VAT tenant quoted the
+    // guest a figure below what the settlement recorded and the difference was
+    // never collected.
+    const vatAmount = computeFolioVat(effectiveStayCost + extraHourChargeVal, manualChargesTotal, features)
+    const grandTotal = round2(effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount + vatAmount)
     // Advances were taken per room, so a reservation's advance is their sum.
     const advancePaid = groupBill ? groupBill.advancePaid : (Number(booking?.paid_amount) || 0)
     const netBalance = round2(grandTotal - advancePaid)

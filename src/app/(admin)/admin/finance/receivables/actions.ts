@@ -128,6 +128,12 @@ export async function createReceivableTransactionAction(input: {
                 description: `Customer credit settlement: ${customerName} (${input.description.trim()})`,
                 category: 'order_payment',
                 requireOpenSession: false,
+                // Link the Day Book side to this transaction so deleting the
+                // payment can remove it too. Unlinked, a mis-keyed payment that
+                // was deleted and re-entered left two cash_in rows against one
+                // receipt — and the cashier whose window they fell in was then
+                // docked the difference by shift-cash reconciliation.
+                referenceId: data.id,
             }
         )
     }
@@ -181,8 +187,23 @@ export async function deleteReceivableTransactionAction(id: string) {
     const { error, count } = await supabase.from('receivable_transactions').delete({ count: 'exact' }).eq('id', id).eq('restaurant_id', user.restaurantId)
     if (error) return { error: error.message }
     if (!count) return { error: 'Transaction not found.' }
+
+    // Remove the Day Book entry this transaction posted. Only rows stamped with
+    // this transaction's id are touched; anything recorded before the link
+    // existed has no reference_id and stays put.
+    const { error: dbErr } = await supabase
+        .from('day_book_entries')
+        .delete()
+        .eq('restaurant_id', user.restaurantId)
+        .eq('reference_id', id)
+
     revalidatePath(PATH)
     revalidatePath('/admin/customers')
+    revalidatePath('/admin/cash-book')
+    revalidatePath('/admin/bank-book')
+    if (dbErr) {
+        return { success: true, warning: `Transaction deleted, but its Day Book entry could not be removed: ${dbErr.message}` }
+    }
     return { success: true }
 }
 
@@ -316,6 +337,7 @@ export async function getTransactionDetailsAction(transactionId: string) {
                 const { data: matchedRooms } = await supabase
                     .from('rooms')
                     .select('id, room_number')
+                    .eq('restaurant_id', user.restaurantId)
                     .in('room_number', rawRoomNumbers)
 
                 if (matchedRooms && matchedRooms.length > 0) {
@@ -323,6 +345,7 @@ export async function getTransactionDetailsAction(transactionId: string) {
                     let bkgQuery = supabase
                         .from('bookings')
                         .select('id, group_id')
+                        .eq('restaurant_id', user.restaurantId)
                         .in('room_id', roomIds)
 
                     if (txn.created_at) {
@@ -340,6 +363,7 @@ export async function getTransactionDetailsAction(transactionId: string) {
                             const { data: groupBkgs } = await supabase
                                 .from('bookings')
                                 .select('id')
+                                .eq('restaurant_id', user.restaurantId)
                                 .in('group_id', groupIds)
                             if (groupBkgs) {
                                 bkgSearchIds = Array.from(new Set([...bkgSearchIds, ...groupBkgs.map(g => g.id)]))
@@ -376,6 +400,7 @@ export async function getTransactionDetailsAction(transactionId: string) {
         const { data: bkgs } = await supabase
             .from('bookings')
             .select('*, rooms(*)')
+            .eq('restaurant_id', user.restaurantId)
             .in('id', bkgSearchIds)
             .order('created_at', { ascending: true })
 
@@ -387,6 +412,7 @@ export async function getTransactionDetailsAction(transactionId: string) {
             const { data: linkedOrders } = await supabase
                 .from('orders')
                 .select('id, total_amount, subtotal_amount, order_items(id, quantity, unit_price, menu_items(name))')
+                .eq('restaurant_id', user.restaurantId)
                 .in('booking_id', bookingIds)
                 .neq('status', 'cancelled')
 
@@ -414,6 +440,7 @@ export async function getTransactionDetailsAction(transactionId: string) {
             const { data: bkgPayments } = await supabase
                 .from('booking_payments')
                 .select('amount, payment_method, note')
+                .eq('restaurant_id', user.restaurantId)
                 .in('booking_id', bookingIds)
 
             let totalAdvancePaid = Number(parsedMeta?.advance_paid ?? 0)
@@ -421,6 +448,11 @@ export async function getTransactionDetailsAction(transactionId: string) {
 
             if (bkgPayments && bkgPayments.length > 0) {
                 for (const p of bkgPayments) {
+                    // The settlement taken at checkout is written to this same
+                    // table; counting it as an advance made a bill that is still
+                    // owed read as nothing due. Only deposits count here — the
+                    // same 'Settlement' note bookingBill.ts keys on.
+                    if ((p.note || '').trim().toLowerCase() === 'settlement') continue
                     const pAmt = Number(p.amount || 0)
                     totalAdvancePaid += pAmt
                     if (p.note) advanceNotes.push(p.note)

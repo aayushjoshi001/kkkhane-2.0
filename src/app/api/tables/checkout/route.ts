@@ -166,6 +166,14 @@ export async function POST(req: Request) {
         ])
 
         const isInvoiceEnabled = !!features?.generateInvoiceEnabled
+
+        // Every credit posting below — the credit account, the receivable, the
+        // income entry — sits inside `if (isInvoiceEnabled)`. With the flag off
+        // the credit was accepted and recorded nowhere, so the debt existed on
+        // no screen and was never chased. Refuse it instead of writing it off.
+        if (creditAmount > 0 && !isInvoiceEnabled) {
+            return NextResponse.json({ error: 'Credit settlement is not available for this restaurant configuration' }, { status: 400 })
+        }
         const restaurant = restResponse.data
         const session = sessionResponse.data
         const fetchError = sessionResponse.error
@@ -220,7 +228,7 @@ export async function POST(req: Request) {
         // to tell which total the server meant. The client re-reads the session
         // before billing (/api/tables/session-bill), so reaching this now means
         // something changed in the seconds since — code + total let it say so.
-        if (isInvoiceEnabled && Math.abs(cashPaid + qrPaid + creditAmount - authoritativeTotal) > 0.01) {
+        if (Math.abs(cashPaid + qrPaid + creditAmount - authoritativeTotal) > 0.01) {
             return NextResponse.json({
                 error: `This table's bill is Rs. ${authoritativeTotal.toFixed(2)}, but Rs. ${round2(cashPaid + qrPaid + creditAmount).toFixed(2)} was entered (cash + QR + credit). The bill changed while you were settling it — please re-check and try again.`,
                 code: 'TOTAL_MISMATCH',

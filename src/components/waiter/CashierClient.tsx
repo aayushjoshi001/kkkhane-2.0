@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
+import { computeFolioVat } from '@/lib/folioVat'
 import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
@@ -1143,7 +1144,12 @@ export default function CashierClient({
         // Added whole rather than as a delta: unlike the folio's ordersTotal,
         // the food totals above are raw line items with no service charge in
         // them, so there is nothing here to double up on.
-        return round2(effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal + resolveRoomSc(room).charged)
+    // VAT on the room + manual charges, from the same helper the server folio
+    // uses. This preview carried no tax term at all, so a VAT tenant quoted the
+    // guest a figure below what the settlement recorded and the difference was
+    // never collected.
+        const vatAmount = computeFolioVat(effectiveStayCost + extraHourChargeVal, manualChargesTotal, features)
+        return round2(effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal + resolveRoomSc(room).charged + vatAmount)
     }
 
     const renderPaymentInputsAndCalculator = (balanceDue: number) => {

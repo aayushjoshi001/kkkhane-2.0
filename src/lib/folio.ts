@@ -7,6 +7,7 @@
 // again, and a fix here always reaches both places.
 
 import { SupabaseClient } from '@supabase/supabase-js'
+import { computeFolioVat } from './folioVat'
 import { getRestaurantFeatures } from '@/lib/features'
 import { calculateNights, getBookingCustomPrice, lateCheckoutNights, resolveDeparture, NEPAL_TZ } from '@/lib/utils'
 
@@ -338,7 +339,7 @@ export async function computeFolioForStays(
         // Orders keyed directly to these stays (room QR / desk-placed).
         supabase
             .from('orders')
-            .select('id, placed_at, booking_id, session_id, order_items(status, quantity, unit_price, station)')
+            .select('id, placed_at, booking_id, session_id, discount_amount, order_items(status, quantity, unit_price, station)')
             .in('restaurant_id', targetRestaurantIds)
             .in('booking_id', bookingIds)
             .neq('status', 'cancelled'),
@@ -537,6 +538,7 @@ export async function computeFolioForStays(
             placed_at: string
             booking_id: string | null
             session_id: string | null
+            discount_amount?: number | null
             order_items?: Array<{ status?: string; quantity: number; unit_price: number; station?: string | null }>
         }> | null
     ) => {
@@ -545,6 +547,16 @@ export async function computeFolioForStays(
                 (Number(it.unit_price) || 0) * (Number(it.quantity) || 0)
             const items = (o.order_items || []).filter((it) => it.status !== 'cancelled')
             const subtotal = items.reduce((s, it) => s + lineTotal(it), 0)
+
+            // An order-level discount — a promo code or a loyalty redemption,
+            // worked out by place_order and stored only on orders.discount_amount
+            // — is not reflected in unit_price the way an item-level pricing rule
+            // is, so rebuilding the order from its lines charges straight through
+            // it. The bill card beside this even printed the discount as its own
+            // line while the total ignored it, so the guest was billed the promo
+            // they had been granted. Clamped: never negative, never more than the
+            // order came to.
+            const orderDiscount = Math.min(Math.max(Number(o.discount_amount) || 0, 0), subtotal)
 
             // A direct room order (placed by staff straight onto the stay, no
             // QR session) is charged on every item; an in-room QR order is
@@ -575,7 +587,7 @@ export async function computeFolioForStays(
                 serviceCharge = round2(base * 0.10)
             }
 
-            orderTotals.set(o.id, { id: o.id, total: round2(subtotal + serviceCharge), placedAt: o.placed_at })
+            orderTotals.set(o.id, { id: o.id, total: round2(Math.max(0, subtotal - orderDiscount + serviceCharge)), placedAt: o.placed_at })
             orderServiceCharges.set(o.id, serviceCharge)
         }
     }
@@ -586,7 +598,7 @@ export async function computeFolioForStays(
     if (sessionIds.size > 0) {
         const { data: bySession } = await supabase
             .from('orders')
-            .select('id, placed_at, booking_id, session_id, order_items(status, quantity, unit_price, station)')
+            .select('id, placed_at, booking_id, session_id, discount_amount, order_items(status, quantity, unit_price, station)')
             .in('restaurant_id', targetRestaurantIds)
             .in('session_id', Array.from(sessionIds))
             .neq('status', 'cancelled')
@@ -608,9 +620,7 @@ export async function computeFolioForStays(
     // VAT (Nepal) applies to the room + manual charges only; room-service items are
     // already priced with their own tax at order time, so taxing them again here
     // would double-charge. Off unless the tenant has vatEnabled set.
-    const vatEnabled = !!features?.vatEnabled
-    const taxRate = Number(features?.defaultTaxRate) || 0
-    const vat = vatEnabled ? round2((netStayCost + chargesTotal) * (taxRate / 100)) : 0
+    const vat = computeFolioVat(netStayCost, chargesTotal, features)
 
     const total = Math.max(0, round2(netStayCost + chargesTotal + ordersTotal + serviceChargeDelta + vat))
     return {
