@@ -415,6 +415,7 @@ export async function POST(req: Request) {
                     cash_amount: isSplitAdvance ? splitCashAmount : (advMethod === 'cash' ? paidAmount : 0),
                     qr_amount: isSplitAdvance ? splitQrAmount : (advMethod === 'qr_digital' ? paidAmount : 0),
                     note: noteText,
+                    payment_kind: 'advance',
                     created_by: currentUser.id
                 })
             )

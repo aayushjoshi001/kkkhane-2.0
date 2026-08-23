@@ -316,7 +316,7 @@ export async function computeFolioForStays(
         // row fetch instead of a separate query below for it.
         supabase
             .from('bookings')
-            .select('id, notes, service_charge_override')
+            .select('id, notes, service_charge_override, discount_amount')
             .in('id', bookingIds),
         getRestaurantFeatures(hotelId),
         // Manual charges added during the stay (minibar, laundry, …).
@@ -460,10 +460,34 @@ export async function computeFolioForStays(
         })
     }
 
+    // A discount the caller passes wins — that is the checkout route settling
+    // the bill. Otherwise replay what settlement stored, for the same reason the
+    // service-charge override below is replayed: recomputing a stay that has
+    // already been billed has to reproduce the charge that was taken.
+    //
+    // Without this, a bargained bill settled with close_stay:false could never be
+    // closed. /api/bookings/close-stay recomputes the folio (its comment already
+    // claimed "the stored service-charge override and discount are replayed by
+    // the folio itself" — only half of that was true), got back the UNdiscounted
+    // room cost, and reported the stay as still owing exactly the discount. The
+    // room could not be released, and the documented workaround — run the normal
+    // checkout — re-posted the whole settlement a second time.
+    //
+    // Summed across the reservation, since a group discount is spread over its
+    // rooms proportionally at settlement.
+    let effectiveDiscount = rawDiscount
+    if (effectiveDiscount === undefined) {
+        const storedDiscount = (bookingRowsRes.data || []).reduce(
+            (sum, b) => sum + (Number((b as { discount_amount?: number | null }).discount_amount) || 0),
+            0,
+        )
+        effectiveDiscount = storedDiscount > 0 ? storedDiscount : undefined
+    }
+
     // Clamped so a stale/oversized discount can never push the room cost
     // negative — the checkout route also rejects discount > stayCost
     // up front, this is just the calculation's own floor.
-    const discountAmount = Math.min(Math.max(Number(rawDiscount) || 0, 0), stayCost)
+    const discountAmount = Math.min(Math.max(Number(effectiveDiscount) || 0, 0), stayCost)
     const netStayCost = stayCost - discountAmount
 
     // An override the caller passes wins — that is the checkout route settling

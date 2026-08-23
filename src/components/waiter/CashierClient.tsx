@@ -1040,7 +1040,16 @@ export default function CashierClient({
 
     const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
 
-    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders
+    // The two fields are sent to the server as ONE discount_amount, and the
+    // checkout route nets the whole thing off the room ("Discount cannot exceed
+    // the room rate"), which is all the folio can represent. Validating the
+    // fields only against their own subtotals let the cashier enter a
+    // combination the server then refused -- with a message about the room rate
+    // that makes no sense for a food discount, and no way forward, at the desk
+    // with the guest waiting. Check what will actually be sent.
+    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost
+        || foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders
+        || roomDiscountVal + foodDiscountVal > stayCost
 
     const checkOutTime = billingStayBooking ? new Date(billingStayBooking.check_out) : null
     const currentTime = new Date()

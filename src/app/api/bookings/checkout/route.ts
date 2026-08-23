@@ -143,6 +143,9 @@ async function recordSettlementPayment(
         cash_amount: round2(cash),
         qr_amount: round2(qr),
         note: 'Settlement',
+        // The note is kept for continuity with existing rows; payment_kind is
+        // what readers key on now (lib/bookingPaymentKind.ts).
+        payment_kind: 'settlement',
         created_by: userId,
         // created_by is the cashier; this is the guest. Null when nobody typed
         // one, which reads correctly as "not recorded".

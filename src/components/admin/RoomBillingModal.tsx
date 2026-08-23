@@ -318,7 +318,16 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
     const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
 
-    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal
+    // The two fields are sent to the server as ONE discount_amount, and the
+    // checkout route nets the whole thing off the room ("Discount cannot exceed
+    // the room rate"), which is all the folio can represent. Validating the
+    // fields only against their own subtotals let the cashier enter a
+    // combination the server then refused -- with a message about the room rate
+    // that makes no sense for a food discount, and no way forward, at the desk
+    // with the guest waiting. Check what will actually be sent.
+    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost
+        || orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal
+        || roomDiscountVal + orderDiscountVal > stayCost
     const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
     // What the guest owes for orders: every service order against the stay,
     // room service and linked dine-in tables alike, less the order discount.
@@ -647,7 +656,11 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // breakdown (and, if needed, customer details) are confirmed.
     const handleSettleClick = (closeStay: boolean) => {
         if (discountInvalid) {
-            toast.error('Discount amounts must be between 0 and the respective stay/order subtotals')
+            toast.error(
+                roomDiscountVal + orderDiscountVal > stayCost
+                    ? `The room and order discounts together cannot exceed the room charge of ${money(stayCost)}.`
+                    : 'Discount amounts must be between 0 and the respective stay/order subtotals'
+            )
             return
         }
         if (totalDiscountAmount > 0 && !discountReason.trim()) {

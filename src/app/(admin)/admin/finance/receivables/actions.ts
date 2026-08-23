@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/server'
+import { isSettlementPayment } from '@/lib/bookingPaymentKind'
 import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { postFinancialTransaction } from '@/lib/ledger'
@@ -444,7 +445,7 @@ export async function getTransactionDetailsAction(transactionId: string) {
             // Fetch advance payments recorded for these bookings (only count actual advance deposits)
             const { data: bkgPayments } = await supabase
                 .from('booking_payments')
-                .select('amount, payment_method, note')
+                .select('amount, payment_method, note, payment_kind')
                 .eq('restaurant_id', user.restaurantId)
                 .in('booking_id', bookingIds)
 
@@ -455,9 +456,8 @@ export async function getTransactionDetailsAction(transactionId: string) {
                 for (const p of bkgPayments) {
                     // The settlement taken at checkout is written to this same
                     // table; counting it as an advance made a bill that is still
-                    // owed read as nothing due. Only deposits count here — the
-                    // same 'Settlement' note bookingBill.ts keys on.
-                    if ((p.note || '').trim().toLowerCase() === 'settlement') continue
+                    // owed read as nothing due. Only deposits count here.
+                    if (isSettlementPayment(p)) continue
                     const pAmt = Number(p.amount || 0)
                     totalAdvancePaid += pAmt
                     if (p.note) advanceNotes.push(p.note)
@@ -502,14 +502,16 @@ export async function getTransactionDetailsAction(transactionId: string) {
             if (totalDiscountAmt === 0 && parsedMeta?.discount) {
                 totalDiscountAmt = Number(parsedMeta.discount)
                 roomDiscountAmt = totalDiscountAmt
-            } else if (totalDiscountAmt === 0 && rawSubtotal > Number(txn.amount) && totalAdvancePaid === 0) {
-                totalDiscountAmt = Math.max(0, rawSubtotal - Number(txn.amount))
-                if (totalStayCost > 0) {
-                    roomDiscountAmt = totalDiscountAmt
-                } else {
-                    foodDiscountAmt = totalDiscountAmt
-                }
             }
+            // A shortfall between the reconstructed subtotal and the charge used
+            // to be labelled a discount and printed as one. Nothing here knows
+            // that: this statement is rebuilt by matching a room number out of
+            // free text, so a gap usually means the reconstruction missed a line,
+            // not that anyone granted anything. Naming it a discount put a figure
+            // on a customer-facing statement that no one had agreed. A real
+            // discount comes from bookings.discount_amount or the charge's own
+            // metadata, both handled above; anything else is left unexplained,
+            // which is what it is.
 
             const grandTotalAmt = Math.max(0, rawSubtotal - totalDiscountAmt)
             const netLedgerAmt = Math.max(0, grandTotalAmt - totalAdvancePaid)

@@ -13,6 +13,7 @@
 // to the total beside it.
 
 import { SupabaseClient } from '@supabase/supabase-js'
+import { isSettlementPayment } from './bookingPaymentKind'
 import { computeFolioForStays, type FolioBreakdown } from '@/lib/folio'
 import { resolveFolioBookingIds } from '@/lib/bookingGroup'
 import { getBookingCustomPrice, bookingInvoiceNumber } from '@/lib/utils'
@@ -330,7 +331,7 @@ export async function buildBookingBill(
             .order('created_at', { ascending: true }),
         supabase
             .from('booking_payments')
-            .select('amount, cash_amount, qr_amount, note')
+            .select('amount, cash_amount, qr_amount, note, payment_kind')
             .in('booking_id', memberIds),
         // The bill as issued. Written by the checkout route with the folio of
         // the moment inside it, which is the only record of what the guest was
@@ -515,22 +516,24 @@ export async function buildBookingBill(
     }))
 
     // ── Payments ─────────────────────────────────────────────────────────────
-    // Settlement rows carry the literal note 'Settlement' (recordSettlementPayment
-    // in the checkout route); an advance's note is front-desk editable, so
-    // "not Settlement" is what reliably means the advance.
+    // What each row IS comes from booking_payments.payment_kind, not from its
+    // note — the note is front-desk editable, so a clerk typing "Settlement"
+    // into an advance used to reclassify their own deposit and the guest was
+    // asked for the full bill again. The helper falls back to the note for rows
+    // written before that column existed.
     const paymentRows = paymentsRes.data || []
     const sumBy = (isSettlement: boolean, field: 'cash_amount' | 'qr_amount') =>
         round2(paymentRows
-            .filter(p => (p.note === 'Settlement') === isSettlement)
+            .filter(p => isSettlementPayment(p) === isSettlement)
             .reduce((s, p) => s + (Number(p[field]) || 0), 0))
     // booking_payments has no credit column: the settlement row's `amount` is
     // cash + qr + credit, so the remainder is what went on the guest's account.
     const creditSettled = round2(paymentRows
-        .filter(p => p.note === 'Settlement')
+        .filter(p => isSettlementPayment(p))
         .reduce((s, p) => s + Math.max(0, (Number(p.amount) || 0) - (Number(p.cash_amount) || 0) - (Number(p.qr_amount) || 0)), 0))
 
-    const hasAdvanceRow = paymentRows.some(p => p.note !== 'Settlement')
-    const hasSettlementRow = paymentRows.some(p => p.note === 'Settlement')
+    const hasAdvanceRow = paymentRows.some(p => !isSettlementPayment(p))
+    const hasSettlementRow = paymentRows.some(p => isSettlementPayment(p))
     const paidRecorded = round2(stays.reduce((s, r) => s + (Number(r.paid_amount) || 0), 0))
     const advanceMethod = (primary.advance_payment_method as string) || null
 

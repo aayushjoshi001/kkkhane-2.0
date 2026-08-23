@@ -5,6 +5,7 @@
 // Bank/other movement is excluded; only Cash and QR collections are included.
 
 import { SupabaseClient } from '@supabase/supabase-js'
+import { SETTLEMENT_ROW_FILTER } from './bookingPaymentKind'
 import { round2 } from './utils'
 
 // Room numbers are free text ('1', '10A'), so they are escaped before they
@@ -209,7 +210,9 @@ export async function computeShiftCashBreakdown(
             .from('booking_payments')
             .select('booking_id, cash_amount, qr_amount, created_at')
             .in('booking_id', checkoutBookingIds)
-            .eq('note', 'Settlement')
+            // payment_kind, with the legacy note as fallback — see
+            // lib/bookingPaymentKind.ts.
+            .or(SETTLEMENT_ROW_FILTER)
         : { data: [] as { booking_id: string; cash_amount: number; qr_amount: number; created_at: string }[] }
 
     const settlementsByBooking = new Map<string, { cash_amount: number; qr_amount: number; created_at: string }[]>()

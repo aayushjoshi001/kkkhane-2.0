@@ -136,6 +136,7 @@ export async function POST(req: Request) {
                 cash_amount: isSplit ? splitCash : (paymentMethod === 'cash' ? addAmount : 0),
                 qr_amount: isSplit ? splitQr : (paymentMethod === 'qr_digital' ? addAmount : 0),
                 note: noteText,
+                payment_kind: 'advance',
                 created_by: currentUser.id
             })
                 .then(({ error: paymentError }) => {
