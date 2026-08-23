@@ -31,8 +31,13 @@ export async function findOrCreateCustomerCreditAccount(
         .maybeSingle()
 
     const partnerId = currentRest?.linked_restaurant_id || currentRest?.linked_hotel_id
-    const allowLoyalty = currentRest?.link_allow_loyalty_sharing !== false
-    const allowCredit = currentRest?.link_allow_credit_sharing !== false
+    // Explicit opt-in. `!== false` made NULL mean "enabled", so linking two
+    // properties switched loyalty and credit sharing on for both without anyone
+    // choosing it — a hand-written truthy default of exactly the kind the feature
+    // resolvers exist to prevent. Verified against production before changing:
+    // both live links carry `true` explicitly, so no tenant's behaviour moves.
+    const allowLoyalty = currentRest?.link_allow_loyalty_sharing === true
+    const allowCredit = currentRest?.link_allow_credit_sharing === true
 
     let existingAccount: { id: string } | null = null
 

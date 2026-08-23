@@ -15,6 +15,46 @@ import { computeFolioForStays } from '@/lib/folio'
  * Returns `isGroup: false` for an ordinary single-room stay, which is the
  * signal for the modal to keep using its own single-room math untouched.
  */
+/**
+ * The server's own stay cost for a single (non-group) booking.
+ *
+ * The cashier screens used to work this out as `price * nights` at the room's
+ * CURRENT catalog rate, which is wrong for any stay that moved rooms: the folio
+ * bills each night at the rate of the room actually occupied that night
+ * (booking_room_stays). A guest moved from a 2,000 room to a 4,000 room on night
+ * 3 of 5 was quoted 20,000 against a real bill of 16,000 — the cashier collected
+ * the larger figure and the settlement then posted the 4,000 difference as a
+ * "Return to Guest" refund that never happened, leaving the drawer over and the
+ * books short. Quoting the folio's figure is the only way the preview and the
+ * settlement can agree.
+ */
+async function singleStayCost(
+    supabase: Awaited<ReturnType<typeof createAdminClient>>,
+    booking: { id: string; restaurant_id: string },
+): Promise<{ stayCost: number; nights: number } | null> {
+    const { data: row } = await supabase
+        .from('bookings')
+        .select('id, room_id, check_in, check_out, checked_out_at, status')
+        .eq('id', booking.id)
+        .maybeSingle()
+    if (!row) return null
+
+    const folio = await computeFolioForStays(supabase, {
+        restaurantId: booking.restaurant_id,
+        stays: [{
+            bookingId: row.id as string,
+            roomId: row.room_id as string,
+            checkIn: row.check_in as string,
+            checkOut: row.check_out as string,
+            checkedOutAt: row.checked_out_at as string | null,
+            status: row.status as string | null,
+        }],
+        sessionId: null,
+    }).catch(() => null)
+
+    return folio ? { stayCost: folio.stayCost, nights: folio.nights } : null
+}
+
 export async function GET(req: Request) {
     try {
         const currentUser = await getCurrentUser()
@@ -50,7 +90,8 @@ export async function GET(req: Request) {
             return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
         }
         if (!booking.group_id) {
-            return NextResponse.json({ success: true, isGroup: false })
+            const single = await singleStayCost(supabase, booking as { id: string; restaurant_id: string })
+            return NextResponse.json({ success: true, isGroup: false, ...(single ?? {}) })
         }
 
         const { data: members } = await supabase
@@ -61,7 +102,8 @@ export async function GET(req: Request) {
             .order('created_at', { ascending: true })
 
         if (!members || members.length < 2) {
-            return NextResponse.json({ success: true, isGroup: false })
+            const single = await singleStayCost(supabase, booking as { id: string; restaurant_id: string })
+            return NextResponse.json({ success: true, isGroup: false, ...(single ?? {}) })
         }
 
         const folio = await computeFolioForStays(supabase, {

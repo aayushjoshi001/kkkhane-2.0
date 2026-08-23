@@ -487,6 +487,9 @@ export default function CashierClient({
     // was undercharging the guest by every other room on the folio. Null for an
     // ordinary single-room stay, which keeps its original per-room math.
     const [billingGroup, setBillingGroup] = useState<GroupBill | null>(null)
+    // Folio stay cost from /api/rooms/panel — authoritative over the local
+    // price * nights below, which cannot see a mid-stay room move.
+    const [billingStayCost, setBillingStayCost] = useState<number | null>(null)
     const filteredRoomOrders = useMemo(() => {
         return billingLinkedOrders.filter(o => o.is_room_order && o.status !== 'cancelled')
     }, [billingLinkedOrders])
@@ -716,6 +719,7 @@ export default function CashierClient({
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
             setBillingGroup(null)
+            setBillingStayCost(null)
             setLoadingStayDetails(true)
 
             // One request for the whole bill. This was the booking lookup and
@@ -735,6 +739,7 @@ export default function CashierClient({
                             setBillingRoomCharges(data.charges || [])
                             setBillingLinkedOrders(data.linkedOrders || [])
                             setBillingGroup(data.group ?? null)
+                            setBillingStayCost(typeof data.stayCost === 'number' ? data.stayCost : null)
                         } catch (err) {
                             console.error('Error loading secondary billing details:', err)
                             // Set basic stay booking at least
@@ -742,12 +747,14 @@ export default function CashierClient({
                             setBillingRoomCharges([])
                             setBillingLinkedOrders([])
                             setBillingGroup(null)
+            setBillingStayCost(null)
                         }
                     } else {
                         setBillingStayBooking(null)
                         setBillingRoomCharges([])
                         setBillingLinkedOrders([])
                         setBillingGroup(null)
+            setBillingStayCost(null)
                     }
                 })
                 .catch(err => {
@@ -756,6 +763,7 @@ export default function CashierClient({
                     setBillingRoomCharges([])
                     setBillingLinkedOrders([])
                     setBillingGroup(null)
+            setBillingStayCost(null)
                 })
                 .finally(() => setLoadingStayDetails(false))
         } else {
@@ -763,6 +771,7 @@ export default function CashierClient({
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
             setBillingGroup(null)
+            setBillingStayCost(null)
             setBillingPaymentMethod('none')
             setSplitCashAmount('')
             setSplitQrAmount('')
@@ -941,6 +950,10 @@ export default function CashierClient({
         // every room's, priced server-side (each room can be a different type).
         if (billingGroup) return billingGroup.stayCost
         if (!room || !booking) return 0
+        // Server figure when it has arrived: it prices each night at the room
+        // occupied that night. What follows is the fallback and prices every
+        // night at the current room's rate, so it disagrees for a moved stay.
+        if (billingStayCost !== null) return billingStayCost
         const customPrice = getBookingCustomPrice(booking)
         const price = customPrice > 0 ? customPrice : (room.room_types?.base_price || 0)
         const nights = calculateNights(booking.check_in, booking.check_out)

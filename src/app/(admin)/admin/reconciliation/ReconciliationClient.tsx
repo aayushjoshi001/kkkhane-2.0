@@ -97,8 +97,11 @@ export default function ReconciliationClient({
 
     // Feature toggles
     const [allowFolio, setAllowFolio] = useState(restaurant.link_allow_folio_charges !== false)
-    const [allowLoyalty, setAllowLoyalty] = useState(restaurant.link_allow_loyalty_sharing !== false)
-    const [allowCredit, setAllowCredit] = useState(restaurant.link_allow_credit_sharing !== false)
+    // These two match lib/customerCredit.ts, which requires an explicit true —
+    // a NULL means the sharing was never turned on. (Folio charges above keep
+    // opt-out semantics: lib/folio.ts blocks only on an explicit false.)
+    const [allowLoyalty, setAllowLoyalty] = useState(restaurant.link_allow_loyalty_sharing === true)
+    const [allowCredit, setAllowCredit] = useState(restaurant.link_allow_credit_sharing === true)
     const [isSavingToggles, setIsSavingToggles] = useState(false)
 
     // Config options

@@ -249,6 +249,9 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // preview the cashier confirms before taking the money.
     const [loadedGroupBill, setLoadedGroupBill] = useState<GroupBill | null>(null)
     const [groupBillLoadedFor, setGroupBillLoadedFor] = useState<string | null>(null)
+    // The server's stay cost for this booking, from the same folio that will
+    // bill it — authoritative over anything computed here (see calculateStayCost).
+    const [serverStayCost, setServerStayCost] = useState<number | null>(null)
     // Derived rather than cleared in the effect, matching chargesLoadedFor
     // above: until the fetch lands for THIS booking, there is no group bill, so
     // a previous room's reservation can never bleed into the one on screen.
@@ -261,6 +264,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             .then(data => {
                 if (cancelled) return
                 setLoadedGroupBill(data.success && data.isGroup ? data : null)
+                setServerStayCost(typeof data?.stayCost === 'number' ? data.stayCost : null)
                 setGroupBillLoadedFor(booking.id)
             })
             .catch(err => console.error('Error loading group bill:', err))
@@ -291,9 +295,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     }, [qrRoomServiceOrderItems])
 
     // For a group the room cost is every room's cost, since the guest pays once.
+    // Server figure first: it prices each night at the room actually occupied
+    // that night, so a mid-stay room move bills what the settlement will bill.
+    // calculateStayCost below is the fallback for when that request has not
+    // landed (or failed) — it prices every night at the current room's rate and
+    // will disagree for a moved stay, which is why it is not the first choice.
     const stayCost = groupBill
         ? groupBill.stayCost
-        : (booking ? calculateStayCost(room, booking) : 0)
+        : (serverStayCost ?? (booking ? calculateStayCost(room, booking) : 0))
     const qrOrdersTotal = allServiceOrderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
     const manualChargesTotal = charges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
 

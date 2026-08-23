@@ -467,8 +467,28 @@ export async function executeAutoAccrualAction(
 
     if (accruals.length === 0) return { success: true }
 
+    // The client sends the amounts it was shown, and they used to be inserted as
+    // received — so the request could post any salary accrual at all, whatever
+    // the preview had said. Take the selection (who to process) from the client
+    // and every figure from the server's own calculation, which is the same one
+    // the preview rendered. Anyone already processed, or coming to zero, drops
+    // out here rather than being re-posted.
+    const preview = await computeMonthlyAccrualPreview(supabase, currentUser.restaurantId, year, month)
+    const eligible = new Map(
+        preview.filter(p => !p.isProcessed && p.computedAmount > 0).map(p => [p.userId, p])
+    )
+
+    const authoritative = accruals
+        .map(a => eligible.get(a.userId))
+        .filter((p): p is NonNullable<typeof p> => !!p)
+        .map(p => ({ userId: p.userId, amount: p.computedAmount, note: p.note }))
+
+    if (authoritative.length === 0) {
+        return { error: 'Nothing to accrue — these salaries have already been recorded for this month, or they come to zero.' }
+    }
+
     try {
-        await insertAccruals(supabase, currentUser.restaurantId, year, month, accruals, currentUser.id)
+        await insertAccruals(supabase, currentUser.restaurantId, year, month, authoritative, currentUser.id)
     } catch (e) {
         return { error: e instanceof Error ? e.message : 'Failed to record salary accruals' }
     }
