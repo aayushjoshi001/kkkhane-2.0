@@ -167,6 +167,11 @@ export async function createReceivableTransactionAction(input: {
                     category_id: catId,
                     amount: input.amount,
                     description: `Credit Sale (${custName}): ${cleanDesc}`,
+                    // Deleting the charge deletes this recognition with it
+                    // (ON DELETE CASCADE). Without the link, a deleted credit
+                    // charge left income the business never earned on the books
+                    // and nothing to find it by.
+                    receivable_transaction_id: data.id,
                 })
             }
         } catch {

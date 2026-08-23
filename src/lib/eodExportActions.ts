@@ -74,8 +74,17 @@ export async function getEodExportBundleAction(
         entries = await attachCreatorNames(supabase, (entriesData as DayBookEntry[]) || [])
     }
 
-    const start = new Date(`${date}T00:00:00+05:45`).toISOString()
-    const end = new Date(`${date}T23:59:59.999+05:45`).toISOString()
+    // Same window the Day Book entries above cover, for the same reason as in
+    // financeReports.getFinanceDaySummary: a session stays open across midnight,
+    // so scoping the entry list by session and the income/expense detail by the
+    // NST calendar day put figures from two different periods on one exported
+    // page. Falls back to the calendar day when no session exists.
+    const start = session
+        ? new Date(session.created_at as string).toISOString()
+        : new Date(`${date}T00:00:00+05:45`).toISOString()
+    const end = session
+        ? new Date((session.closed_at as string | null) ?? Date.now()).toISOString()
+        : new Date(`${date}T23:59:59.999+05:45`).toISOString()
 
     const [{ data: rawIncome }, { data: rawExpense }] = await Promise.all([
         supabase

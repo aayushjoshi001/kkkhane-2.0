@@ -379,7 +379,14 @@ export async function buildBookingBill(
                 status: s.status as string | null,
             })),
             sessionId: null,
-            discountAmount: Number(primary.discount_amount) || 0,
+            // Summed across the reservation, the way /api/rooms/stay-billing
+            // does it. The folio here is built over every member room, but the
+            // discount came from the primary booking alone — and checkout
+            // spreads a group discount proportionally across the rooms
+            // (allocateAcrossRooms), so on a 3-room group each row holds a
+            // third. Reading one row left the recomputed folio short of the
+            // discount actually given and overstated what was still running.
+            discountAmount: stays.reduce((sum, s) => sum + (Number(s.discount_amount) || 0), 0),
         }).catch(() => null)
         : null
 
