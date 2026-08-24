@@ -8,9 +8,13 @@ to `main` so Vercel and prod Supabase update in lockstep.
 
 | | |
 |---|---|
-| **Stack** | Next.js 16 · Turbopack · Supabase (Postgres 17) · Vercel (auto-deploy) |
-| **Repo** | `siddanta-ar1/The-House` |
+| **Stack** | Next.js 16 · Turbopack · Supabase (Postgres 17) · Vercel |
+| **Remotes** | `prod` → `infokkkhane-ux/KKKhane` (Vercel watches this) · `origin` → `siddanta-ar1/The-House` (mirror + PRs, deploys nothing) |
 | **Team** | 1 lead · 1 dev |
+
+> **New here?** Read [ARCHITECTURE.md](ARCHITECTURE.md) for how the system fits
+> together and [../CONTRIBUTING.md](../CONTRIBUTING.md) for conventions and what
+> review looks for. [DEPLOYMENT.md](DEPLOYMENT.md) covers production.
 
 ---
 
@@ -114,13 +118,23 @@ safe to ship.
 
 ```bash
 supabase db reset     # replays baseline + all migrations locally
-npm run test          # playwright golden-path on chromium
+npm test              # playwright, chromium
+npm run typecheck     # tsc --noEmit
+npm run lint          # incl. srms/require-tenant-scope
+```
+
+If the migration added a table or a `restaurant_id` column, regenerate the
+tenant-scoping lint rule's table lists in the same commit:
+
+```bash
+npm run gen:tenant-tables
 ```
 
 > **⚠ Check before you commit**
-> Migration replays with no errors, regenerated types compile, and the Playwright
-> suite is green. A migration that only works because your local DB drifted is a
-> prod incident waiting to happen.
+> Migration replays with no errors, regenerated types compile, `npm run typecheck`
+> is clean, `npm run lint` has no *new* problems, and the Playwright suite is
+> green. A migration that only works because your local DB drifted is a prod
+> incident waiting to happen.
 
 ### 5. Commit in reviewable chunks — [dev]
 Use conventional commits — the same style already in the history (`feat(db):`,
@@ -155,14 +169,21 @@ Lead reviews the diff and the migration, checks the Vercel preview, and
 squash-merges into `main`. The feature branch is deleted on merge.
 
 ### 9. Deploy: app + database — [lead]
-Merging to `main` triggers the Vercel production deploy automatically. The
-database is the one manual gate — the lead applies new migrations to prod
-Supabase.
+Both gates are manual. Vercel watches the **`prod`** remote, not `origin` — a
+push to `origin` looks like a release and ships nothing.
 
 ```bash
 supabase link --project-ref <prod-ref>   # once
-supabase db push                         # applies pending migrations to prod
+supabase projects list                   # confirm what is linked, every time
+supabase db push                         # migrations to prod, FIRST
+
+git log --format='%ae' prod/main..main | sort -u   # must be info.kkkhane@gmail.com only
+git push prod main                       # triggers the production deploy
 ```
+
+A commit authored by anyone else deploys as `BLOCKED / TEAM_ACCESS_REQUIRED`,
+which is why contributor PRs are merged locally with `--no-ff`. Full detail and
+rollback in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 > **Order of operations**
 > Run `supabase db push` **before or together with** the app deploy when the new
@@ -227,5 +248,5 @@ Guards `main`, production, and the release gate.
 
 ---
 
-*The House · KKKhane — developer workflow*
+*KKKhane — developer workflow*
 `main → feat/* · fix/*  |  local:54321 → prod`
