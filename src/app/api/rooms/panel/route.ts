@@ -91,6 +91,12 @@ export async function GET(req: NextRequest) {
             // The group endpoint answers isGroup:false for a single-room stay,
             // which the screens represent as no group at all.
             group: groupBody?.success && groupBody.isGroup ? groupBody : null,
+            // The folio's own stay cost, present for a single stay as well as a
+            // group. The cashier screens priced every night at the room's
+            // current rate, which is wrong the moment a stay changes rooms, and
+            // the settlement then had to reconcile a total the guest was never
+            // quoted. Present for both shapes so neither screen has to compute it.
+            stayCost: typeof groupBody?.stayCost === 'number' ? groupBody.stayCost : null,
         })
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Server error'

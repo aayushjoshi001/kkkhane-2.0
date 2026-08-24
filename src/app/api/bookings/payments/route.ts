@@ -56,109 +56,29 @@ export async function GET(req: Request) {
 
         let payments = paymentRows || []
 
-        // 3. Fallback: If booking_payments table has no records for this booking,
-        // recover individual advance payment entries from day_book_entries / income_entries!
+        // 3. Legacy fallback: a booking that predates booking_payments carries its
+        // advance only on bookings.paid_amount. Synthesise a single row so the
+        // history modal can still show it. Nothing is written back.
+        //
+        // This previously reconstructed individual advances by scanning
+        // day_book_entries for 'room_deposit' rows whose free text contained the
+        // guest name or "room <n>" — with no upper time bound — and INSERTed them
+        // onto this booking. A GET that mutates: deposits left by later guests in
+        // the same room matched too, so merely opening the modal could attach
+        // other people's money to this bill permanently and print a RETURN TO
+        // GUEST line for it. Reconstructing payment history from free text is not
+        // recoverable; if the real breakdown matters it has to come from a source
+        // that carries booking_id.
         if (payments.length === 0 && Number(booking.paid_amount || 0) > 0) {
-            const roomNum = (booking.rooms as any)?.room_number
-
-            // Search day_book_entries for room_deposit category around/after booking creation time
-            const { data: dayBookRows } = await supabase
-                .from('day_book_entries')
-                .select('id, amount, description, type, created_at')
-                .eq('restaurant_id', currentUser.restaurantId)
-                .eq('category', 'room_deposit')
-                .gte('created_at', new Date(new Date(booking.created_at).getTime() - 60000).toISOString())
-                .order('created_at', { ascending: true })
-
-            const guestNameLower = (booking.guest_name || '').toLowerCase().trim()
-            const roomNumLower = roomNum ? String(roomNum).toLowerCase() : ''
-
-            // Filter day book entries matching this guest or room
-            const matchedEntries = (dayBookRows || []).filter(e => {
-                const desc = (e.description || '').toLowerCase()
-                return (guestNameLower && desc.includes(guestNameLower)) || (roomNumLower && desc.includes(`room ${roomNumLower}`))
-            })
-
-            if (matchedEntries.length > 0) {
-                payments = matchedEntries.map(e => {
-                    const method = e.type === 'cash_in' ? 'cash' : 'qr_digital'
-                    let parsedNote = 'Advance'
-                    if (e.description) {
-                        const match = e.description.match(/Room Advance \((.*?)\):/i)
-                        if (match && match[1]) {
-                            const extracted = match[1].trim()
-                            if (!['cash', 'qr/digital', 'split'].includes(extracted.toLowerCase())) {
-                                parsedNote = extracted
-                            }
-                        } else {
-                            const dLower = e.description.toLowerCase()
-                            if (dLower.includes('dine in')) parsedNote = 'Dine in'
-                            else if (dLower.includes('deposit')) parsedNote = 'Deposit'
-                        }
-                    }
-                    return {
-                        id: e.id,
-                        restaurant_id: currentUser.restaurantId,
-                        booking_id: booking.id,
-                        amount: Number(e.amount),
-                        payment_method: method,
-                        note: parsedNote,
-                        created_at: e.created_at
-                    }
-                })
-
-                // Backfill to booking_payments table so subsequent queries read directly
-                try {
-                    await supabase.from('booking_payments').insert(
-                        payments.map(p => ({
-                            restaurant_id: currentUser.restaurantId,
-                            booking_id: booking.id,
-                            amount: p.amount,
-                            payment_method: p.payment_method,
-                            note: p.note,
-                            created_at: p.created_at
-                        }))
-                    )
-                } catch (backfillErr) {
-                    console.error('Backfill booking_payments error:', backfillErr)
-                }
-            } else {
-                // If no day book rows matched, query income_entries
-                const { data: incomeRows } = await supabase
-                    .from('income_entries')
-                    .select('id, amount, description, created_at')
-                    .eq('restaurant_id', currentUser.restaurantId)
-                    .gte('created_at', new Date(new Date(booking.created_at).getTime() - 60000).toISOString())
-                    .order('created_at', { ascending: true })
-
-                const matchedIncome = (incomeRows || []).filter(e => {
-                    const desc = (e.description || '').toLowerCase()
-                    return desc.includes('advance') && ((guestNameLower && desc.includes(guestNameLower)) || (roomNumLower && desc.includes(`room ${roomNumLower}`)))
-                })
-
-                if (matchedIncome.length > 0) {
-                    payments = matchedIncome.map(e => ({
-                        id: e.id,
-                        restaurant_id: currentUser.restaurantId,
-                        booking_id: booking.id,
-                        amount: Number(e.amount),
-                        payment_method: booking.advance_payment_method || 'cash',
-                        note: 'Advance',
-                        created_at: e.created_at
-                    }))
-                } else {
-                    // Final single fallback
-                    payments = [{
-                        id: `legacy-${booking.id}`,
-                        restaurant_id: currentUser.restaurantId,
-                        booking_id: booking.id,
-                        amount: Number(booking.paid_amount),
-                        payment_method: booking.advance_payment_method || 'cash',
-                        note: 'Advance',
-                        created_at: booking.created_at
-                    }]
-                }
-            }
+            payments = [{
+                id: `legacy-${booking.id}`,
+                restaurant_id: currentUser.restaurantId,
+                booking_id: booking.id,
+                amount: Number(booking.paid_amount),
+                payment_method: booking.advance_payment_method || 'cash',
+                note: 'Advance',
+                created_at: booking.created_at,
+            }] as typeof payments
         }
 
         return NextResponse.json({

@@ -24,7 +24,7 @@ async function settleOrders(
     restaurantId: string,
     userId: string,
     orders: OrderRow[],
-    methodForOrder: (amount: number) => 'cash' | 'qr_scan' | null,
+    splitForOrder: (amount: number) => Array<{ method: 'cash' | 'qr_scan'; amount: number }>,
 ) {
     const orderIds = orders.map(o => o.id)
     if (orderIds.length === 0) return
@@ -52,18 +52,25 @@ async function settleOrders(
         .neq('payment_status', 'paid')
 
     for (const order of orders) {
-        const method = methodForOrder(Number(order.total_amount) || 0)
-        if (!method) continue
-        await supabase.from('payment_verifications').insert({
-            restaurant_id: restaurantId,
-            order_id: order.id,
-            amount: order.total_amount,
-            payment_method: method,
-            staff_verified: true,
-            staff_rejected: false,
-            staff_verified_by: userId,
-            staff_verified_at: now,
-        })
+        // One row per method that actually paid for this order. Previously an
+        // order was attributed whole to whichever single pool could cover it,
+        // so a bill paid part cash part QR could leave an order with no row at
+        // all: on a Rs 500 table (orders of 400 and 100) paid 300 cash + 200 QR,
+        // neither pool covered the 400, and payment_verifications recorded 100
+        // against a 500 settlement. The rest is the credit portion — no cash
+        // moved for it, so it still gets no row.
+        for (const part of splitForOrder(Number(order.total_amount) || 0)) {
+            await supabase.from('payment_verifications').insert({
+                restaurant_id: restaurantId,
+                order_id: order.id,
+                amount: part.amount,
+                payment_method: part.method,
+                staff_verified: true,
+                staff_rejected: false,
+                staff_verified_by: userId,
+                staff_verified_at: now,
+            })
+        }
     }
 }
 
@@ -166,6 +173,14 @@ export async function POST(req: Request) {
         ])
 
         const isInvoiceEnabled = !!features?.generateInvoiceEnabled
+
+        // Every credit posting below — the credit account, the receivable, the
+        // income entry — sits inside `if (isInvoiceEnabled)`. With the flag off
+        // the credit was accepted and recorded nowhere, so the debt existed on
+        // no screen and was never chased. Refuse it instead of writing it off.
+        if (creditAmount > 0 && !isInvoiceEnabled) {
+            return NextResponse.json({ error: 'Credit settlement is not available for this restaurant configuration' }, { status: 400 })
+        }
         const restaurant = restResponse.data
         const session = sessionResponse.data
         const fetchError = sessionResponse.error
@@ -220,7 +235,7 @@ export async function POST(req: Request) {
         // to tell which total the server meant. The client re-reads the session
         // before billing (/api/tables/session-bill), so reaching this now means
         // something changed in the seconds since — code + total let it say so.
-        if (isInvoiceEnabled && Math.abs(cashPaid + qrPaid + creditAmount - authoritativeTotal) > 0.01) {
+        if (Math.abs(cashPaid + qrPaid + creditAmount - authoritativeTotal) > 0.01) {
             return NextResponse.json({
                 error: `This table's bill is Rs. ${authoritativeTotal.toFixed(2)}, but Rs. ${round2(cashPaid + qrPaid + creditAmount).toFixed(2)} was entered (cash + QR + credit). The bill changed while you were settling it — please re-check and try again.`,
                 code: 'TOTAL_MISMATCH',
@@ -282,37 +297,42 @@ export async function POST(req: Request) {
         // cash moved for that order).
         let remainingCash = cashPaid
         let remainingQr = qrPaid
-        const methodForOrder = (amount: number): 'cash' | 'qr_scan' | null => {
-            if (remainingCash >= amount) {
-                remainingCash -= amount
-                return 'cash'
+        const splitForOrder = (amount: number): Array<{ method: 'cash' | 'qr_scan'; amount: number }> => {
+            const parts: Array<{ method: 'cash' | 'qr_scan'; amount: number }> = []
+            let left = round2(amount)
+            const fromCash = round2(Math.min(remainingCash, left))
+            if (fromCash > 0) {
+                remainingCash = round2(remainingCash - fromCash)
+                left = round2(left - fromCash)
+                parts.push({ method: 'cash', amount: fromCash })
             }
-            if (remainingQr >= amount) {
-                remainingQr -= amount
-                return 'qr_scan'
+            const fromQr = round2(Math.min(remainingQr, left))
+            if (fromQr > 0) {
+                remainingQr = round2(remainingQr - fromQr)
+                left = round2(left - fromQr)
+                parts.push({ method: 'qr_scan', amount: fromQr })
             }
-            return null
+            return parts
         }
-        await settleOrders(supabase, currentUser.restaurantId, currentUser.id, orders || [], methodForOrder)
+        await settleOrders(supabase, currentUser.restaurantId, currentUser.id, orders || [], splitForOrder)
 
         // 1b. If this session was linked to a hotel room booking, credit the table payment to the booking's paid_amount
         if (session.booking_id) {
             postCheckoutTasks.push((async () => {
-                const { data: booking } = await supabase
-                    .from('bookings')
-                    .select('paid_amount')
-                    .eq('id', session.booking_id)
-                    .single()
-                
-                if (booking) {
-                    const currentPaid = Number(booking.paid_amount || 0)
-                    // Excludes the previous-due portion — that money settles a
-                    // separate receivable, not this stay's bill.
-                    const addPaid = cashForTable + qrForTable
-                    await supabase
-                        .from('bookings')
-                        .update({ paid_amount: currentPaid + addPaid })
-                        .eq('id', session.booking_id)
+                // Excludes the previous-due portion — that money settles a
+                // separate receivable, not this stay's bill. Added in one
+                // statement: the old read-then-write raced the front desk taking
+                // a deposit on the same stay, and whichever landed second
+                // overwrote the other while both left their own ledger trail.
+                const addPaid = round2(cashForTable + qrForTable)
+                if (addPaid > 0) {
+                    const { error: incErr } = await supabase
+                        .rpc('increment_booking_paid_amount', {
+                            p_booking_id: session.booking_id,
+                            p_restaurant_id: currentUser.restaurantId,
+                            p_amount: addPaid,
+                        })
+                    if (incErr) console.error('[tables-checkout] booking paid_amount increment failed:', incErr)
                 }
             })())
         }

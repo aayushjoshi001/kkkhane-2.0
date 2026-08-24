@@ -1,7 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/server'
-import { getCurrentUser } from '@/lib/auth'
+import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { postFinancialTransaction, findOpenDayBookSessionId, resolveBankAccountId, resolveActiveDayBookSession } from '@/lib/ledger'
@@ -20,9 +20,13 @@ interface CurrentUserType {
     restaurantId: string
 }
 
+// Vouchers move real money: they post to the Day Book, settle supplier bills
+// FIFO and credit staff ledgers. This gate is the role check, not just an
+// authentication check — the /admin layout admits only these two roles, so
+// anything reaching these actions with another role is a direct POST.
 async function requireManager(): Promise<CurrentUserType> {
-    const user = await getCurrentUser()
-    if (!user || !user.restaurantId) throw new Error('Unauthorized')
+    const user = await requireRole('super_admin', 'manager')
+    if (!user.restaurantId) throw new Error('Unauthorized')
     return {
         id: user.id,
         restaurantId: user.restaurantId
@@ -475,15 +479,24 @@ export async function approveChequeAction(id: string) {
         parsed.status = 'approved'
         const updatedDesc = JSON.stringify(parsed)
 
-        const { error: updateError } = await supabase
+        // Claim the approval atomically. The pending_approval check above read a
+        // snapshot; an unconditional update let two clicks (or two managers) both
+        // pass it and both call postLedgerEntry, paying a staff advance or a
+        // supplier bill twice — nothing downstream is idempotent and no unique
+        // index backs it up. Matching on the exact description we read means the
+        // second writer finds no row and stops here.
+        const { error: updateError, count } = await supabase
             .from('day_book_entries')
             .update({
                 amount: parsed.amount, // Set the real amount!
                 description: updatedDesc
-            })
+            }, { count: 'exact' })
             .eq('id', id)
+            .eq('restaurant_id', user.restaurantId)
+            .eq('description', entry.description)
 
         if (updateError) return { error: updateError.message }
+        if (!count) return { error: 'This cheque was just updated by someone else. Reload and try again.' }
 
         // Post ledger impacts now that it is approved. If that fails, put the
         // cheque back to pending rather than leaving it marked approved with
@@ -509,6 +522,8 @@ export async function approveChequeAction(id: string) {
                 .from('day_book_entries')
                 .update({ amount: 0.01, description: entry.description })
                 .eq('id', id)
+                .eq('restaurant_id', user.restaurantId)
+                .eq('description', updatedDesc)
             return { error: e instanceof Error ? e.message : 'Failed to post voucher ledger entry.' }
         }
 

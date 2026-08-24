@@ -45,8 +45,13 @@ export async function reconcileShiftCashAction(
     } | null = null
 
     if (shiftId.startsWith('unmapped-')) {
-        const parts = shiftId.replace(/^unmapped-/, '').split('-')
-        const targetUserId = parts[0]
+        // The id is `unmapped-<uuid>-<index>` and a uuid contains four hyphens,
+        // so splitting on '-' and taking [0] left the first 8 hex characters.
+        // Every lookup below then failed as an invalid uuid and reconciling an
+        // un-clocked cashier's drawer returned "Failed to initialize shift
+        // record" every time — the one control over cash taken outside a shift
+        // did not work at all. Strip the trailing index instead.
+        const targetUserId = shiftId.replace(/^unmapped-/, '').replace(/-\d+$/, '')
         const todayDate = getNstDateString()
         const rangeStart = new Date(`${todayDate}T00:00:00+05:45`).toISOString()
         const rangeEnd = new Date(`${addDays(todayDate, 1)}T00:00:00+05:45`).toISOString()

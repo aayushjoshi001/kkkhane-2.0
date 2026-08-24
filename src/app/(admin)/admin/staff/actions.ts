@@ -1,7 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/server'
-import { getCurrentUser } from '@/lib/auth'
+import { requireRole } from '@/lib/auth'
 import { getRestaurantFeatures } from '@/lib/features'
 import { FINANCE_GATED_ROLES } from '@/types/database'
 import { revalidatePath } from 'next/cache'
@@ -10,7 +10,7 @@ import { getNstDateString, getEffectiveJoinDate, isValidDateString, addDays } fr
 import { postFinancialTransaction } from '@/lib/ledger'
 
 export async function updateStaffRoleAction(userId: string, targetRoleId: number) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     // Verify target user belongs to the same restaurant
@@ -55,7 +55,7 @@ export async function updateStaffRoleAction(userId: string, targetRoleId: number
 }
 
 export async function toggleStaffStatusAction(userId: string, isActive: boolean) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     const { data: targetUser } = await supabase
@@ -71,7 +71,7 @@ export async function toggleStaffStatusAction(userId: string, isActive: boolean)
 }
 
 export async function updateStaffNameAction(userId: string, fullName: string) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     const { data: targetUser } = await supabase
@@ -95,7 +95,7 @@ export async function updateStaffNameAction(userId: string, fullName: string) {
 }
 
 export async function resetStaffPasswordAction(userId: string, newPassword: string) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     const { data: targetUser } = await supabase
@@ -112,7 +112,7 @@ export async function resetStaffPasswordAction(userId: string, newPassword: stri
 }
 
 export async function deleteStaffAction(userId: string) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     const { data: targetUser } = await supabase
@@ -145,7 +145,7 @@ export async function deleteStaffAction(userId: string) {
 }
 
 export async function updateStaffSalaryAction(userId: string, salary: number) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     // Verify target user belongs to the same restaurant
@@ -176,7 +176,7 @@ export async function updateStaffSalaryAction(userId: string, salary: number) {
 // created_at, which is when their account was created). Used to prorate
 // their salary accrual — see computeMonthlyAccrualPreview in lib/payroll.ts.
 export async function updateStaffJoinDateAction(userId: string, joinDate: string) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     const { data: targetUser } = await supabase
@@ -216,7 +216,7 @@ export async function increaseStaffSalaryAction(
     effectiveFrom: string,
     effectiveTo?: string | null
 ) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     const { data: targetUser } = await supabase
@@ -321,7 +321,7 @@ export async function recordLedgerTransactionAction(
     note: string | null,
     bankName?: string
 ) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     // Verify target user belongs to the same restaurant
@@ -387,7 +387,7 @@ export async function recordLedgerTransactionAction(
 }
 
 export async function fetchStaffLedgerAction(userId: string) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     // Verify target user belongs to the same restaurant
@@ -425,7 +425,7 @@ export async function fetchStaffLedgerAction(userId: string) {
 }
 
 export async function updateOpeningBalanceAction(userId: string, openingBalance: number) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     const { data: targetUser } = await supabase
@@ -452,7 +452,7 @@ export async function updateOpeningBalanceAction(userId: string, openingBalance:
 }
 
 export async function fetchAutoAccrualPreviewAction(year: number, month: number) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
     return computeMonthlyAccrualPreview(supabase, currentUser.restaurantId, year, month)
 }
@@ -462,13 +462,33 @@ export async function executeAutoAccrualAction(
     month: number,
     accruals: Array<{ userId: string; amount: number; note: string }>
 ) {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     if (accruals.length === 0) return { success: true }
 
+    // The client sends the amounts it was shown, and they used to be inserted as
+    // received — so the request could post any salary accrual at all, whatever
+    // the preview had said. Take the selection (who to process) from the client
+    // and every figure from the server's own calculation, which is the same one
+    // the preview rendered. Anyone already processed, or coming to zero, drops
+    // out here rather than being re-posted.
+    const preview = await computeMonthlyAccrualPreview(supabase, currentUser.restaurantId, year, month)
+    const eligible = new Map(
+        preview.filter(p => !p.isProcessed && p.computedAmount > 0).map(p => [p.userId, p])
+    )
+
+    const authoritative = accruals
+        .map(a => eligible.get(a.userId))
+        .filter((p): p is NonNullable<typeof p> => !!p)
+        .map(p => ({ userId: p.userId, amount: p.computedAmount, note: p.note }))
+
+    if (authoritative.length === 0) {
+        return { error: 'Nothing to accrue — these salaries have already been recorded for this month, or they come to zero.' }
+    }
+
     try {
-        await insertAccruals(supabase, currentUser.restaurantId, year, month, accruals, currentUser.id)
+        await insertAccruals(supabase, currentUser.restaurantId, year, month, authoritative, currentUser.id)
     } catch (e) {
         return { error: e instanceof Error ? e.message : 'Failed to record salary accruals' }
     }

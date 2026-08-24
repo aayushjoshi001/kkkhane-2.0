@@ -1,12 +1,15 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/server'
-import { getCurrentUser } from '@/lib/auth'
+import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 
+// Linking two properties decides whether folio charges, loyalty and credit
+// flow between them — a financial-authority decision, so it takes the same
+// role as the rest of /admin, not merely a valid session.
 async function requireManager() {
-    const user = await getCurrentUser()
-    if (!user || !user.restaurantId) throw new Error('Unauthorized')
+    const user = await requireRole('super_admin', 'manager')
+    if (!user.restaurantId) throw new Error('Unauthorized')
     return {
         id: user.id,
         restaurantId: user.restaurantId

@@ -150,7 +150,14 @@ export async function createEntryAction(input: {
             category: input.type === 'income'
                 ? (input.payment_source === 'cash' ? 'other' : 'deposit')
                 : (input.payment_source === 'cash' ? 'expense' : 'transfer_out'),
-            bankName: input.payment_source === 'bank' ? input.bank_name : null
+            bankName: input.payment_source === 'bank' ? input.bank_name : null,
+            // Stamp the source row on the Day Book entry so deleting the entry
+            // here can take its Day Book side with it. Without the link the
+            // cash_out survived the delete, and every correction (delete, re-enter)
+            // left the Cash Book permanently ahead of Income & Expenses — which
+            // then made the cashier's till read short and cost them a deduction
+            // through shift-cash reconciliation.
+            referenceId: (newEntryData as { id?: string } | null)?.id ?? null,
         })
 
         if (postResult.error) {
@@ -183,6 +190,21 @@ export async function deleteEntryAction(id: string, type: 'income' | 'expense') 
     if (error) return { error: error.message }
     if (!count) return { error: 'Entry not found.' }
 
+    // Take the Day Book side with it. Only entries this action posted carry the
+    // row's id as reference_id, so nothing else is at risk; entries created
+    // before this link existed have no reference_id and are left alone (they
+    // have to be removed from the Day Book by hand).
+    const { error: dbErr } = await supabase
+        .from('day_book_entries')
+        .delete()
+        .eq('restaurant_id', user.restaurantId)
+        .eq('reference_id', id)
+
     revalidatePath(PATH)
+    revalidatePath('/admin/cash-book')
+    revalidatePath('/admin/bank-book')
+    if (dbErr) {
+        return { success: true, warning: `Entry deleted, but its Day Book entry could not be removed: ${dbErr.message}` }
+    }
     return { success: true }
 }

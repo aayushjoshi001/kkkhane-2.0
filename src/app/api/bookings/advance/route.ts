@@ -49,21 +49,31 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Payment amount must be greater than 0' }, { status: 400 })
         }
 
-        const currentPaid = Number(booking.paid_amount || 0)
-        const newPaidTotal = currentPaid + addAmount
-
-        // 3. Update the booking's paid amount
-        const { error: updateError } = await supabase
-            .from('bookings')
-            .update({
-                paid_amount: newPaidTotal,
-                advance_payment_method: booking.advance_payment_method && booking.advance_payment_method !== 'none'
-                    ? booking.advance_payment_method
-                    : paymentMethod
+        // 3. Add to the booking's paid amount in one statement. Reading it into
+        // JS and writing back the sum lost one of two deposits taken at the same
+        // moment (or a deposit racing a linked table bill): the payment row and
+        // the ledger posting both survived, so the books showed money the guest's
+        // balance did not.
+        const { data: incrementedPaid, error: incrementError } = await supabase
+            .rpc('increment_booking_paid_amount', {
+                p_booking_id: bookingId,
+                p_restaurant_id: currentUser.restaurantId,
+                p_amount: addAmount,
             })
-            .eq('id', bookingId)
 
-        if (updateError) throw updateError
+        if (incrementError) throw incrementError
+        const newPaidTotal = Number(incrementedPaid) || 0
+
+        // The method is only stamped the first time; a later deposit by another
+        // method leaves the original in place, as before.
+        if (!booking.advance_payment_method || booking.advance_payment_method === 'none') {
+            const { error: methodError } = await supabase
+                .from('bookings')
+                .update({ advance_payment_method: paymentMethod })
+                .eq('id', bookingId)
+                .eq('restaurant_id', currentUser.restaurantId)
+            if (methodError) throw methodError
+        }
 
         // 4. Log payment to financial ledger and books
         const roomNumber = (booking.rooms as any)?.room_number || 'Unknown'
@@ -126,6 +136,7 @@ export async function POST(req: Request) {
                 cash_amount: isSplit ? splitCash : (paymentMethod === 'cash' ? addAmount : 0),
                 qr_amount: isSplit ? splitQr : (paymentMethod === 'qr_digital' ? addAmount : 0),
                 note: noteText,
+                payment_kind: 'advance',
                 created_by: currentUser.id
             })
                 .then(({ error: paymentError }) => {

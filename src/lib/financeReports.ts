@@ -102,10 +102,24 @@ export async function getFinanceDaySummary(
         }
     }
 
-    // expenses/income_entries have no session_id — scope them to the NST
-    // calendar day directly, matching lib/reports.ts's sales EOD boundaries.
-    const start = new Date(`${dateStr}T00:00:00+05:45`).toISOString()
-    const end = new Date(`${dateStr}T23:59:59.999+05:45`).toISOString()
+    // expenses/income_entries carry no session_id, so they have to be scoped by
+    // time — but they must be scoped by the SAME stretch of time the Day Book
+    // figures above cover, or the two halves of one report describe different
+    // periods. A session deliberately stays open across midnight (see
+    // lib/ledger.ts: a restaurant serving until 2am keeps posting against the
+    // session opened the previous day), so on any day the business trades past
+    // midnight the NST calendar window disagreed with it: a supplier payment
+    // made at 00:40 showed up in this day's cashOut but in tomorrow's
+    // totalExpense, and neither page added up.
+    //
+    // With a session, use its own span; without one, fall back to the calendar
+    // day, which is all there is to go on.
+    const dayStart = new Date(`${dateStr}T00:00:00+05:45`).toISOString()
+    const dayEnd = new Date(`${dateStr}T23:59:59.999+05:45`).toISOString()
+    const start = session ? new Date(session.created_at as string).toISOString() : dayStart
+    const end = session
+        ? new Date((session.closed_at as string | null) ?? Date.now()).toISOString()
+        : dayEnd
 
     const [{ data: expenseRows }, { data: incomeRows }, { data: staffPayoutRows }] = await Promise.all([
         supabase

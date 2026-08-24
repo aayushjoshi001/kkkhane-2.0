@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useSyncExternalStore, useMemo } from 'react'
+import { computeFolioVat } from '@/lib/folioVat'
 import { createPortal } from 'react-dom'
 import { X, Loader2, CheckCircle2, Percent, Clock, Printer, History, Utensils, QrCode, Bed, RotateCcw, Link2, Unlink, Plus, DoorOpen, BedDouble } from 'lucide-react'
 import AdvancePaymentHistoryModal from './AdvancePaymentHistoryModal'
@@ -248,6 +249,9 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // preview the cashier confirms before taking the money.
     const [loadedGroupBill, setLoadedGroupBill] = useState<GroupBill | null>(null)
     const [groupBillLoadedFor, setGroupBillLoadedFor] = useState<string | null>(null)
+    // The server's stay cost for this booking, from the same folio that will
+    // bill it — authoritative over anything computed here (see calculateStayCost).
+    const [serverStayCost, setServerStayCost] = useState<number | null>(null)
     // Derived rather than cleared in the effect, matching chargesLoadedFor
     // above: until the fetch lands for THIS booking, there is no group bill, so
     // a previous room's reservation can never bleed into the one on screen.
@@ -260,6 +264,7 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
             .then(data => {
                 if (cancelled) return
                 setLoadedGroupBill(data.success && data.isGroup ? data : null)
+                setServerStayCost(typeof data?.stayCost === 'number' ? data.stayCost : null)
                 setGroupBillLoadedFor(booking.id)
             })
             .catch(err => console.error('Error loading group bill:', err))
@@ -290,9 +295,14 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     }, [qrRoomServiceOrderItems])
 
     // For a group the room cost is every room's cost, since the guest pays once.
+    // Server figure first: it prices each night at the room actually occupied
+    // that night, so a mid-stay room move bills what the settlement will bill.
+    // calculateStayCost below is the fallback for when that request has not
+    // landed (or failed) — it prices every night at the current room's rate and
+    // will disagree for a moved stay, which is why it is not the first choice.
     const stayCost = groupBill
         ? groupBill.stayCost
-        : (booking ? calculateStayCost(room, booking) : 0)
+        : (serverStayCost ?? (booking ? calculateStayCost(room, booking) : 0))
     const qrOrdersTotal = allServiceOrderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
     const manualChargesTotal = charges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
 
@@ -308,7 +318,16 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
 
     const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
 
-    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal
+    // The two fields are sent to the server as ONE discount_amount, and the
+    // checkout route nets the whole thing off the room ("Discount cannot exceed
+    // the room rate"), which is all the folio can represent. Validating the
+    // fields only against their own subtotals let the cashier enter a
+    // combination the server then refused -- with a message about the room rate
+    // that makes no sense for a food discount, and no way forward, at the desk
+    // with the guest waiting. Check what will actually be sent.
+    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost
+        || orderDiscountVal < 0 || orderDiscountVal > qrOrdersTotal
+        || roomDiscountVal + orderDiscountVal > stayCost
     const effectiveStayCost = Math.max(0, stayCost - roomDiscountVal)
     // What the guest owes for orders: every service order against the stay,
     // room service and linked dine-in tables alike, less the order discount.
@@ -335,7 +354,12 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // for a bill reading Rs. 1,000.00 — and `resolvedCash` below clamps what the
     // cashier typed down to that, so a guest handing over a 1000 note settled
     // 999.9999999999999 and the last paisa came back as a phantom credit.
-    const grandTotal = round2(effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount)
+    // VAT on the room + manual charges, from the same helper the server folio
+    // uses. This preview carried no tax term at all, so a VAT tenant quoted the
+    // guest a figure below what the settlement recorded and the difference was
+    // never collected.
+    const vatAmount = computeFolioVat(effectiveStayCost + extraHourChargeVal, manualChargesTotal, features)
+    const grandTotal = round2(effectiveStayCost + effectiveOrdersTotal + manualChargesTotal + extraHourChargeVal + roomServiceChargeAmount + vatAmount)
     // Advances were taken per room, so a reservation's advance is their sum.
     const advancePaid = groupBill ? groupBill.advancePaid : (Number(booking?.paid_amount) || 0)
     const netBalance = round2(grandTotal - advancePaid)
@@ -632,7 +656,11 @@ export default function RoomBillingModal({ room, booking, tables, activeOrders, 
     // breakdown (and, if needed, customer details) are confirmed.
     const handleSettleClick = (closeStay: boolean) => {
         if (discountInvalid) {
-            toast.error('Discount amounts must be between 0 and the respective stay/order subtotals')
+            toast.error(
+                roomDiscountVal + orderDiscountVal > stayCost
+                    ? `The room and order discounts together cannot exceed the room charge of ${money(stayCost)}.`
+                    : 'Discount amounts must be between 0 and the respective stay/order subtotals'
+            )
             return
         }
         if (totalDiscountAmount > 0 && !discountReason.trim()) {
