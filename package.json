@@ -1,5 +1,6 @@
 {
-  "name": "srms",
+  "name": "kkkhane",
+  "description": "Multi-tenant hotel and restaurant management SaaS for Nepal — POS, QR ordering, kitchen display, room bookings, folio billing and finance.",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -9,17 +10,18 @@
     "dev": "next dev --turbo",
     "build": "next build",
     "start": "next start",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint",
-    "generate:logo-raster": "node scripts/generate-logo-raster.mjs",
-    "test": "npx playwright test --project=chromium",
-    "test:manager": "npx playwright test tests/daily-manager-flow-advanced.spec.ts --project=chromium",
-    "test:manager:headed": "npx playwright test tests/daily-manager-flow-advanced.spec.ts --project=chromium --headed",
-    "test:saas": "npx playwright test tests/saas-founder-flow-advanced.spec.ts --project=chromium",
-    "test:saas:headed": "npx playwright test tests/saas-founder-flow-advanced.spec.ts --project=chromium --headed",
-    "test:golden": "npx playwright test tests/golden-path.spec.ts --project=chromium",
-    "test:all": "npx playwright test --project=chromium --reporter=html",
-    "test:ci": "npx playwright test --project=chromium --reporter=github,html",
-    "test:report": "npx playwright show-report"
+    "lint:fix": "eslint --fix",
+    "test": "playwright test --project=chromium",
+    "test:headed": "playwright test --project=chromium --headed",
+    "test:ci": "playwright test --project=chromium --reporter=github,html",
+    "test:report": "playwright show-report",
+    "db:reset": "supabase db reset",
+    "db:diff": "supabase db diff -f",
+    "db:push": "supabase db push",
+    "gen:tenant-tables": "node scripts/gen-tenant-tables.mjs",
+    "gen:logo-raster": "node scripts/generate-logo-raster.mjs"
   },
   "dependencies": {
     "@marsidev/react-turnstile": "^1.5.3",
