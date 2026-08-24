@@ -194,15 +194,36 @@ Declared in `vercel.json`:
 | `/api/cron/auto-suspend` | `0 0 * * *` |
 | `/api/cron/refresh-item-pairings` | `30 3 * * *` |
 
-> **Check the plan's cron limit.** Vercel's Hobby plan allows **two** cron jobs
-> and four are declared here. If the project is still on Hobby, two of these are
-> not running at all, and nobody would see an error — verify with
-> `vercel ls` / the dashboard's Cron tab and either upgrade the plan or fold the
-> jobs together. The two sharing `15 18 * * *` are the obvious candidates to
-> merge.
+Vercel's Hobby plan documents a limit of **two** cron jobs per project and four
+are declared here, so this looks like a problem. It was checked on 2026-08-04
+and it is not one: `generate-eod-reports` (first in the file) and
+`refresh-item-pairings` (**third**) both demonstrably ran, which could not
+happen if registration stopped at the first two. All four are registered.
 
-Hobby also caps function duration at 60 s and has no firewall/WAF. Both are
-worth confirming against the current plan before a traffic event.
+`auto-suspend` and `accrue-salaries` write nothing, and that is also expected
+rather than a fault — no restaurant currently qualifies for suspension, and
+`staff_salary_history` is empty, so `insertAccruals` correctly returns
+`{inserted: 0}`. **`accrue-salaries` cannot do anything until salary records
+exist.** The gap there is data, not scheduling.
+
+Two things to know when checking on these:
+
+- Neither `vercel inspect` nor the (403ing) MCP server exposes the registered
+  cron list. The only available proof that a job ran is the row it wrote —
+  check the target table, not the dashboard.
+- Cron schedules drift. Against `15 18 * * *`, `generate-eod-reports` has fired
+  as late as 18:37 UTC. That matters because 18:15 UTC is the NST-midnight
+  end-of-day boundary, and a ~22 minute drift crosses it.
+- The routes look POST-only; each ends with `export const GET = POST` because
+  Vercel Cron invokes with GET. That is deliberate, not a bug.
+
+Hobby also caps function duration at **60 s** — three cron routes already sit
+exactly at that ceiling — and provides no firewall or WAF. Worth confirming
+against the current plan before a traffic event.
+
+> **Plan/ToS note.** Hobby forbids commercial use, and this is a paid
+> multi-tenant SaaS with live tenants. That is an account-suspension risk on
+> production, independent of any technical limit.
 
 ### Deploy size
 
