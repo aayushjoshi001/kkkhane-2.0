@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { computeFolioVat } from '@/lib/folioVat'
 import { createPortal } from 'react-dom'
 import { useRestaurantTable } from '@/lib/realtime/useRestaurantTable'
 import { createClient } from '@/lib/supabase/client'
@@ -99,6 +100,9 @@ export default function CashierRoomManager({
     // cost and advance shown in this drawer have to be the reservation's, not
     // just this room's share. Null for an ordinary single-room stay.
     const [stayGroup, setStayGroup] = useState<GroupBill | null>(null)
+    // Folio stay cost from /api/rooms/panel, for a single stay as well as a
+    // group — the local price * nights below cannot see a mid-stay room move.
+    const [serverStayCost, setServerStayCost] = useState<number | null>(null)
     const filteredLinkedDiningOrders = (() => {
         return linkedDiningOrders.filter(o => !o.is_room_order && o.status !== 'cancelled')
     })()
@@ -630,6 +634,24 @@ export default function CashierRoomManager({
         activeBookingRef.current = activeBooking
     }, [activeBooking])
 
+    // Which stay the panel is currently loading for. Bumped every time the
+    // cashier opens a different room, and checked by every response that writes
+    // into the panel's state.
+    //
+    // Nothing here was guarded before, and this panel has two independent
+    // writers: the /api/rooms/panel fetch below and the orders realtime handler,
+    // which refetches linked orders for whatever booking the ref held when the
+    // event arrived. Either one landing after the cashier had moved to another
+    // room wrote a previous guest's booking, charges or food orders straight
+    // onto the room now on screen — the bill showed one room's number over
+    // another guest's spend. A room change makes that collision routine: the
+    // move fires room updates, the panel reopens on the new room, and any order
+    // event in the hotel is refetching the old booking at the same moment.
+    const panelRequestRef = useRef(0)
+    // The room the panel state currently belongs to, so a re-run triggered by a
+    // status change or a refresh doesn't blank a bill that is already correct.
+    const panelRoomRef = useRef<string | null>(null)
+
     // Realtime subscriptions for rooms
     useRestaurantTable(restaurantId, 'rooms', (payload) => {
         if (payload.eventType === 'UPDATE') {
@@ -657,10 +679,19 @@ export default function CashierRoomManager({
     useRestaurantTable(partnerRestaurantId || restaurantId, 'orders', (payload) => {
         const currentBooking = activeBookingRef.current
         if (!currentBooking) return
-        
-        fetch(`/api/bookings/linked-orders?bookingId=${currentBooking.id}`)
+
+        const bookingId = currentBooking.id
+        const requestId = panelRequestRef.current
+
+        fetch(`/api/bookings/linked-orders?bookingId=${bookingId}`)
             .then(res => res.json())
             .then(linkedRes => {
+                // These are the orders of the stay that was open when the event
+                // arrived. If the panel has moved on since, they belong to a
+                // different guest and must not be shown against the room now on
+                // screen.
+                if (panelRequestRef.current !== requestId) return
+                if (activeBookingRef.current?.id !== bookingId) return
                 if (linkedRes.success) {
                     setLinkedDiningOrders(linkedRes.items || [])
                 }
@@ -754,6 +785,21 @@ export default function CashierRoomManager({
     // Fetch active booking details, manual charges, and linked dining orders concurrently when selected room is occupied or held by reservation
     useEffect(() => {
         const isRoomHeld = selectedRoom && (bookings || []).some(b => b.room_id === selectedRoom.id && (b.status === 'checked_in' || b.status === 'pending'))
+        // Every re-run invalidates whatever is still in flight. The effect also
+        // re-runs for a status change or a manual refresh on the SAME room,
+        // where the state on screen is already the right guest's — so it is
+        // dropped only when the room itself changed, which is the case where
+        // keeping it would show one room's header over another guest's bill.
+        const requestId = ++panelRequestRef.current
+        const roomChanged = panelRoomRef.current !== (selectedRoom?.id ?? null)
+        panelRoomRef.current = selectedRoom?.id ?? null
+        if (roomChanged) {
+            setActiveBooking(null)
+            setManualCharges([])
+            setLinkedDiningOrders([])
+            setStayGroup(null)
+            setCreatedSessionId(null)
+        }
         if (selectedRoom && (selectedRoom.status === 'occupied' || isRoomHeld)) {
             setLoadingBooking(true)
             setLoadingCharges(true)
@@ -763,9 +809,24 @@ export default function CashierRoomManager({
             // /api/rooms/panel keeps that ordering but runs it server-side,
             // next to the database, so the hop between the two steps costs a
             // local round trip instead of a Kathmandu one.
-            fetch(`/api/rooms/panel?roomId=${selectedRoom.id}`)
+            const requestedRoomId = selectedRoom.id
+            fetch(`/api/rooms/panel?roomId=${requestedRoomId}`)
                 .then(res => res.json())
                 .then(async (data) => {
+                    // A previous room's answer arriving late — the panel has
+                    // moved on, and this is somebody else's stay.
+                    if (panelRequestRef.current !== requestId) return
+                    // Belt and braces: the server queried by this room id, so a
+                    // booking for any other room means the stay was moved out
+                    // from under the request and is no longer this room's.
+                    if (data.booking && data.booking.room_id && data.booking.room_id !== requestedRoomId) {
+                        setActiveBooking(null)
+                        setManualCharges([])
+                        setLinkedDiningOrders([])
+                        setStayGroup(null)
+                        setServerStayCost(null)
+                        return
+                    }
                     if (data.success && data.booking) {
                         const booking = data.booking
                         try {
@@ -774,6 +835,7 @@ export default function CashierRoomManager({
                             setManualCharges(data.charges || [])
                             setLinkedDiningOrders(data.linkedOrders || [])
                             setStayGroup(data.group ?? null)
+                            setServerStayCost(typeof data.stayCost === 'number' ? data.stayCost : null)
                         } catch (err) {
                             console.error("Error applying stay details:", err)
                             // Set basic stay booking at least
@@ -790,6 +852,7 @@ export default function CashierRoomManager({
                     }
                 })
                 .catch(err => {
+                    if (panelRequestRef.current !== requestId) return
                     console.error("Error fetching room booking details:", err)
                     setActiveBooking(null)
                     setManualCharges([])
@@ -797,6 +860,7 @@ export default function CashierRoomManager({
                     setStayGroup(null)
                 })
                 .finally(() => {
+                    if (panelRequestRef.current !== requestId) return
                     setLoadingBooking(false)
                     // Both spinners clear here now that one request feeds both.
                     // Leaving this on the success path alone left the charges
@@ -895,10 +959,16 @@ export default function CashierRoomManager({
         const price = customPrice > 0 ? customPrice : (selectedRoom.room_types?.base_price || 0)
         const nights = calculateNights(activeBooking.check_in, activeBooking.check_out)
             + lateCheckoutNights(activeBooking.check_out, resolveDeparture(activeBooking))
-        const cost = price * nights
+        // The server's figure when it has arrived: it prices each night at the
+        // room actually occupied that night, so a stay moved from a 2,000 room
+        // to a 4,000 room mid-week is quoted what the settlement will charge.
+        // price * nights is the fallback and prices the whole stay at the
+        // current room's rate — the nightly rate shown beside it stays local,
+        // since it is only a display of this room's own price.
+        const cost = serverStayCost ?? price * nights
 
         return { nights, cost, price, isCustom: customPrice > 0 }
-    }, [selectedRoom, activeBooking, stayGroup])
+    }, [selectedRoom, activeBooking, stayGroup, serverStayCost])
 
     // What the charge works out to before the cashier touches it. Gated on the
     // same two settings the server folio checks, so this preview can't promise
@@ -931,7 +1001,12 @@ export default function CashierRoomManager({
         const qrOrdersTotal = qrOrdersDetails?.total || 0
         const manualChargesTotal = manualCharges.reduce((acc, c) => acc + Number(c.amount || 0), 0)
         const linkedDiningTotal = filteredLinkedDiningOrders.reduce((sum, item) => sum + (Number(item.unit_price) * item.quantity), 0)
-        return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal + roomServiceChargeAmount
+    // VAT on the room + manual charges, from the same helper the server folio
+    // uses. This preview carried no tax term at all, so a VAT tenant quoted the
+    // guest a figure below what the settlement recorded and the difference was
+    // never collected.
+        const vatAmount = computeFolioVat(roomStayCost, manualChargesTotal, features)
+        return roomStayCost + qrOrdersTotal + manualChargesTotal + linkedDiningTotal + roomServiceChargeAmount + vatAmount
     })()
 
     // Change room status helper
