@@ -1,6 +1,6 @@
 import NepaliDate from 'nepali-date-converter'
 import { toNepaliDate } from './nepaliDate'
-import { NEPAL_TZ } from './utils'
+import { NEPAL_TZ, nepalCalendarDate } from './utils'
 
 /**
  * Which calendar leads when a date is displayed.
@@ -18,24 +18,6 @@ export const DEFAULT_CALENDAR: Calendar = 'bs'
 /** Narrow an untrusted cookie/query value to a Calendar, falling back to the default. */
 export function parseCalendar(value: string | undefined | null): Calendar {
     return value === 'ad' || value === 'bs' ? value : DEFAULT_CALENDAR
-}
-
-/**
- * The Kathmandu wall-clock Y/M/D for an instant, as a Date whose *local*
- * components carry those values.
- *
- * `new NepaliDate(d)` reads the JS Date's local components, so converting a raw
- * instant in a browser outside Nepal picks the wrong calendar day either side of
- * midnight. Re-basing on the Kathmandu date first makes the conversion agree
- * everywhere — the same reason every formatter in lib/utils pins NEPAL_TZ.
- */
-function nepalCalendarDate(date: Date): Date {
-    // en-CA gives ISO-ordered parts, so this needs no reparsing of month names.
-    const [y, m, d] = date
-        .toLocaleDateString('en-CA', { timeZone: NEPAL_TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
-        .split('-')
-        .map(Number)
-    return new Date(y, m - 1, d)
 }
 
 function toDate(value: string | Date | null | undefined): Date | null {

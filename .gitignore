@@ -10,38 +10,43 @@
 !.yarn/releases
 !.yarn/versions
 
+# next.js
+/.next/
+/out/
+/build
+
 # testing
 /coverage
 /playwright-report/
 /test-results/
 
-# next.js
-/.next/
-/out/
+# typescript
+*.tsbuildinfo
+next-env.d.ts
 
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
+# env files — never commit real values; see .env.example for the shape
 .env*
+!.env.example
+!.env.test.example
 
 # vercel
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# MCP server config: holds a personal Supabase access token, and so do its backups
 .mcp.json
+.mcp.json.*
+
+# Local working area — data exports, notes, throwaway scripts. Not part of the
+# codebase; see docs/ for anything worth keeping.
+/scratch/
 
 # Generated PDFs
 docs/*.pdf
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*

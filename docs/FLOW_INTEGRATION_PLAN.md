@@ -1,6 +1,11 @@
 # KKKhane — Complete Flow Integration Plan
 
-> Status: **PLANNING** (no implementation yet)
+> **Historical.** This is the plan that produced the current unified order
+> pipeline, kept for the reasoning behind those decisions. It is not a
+> description of today's code — for that see [ARCHITECTURE.md](ARCHITECTURE.md)
+> and [AUTH_FLOW.md](AUTH_FLOW.md).
+>
+> Original status line: **PLANNING** (no implementation yet)
 > Decisions locked: (1) unify takeout into the `orders` pipeline; (2) customer
 > can *request* to open a session, waiter approves (no silent auto-session).
 

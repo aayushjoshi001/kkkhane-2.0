@@ -1,8 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import type { BillingTable, BillingOrder } from '@/components/admin/RoomBillingModal'
 import { getCurrentUser } from '@/lib/auth'
-import { getRestaurantName } from '@/lib/features'
 import BookingsClient from './BookingsClient'
+import type { GuestStatementBusiness } from '@/lib/guestStatementPdf'
 import type { Booking, Room } from '@/types/database'
 import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
 
@@ -13,7 +13,11 @@ export default async function BookingsPage() {
     const { restaurantId } = currentUser
 
     const adminSupabase = await createAdminClient()
-    const restaurantName = await getRestaurantName(restaurantId)
+
+    // Letterhead for the guest statement PDF. Read here rather than in the
+    // client so the document carries the tenant's real PAN/VAT and address —
+    // it leaves the building with a guest.
+    let business: GuestStatementBusiness = { name: 'Restaurant' }
 
     // Fetch bookings, rooms, tables, sessions and active orders with safety
     let bookings: Booking[] = []
@@ -24,9 +28,21 @@ export default async function BookingsPage() {
     try {
         const { data: restData } = await adminSupabase
             .from('restaurants')
-            .select('linked_restaurant_id')
+            .select('linked_restaurant_id, name, address, contact_phone, telephone, pan_number, vat_number, vat_registered')
             .eq('id', restaurantId)
             .maybeSingle()
+
+        if (restData) {
+            business = {
+                name: restData.name || 'Restaurant',
+                address: restData.address,
+                contactPhone: restData.contact_phone,
+                telephone: restData.telephone,
+                panNumber: restData.pan_number,
+                vatNumber: restData.vat_number,
+                vatRegistered: restData.vat_registered,
+            }
+        }
 
         const targetRestaurantIds = [restaurantId]
         if (restData?.linked_restaurant_id) {
@@ -94,7 +110,7 @@ export default async function BookingsPage() {
             initialBookings={bookings}
             rooms={rooms}
             restaurantId={restaurantId}
-            restaurantName={restaurantName}
+            business={business}
             tables={tablesMapped}
             activeOrders={activeOrders}
         />

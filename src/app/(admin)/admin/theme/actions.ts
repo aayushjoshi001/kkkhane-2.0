@@ -1,14 +1,14 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/server'
-import { getCurrentUser } from '@/lib/auth'
+import { requireRole } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 
 export async function updateThemeAction(
     settingsId: string,
     theme: Record<string, string>
 ): Promise<{ error?: string }> {
-    const { restaurantId } = await getCurrentUser()
+    const { restaurantId } = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     // Verify the settings row belongs to this restaurant
@@ -26,6 +26,7 @@ export async function updateThemeAction(
         .from('settings')
         .update({ theme, updated_at: new Date().toISOString() })
         .eq('id', settingsId)
+        .eq('restaurant_id', restaurantId)
 
     if (error) return { error: error.message }
 
@@ -38,7 +39,7 @@ export async function updateThemeAction(
 export async function updateBrandingAction(
     logoUrl: string | null
 ): Promise<{ error?: string }> {
-    const { restaurantId } = await getCurrentUser()
+    const { restaurantId } = await requireRole('super_admin', 'manager')
     const supabase = await createAdminClient()
 
     const { error } = await supabase

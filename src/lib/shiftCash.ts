@@ -5,7 +5,14 @@
 // Bank/other movement is excluded; only Cash and QR collections are included.
 
 import { SupabaseClient } from '@supabase/supabase-js'
+import { SETTLEMENT_ROW_FILTER } from './bookingPaymentKind'
 import { round2 } from './utils'
+
+// Room numbers are free text ('1', '10A'), so they are escaped before they
+// become a pattern.
+function escapeRegExp(v: string): string {
+    return v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 export interface ShiftCashItem {
     id: string
@@ -203,7 +210,9 @@ export async function computeShiftCashBreakdown(
             .from('booking_payments')
             .select('booking_id, cash_amount, qr_amount, created_at')
             .in('booking_id', checkoutBookingIds)
-            .eq('note', 'Settlement')
+            // payment_kind, with the legacy note as fallback — see
+            // lib/bookingPaymentKind.ts.
+            .or(SETTLEMENT_ROW_FILTER)
         : { data: [] as { booking_id: string; cash_amount: number; qr_amount: number; created_at: string }[] }
 
     const settlementsByBooking = new Map<string, { cash_amount: number; qr_amount: number; created_at: string }[]>()
@@ -324,7 +333,13 @@ export async function computeShiftCashBreakdown(
 
         const roomNum = (b.rooms as { room_number?: string } | null)?.room_number?.toLowerCase() || ''
         const guestName = (b.guest_name || '').toLowerCase()
-        const descriptionMatch = userDayBookDescriptions.some(desc => (roomNum && desc.includes(`room ${roomNum}`)) || (guestName && desc.includes(guestName)))
+        // Anchored on a word boundary. `desc.includes('room 1')` matched rooms
+        // 1, 10, 12, 101, 105 … so one payment for Room 1 pulled every later
+        // checkout in those rooms onto this cashier's panel, inflating their
+        // Room Sales and showing the same checkout on two people's shifts.
+        const roomPattern = roomNum ? new RegExp(`room ${escapeRegExp(roomNum)}(?![0-9a-z])`, 'i') : null
+        const descriptionMatch = userDayBookDescriptions.some(desc =>
+            (roomPattern && roomPattern.test(desc)) || (guestName && desc.includes(guestName)))
 
         // Room settlement/checkout appears ONLY on the shift panel of the cashier who settled/checked out the room
         const isUserCheckout = b.cashier_id === userId || userDayBookBookingIds.has(b.id) || descriptionMatch
@@ -335,7 +350,11 @@ export async function computeShiftCashBreakdown(
 
         const checkoutTs = new Date(checkoutTime).getTime()
 
-        if (checkoutTs >= startTs && (checkoutTs <= endTs + 2 * 60 * 1000 || userDayBookBookingIds.has(b.id) || descriptionMatch)) {
+        // The end of the window is not negotiable. A description match used to
+        // wave it away entirely, so a checkout days later still landed in this
+        // shift; only a booking this cashier demonstrably took money for (its id
+        // is on one of their own Day Book entries) may run past the bell.
+        if (checkoutTs >= startTs && (checkoutTs <= endTs + 2 * 60 * 1000 || userDayBookBookingIds.has(b.id))) {
             processedCheckouts.add(b.id)
             const displayRoomNum = (b.rooms as { room_number?: string } | null)?.room_number || 'Room'
             const rawTotal = Number(b.total_amount) || 0

@@ -160,7 +160,7 @@ export default function ShiftsManager({ activeShifts, recentShifts }: {
     }
 
     async function handleApprove(shift: ShiftRow) {
-        const result = await approveShiftAction(shift.id, shift.user_id)
+        const result = await approveShiftAction(shift.id)
         if (result.error) { toast.error(result.error); return }
         setRecent(prev => prev.map(s => s.id === shift.id ? { ...s, is_approved: true } : s))
         toast.success('Shift approved')

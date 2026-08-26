@@ -143,6 +143,9 @@ async function recordSettlementPayment(
         cash_amount: round2(cash),
         qr_amount: round2(qr),
         note: 'Settlement',
+        // The note is kept for continuity with existing rows; payment_kind is
+        // what readers key on now (lib/bookingPaymentKind.ts).
+        payment_kind: 'settlement',
         created_by: userId,
         // created_by is the cashier; this is the guest. Null when nobody typed
         // one, which reads correctly as "not recorded".
@@ -431,6 +434,17 @@ export async function POST(req: Request) {
             // request outright.
             if (previousDueAmount > 0) {
                 return NextResponse.json({ error: 'Previous due collection is not available for this restaurant configuration' }, { status: 400 })
+            }
+
+            // Credit is charged to the guest's customer_credit_accounts balance
+            // by step 4, and the receivable + income postings belong to the
+            // settlement RPC in step 5 — both of which sit AFTER this branch
+            // returns. A bill sent away on credit therefore left a
+            // booking_payments row as its only trace: no credit account, no
+            // receivable_transactions charge, nothing on any receivables screen,
+            // and nobody to chase. Refuse it rather than write the debt off.
+            if (creditAmount > 0) {
+                return NextResponse.json({ error: 'Credit settlement is not available for this restaurant configuration' }, { status: 400 })
             }
 
             // 1. Settle the session orders (if session_id is provided). On an
@@ -777,8 +791,17 @@ export async function POST(req: Request) {
         const isVatRegistered = !!restaurant?.vat_registered
         const totalAmount = Number(authoritativeTotal) || 0
         const discountVal = Number(discountAmount) || 0
-        const vatVal = isVatRegistered ? (totalAmount - (totalAmount / 1.13)) : 0
-        const taxableVal = totalAmount - vatVal
+        // File the VAT this bill actually charged, which the folio computed and
+        // put on the invoice (lib/folioVat.ts). This used to back it out of the
+        // total as `total - total / 1.13`: a hard-coded rate rather than the
+        // tenant's defaultTaxRate, applied as though the total were VAT-inclusive
+        // when the folio adds VAT on top of room + charges only and deliberately
+        // excludes tax-inclusive room-service items. It also keyed off
+        // vat_registered while the charge keys off the vatEnabled feature, so a
+        // tenant with one set and not the other filed VAT on a sale that never
+        // carried any — or under-filed one that did.
+        const vatVal = isVatRegistered ? round2(Number(folio.vat) || 0) : 0
+        const taxableVal = round2(totalAmount - vatVal)
         const invoiceNumber = bookingInvoiceNumber(booking_id)
 
         void syncInvoiceToIrd(booking.restaurant_id, {

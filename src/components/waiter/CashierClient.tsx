@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react'
+import { computeFolioVat } from '@/lib/folioVat'
 import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
@@ -486,6 +487,9 @@ export default function CashierClient({
     // was undercharging the guest by every other room on the folio. Null for an
     // ordinary single-room stay, which keeps its original per-room math.
     const [billingGroup, setBillingGroup] = useState<GroupBill | null>(null)
+    // Folio stay cost from /api/rooms/panel — authoritative over the local
+    // price * nights below, which cannot see a mid-stay room move.
+    const [billingStayCost, setBillingStayCost] = useState<number | null>(null)
     const filteredRoomOrders = useMemo(() => {
         return billingLinkedOrders.filter(o => o.is_room_order && o.status !== 'cancelled')
     }, [billingLinkedOrders])
@@ -715,6 +719,7 @@ export default function CashierClient({
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
             setBillingGroup(null)
+            setBillingStayCost(null)
             setLoadingStayDetails(true)
 
             // One request for the whole bill. This was the booking lookup and
@@ -734,6 +739,7 @@ export default function CashierClient({
                             setBillingRoomCharges(data.charges || [])
                             setBillingLinkedOrders(data.linkedOrders || [])
                             setBillingGroup(data.group ?? null)
+                            setBillingStayCost(typeof data.stayCost === 'number' ? data.stayCost : null)
                         } catch (err) {
                             console.error('Error loading secondary billing details:', err)
                             // Set basic stay booking at least
@@ -741,12 +747,14 @@ export default function CashierClient({
                             setBillingRoomCharges([])
                             setBillingLinkedOrders([])
                             setBillingGroup(null)
+            setBillingStayCost(null)
                         }
                     } else {
                         setBillingStayBooking(null)
                         setBillingRoomCharges([])
                         setBillingLinkedOrders([])
                         setBillingGroup(null)
+            setBillingStayCost(null)
                     }
                 })
                 .catch(err => {
@@ -755,6 +763,7 @@ export default function CashierClient({
                     setBillingRoomCharges([])
                     setBillingLinkedOrders([])
                     setBillingGroup(null)
+            setBillingStayCost(null)
                 })
                 .finally(() => setLoadingStayDetails(false))
         } else {
@@ -762,6 +771,7 @@ export default function CashierClient({
             setBillingRoomCharges([])
             setBillingLinkedOrders([])
             setBillingGroup(null)
+            setBillingStayCost(null)
             setBillingPaymentMethod('none')
             setSplitCashAmount('')
             setSplitQrAmount('')
@@ -940,6 +950,10 @@ export default function CashierClient({
         // every room's, priced server-side (each room can be a different type).
         if (billingGroup) return billingGroup.stayCost
         if (!room || !booking) return 0
+        // Server figure when it has arrived: it prices each night at the room
+        // occupied that night. What follows is the fallback and prices every
+        // night at the current room's rate, so it disagrees for a moved stay.
+        if (billingStayCost !== null) return billingStayCost
         const customPrice = getBookingCustomPrice(booking)
         const price = customPrice > 0 ? customPrice : (room.room_types?.base_price || 0)
         const nights = calculateNights(booking.check_in, booking.check_out)
@@ -1026,7 +1040,16 @@ export default function CashierClient({
 
     const extraHourChargeVal = extraHourCharge.trim() !== '' ? parseFloat(extraHourCharge) || 0 : 0
 
-    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost || foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders
+    // The two fields are sent to the server as ONE discount_amount, and the
+    // checkout route nets the whole thing off the room ("Discount cannot exceed
+    // the room rate"), which is all the folio can represent. Validating the
+    // fields only against their own subtotals let the cashier enter a
+    // combination the server then refused -- with a message about the room rate
+    // that makes no sense for a food discount, and no way forward, at the desk
+    // with the guest waiting. Check what will actually be sent.
+    const discountInvalid = roomDiscountVal < 0 || roomDiscountVal > stayCost
+        || foodDiscountVal < 0 || foodDiscountVal > totalFoodOrders
+        || roomDiscountVal + foodDiscountVal > stayCost
 
     const checkOutTime = billingStayBooking ? new Date(billingStayBooking.check_out) : null
     const currentTime = new Date()
@@ -1143,7 +1166,12 @@ export default function CashierClient({
         // Added whole rather than as a delta: unlike the folio's ordersTotal,
         // the food totals above are raw line items with no service charge in
         // them, so there is nothing here to double up on.
-        return round2(effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal + resolveRoomSc(room).charged)
+    // VAT on the room + manual charges, from the same helper the server folio
+    // uses. This preview carried no tax term at all, so a VAT tenant quoted the
+    // guest a figure below what the settlement recorded and the difference was
+    // never collected.
+        const vatAmount = computeFolioVat(effectiveStayCost + extraHourChargeVal, manualChargesTotal, features)
+        return round2(effectiveStayCost + effectiveFoodOrders + manualChargesTotal + extraHourChargeVal + resolveRoomSc(room).charged + vatAmount)
     }
 
     const renderPaymentInputsAndCalculator = (balanceDue: number) => {

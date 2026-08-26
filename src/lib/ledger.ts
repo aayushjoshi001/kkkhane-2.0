@@ -91,11 +91,15 @@ export async function computeCarriedOverOpeningBalances(
     const sumType = (t: string) =>
         (totals ?? []).filter((e) => e.type === t).reduce((sum, e) => sum + Number(e.amount), 0)
 
-    let openingBalance = Number(lastSession.opening_balance) + sumType('cash_in') - sumType('cash_out')
-    if (openingBalance < 0) openingBalance = 0
-
-    let openingBankBalance = Number(lastSession.opening_bank_balance ?? 0) + sumType('bank_in') - sumType('bank_out')
-    if (openingBankBalance < 0) openingBankBalance = 0
+    // Carried through even when negative. Clamping a deficit to zero deleted the
+    // discrepancy from the books entirely: if a day's cash_out exceeded opening
+    // plus cash_in — an over-recorded payout, or the phantom cash_out an
+    // unlinked delete used to leave behind — the next day simply opened at zero
+    // and the evidence that anything was wrong went with it. A negative opening
+    // balance is a fact about the drawer, and it should stay on the page until
+    // someone accounts for it.
+    const openingBalance = Number(lastSession.opening_balance) + sumType('cash_in') - sumType('cash_out')
+    const openingBankBalance = Number(lastSession.opening_bank_balance ?? 0) + sumType('bank_in') - sumType('bank_out')
 
     return { openingBalance, openingBankBalance }
 }
@@ -170,8 +174,15 @@ export async function autoOpenNextDayBookSession(
     const sum = (t: DayBookEntryType) =>
         (entries ?? []).filter((e: { type: string }) => e.type === t).reduce((s: number, e: { amount: number }) => s + Number(e.amount), 0)
 
-    const openingBalance = Math.max(0, Number(closedSession.opening_balance) + sum('cash_in') - sum('cash_out'))
-    const openingBankBalance = Math.max(0, Number(closedSession.opening_bank_balance ?? 0) + sum('bank_in') - sum('bank_out'))
+    // Carried through even when negative. Clamping a deficit to zero deleted the
+    // discrepancy from the books entirely: if a day's cash_out exceeded opening
+    // plus cash_in — an over-recorded payout, or the phantom cash_out an
+    // unlinked delete used to leave behind — the next day simply opened at zero
+    // and the evidence that anything was wrong went with it. A negative opening
+    // balance is a fact about the drawer, and it should stay on the page until
+    // someone accounts for it.
+    const openingBalance = Number(closedSession.opening_balance) + sum('cash_in') - sum('cash_out')
+    const openingBankBalance = Number(closedSession.opening_bank_balance ?? 0) + sum('bank_in') - sum('bank_out')
     const nextDate = addDays(closedSession.date, 1)
 
     const { data: newSession, error } = await supabase

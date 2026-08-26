@@ -231,6 +231,24 @@ export function defaultStayWindowInputs(): { checkIn: string; checkOut: string }
 }
 
 /**
+ * The Kathmandu wall-clock Y/M/D for an instant, as a Date whose *local*
+ * components carry those values.
+ *
+ * `new NepaliDate(d)` reads the JS Date's local components, so converting a raw
+ * instant in a browser outside Nepal picks the wrong calendar day either side of
+ * midnight. Re-basing on the Kathmandu date first makes the conversion agree
+ * everywhere — the same reason every formatter in lib/utils pins NEPAL_TZ.
+ */
+export function nepalCalendarDate(date: Date): Date {
+    // en-CA gives ISO-ordered parts, so this needs no reparsing of month names.
+    const [y, m, d] = date
+        .toLocaleDateString('en-CA', { timeZone: NEPAL_TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+        .split('-')
+        .map(Number)
+    return new Date(y, m - 1, d)
+}
+
+/**
  * Format ISO datetime string into human readable locale string.
  */
 export function formatDateTime(dateStr: string | Date | null | undefined, bsEnabled = false): string {
@@ -246,7 +264,12 @@ export function formatDateTime(dateStr: string | Date | null | undefined, bsEnab
     })
     if (!bsEnabled) return ad
     try {
-        return `${ad} (${toNepaliDate(date, 'MMMM DD, YYYY', 'en')} BS)`
+        // Rebased on the Kathmandu date first. The AD half above pins NEPAL_TZ
+        // but the BS half did not, and `new NepaliDate(d)` reads the JS Date's
+        // *runtime-local* components — so rendered from a server component on
+        // Vercel (UTC), an entry made at 03:00 NST printed its AD and BS halves
+        // as two different days on the same line.
+        return `${ad} (${toNepaliDate(nepalCalendarDate(date), 'MMMM DD, YYYY', 'en')} BS)`
     } catch {
         return ad
     }

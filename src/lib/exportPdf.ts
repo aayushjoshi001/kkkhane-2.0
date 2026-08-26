@@ -4,6 +4,13 @@ export interface PdfColumn {
     key: string
     label: string
     align?: 'left' | 'right' | 'center'
+    /**
+     * Relative share of the table width this column should get. The heuristic
+     * below guesses from the column's name, which is right for the ad-hoc
+     * ledger exports but wrong for a laid-out document like the guest
+     * statement, where the caller already knows what each column holds.
+     */
+    weight?: number
 }
 
 /**
@@ -25,6 +32,7 @@ export interface PdfSection {
  */
 function calculateColumnWidths(columns: PdfColumn[], contentWidth: number): number[] {
     const weights = columns.map(col => {
+        if (typeof col.weight === 'number' && col.weight > 0) return col.weight
         const key = col.key.toLowerCase()
         const label = col.label.toLowerCase()
         if (key.includes('desc') || key.includes('detail') || key.includes('note') || label.includes('description')) return 3.5
@@ -51,8 +59,13 @@ function calculateColumnWidths(columns: PdfColumn[], contentWidth: number): numb
  * footer) onto `doc` starting at `startY`, paginating as needed. Returns the
  * y position just below what it drew, so a caller can chain another table
  * (or another `drawTable` call for a second section) right after it.
+ *
+ * Exported because the guest statement (lib/guestStatementPdf.ts) lays out its
+ * own document but still wants these tables. A second implementation of header
+ * wrapping, zebra striping and pagination is exactly the kind of copy that
+ * drifts, so there is one.
  */
-function drawTable(
+export function drawTable(
     doc: jsPDF,
     startY: number,
     columns: PdfColumn[],

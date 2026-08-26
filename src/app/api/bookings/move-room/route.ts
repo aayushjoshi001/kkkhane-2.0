@@ -161,20 +161,45 @@ export async function POST(req: Request) {
         // An open room-service session lives on the old room's QR table. Move it
         // with the guest so a tab started before the move stays on their folio
         // and the new room's QR continues it rather than opening a second one.
-        const { data: newTable } = await supabase
-            .from('tables')
-            .select('id')
-            .eq('room_id', to_room_id)
-            .eq('restaurant_id', currentUser.restaurantId)
-            .maybeSingle()
+        //
+        // Only that one session moves. A stay can also have ordinary dining
+        // sessions attached to it — a guest who linked a restaurant table to
+        // their room (see linkInHouseGuest) — and those belong to the table, not
+        // to the guest: dragging them onto the room's QR table would take a live
+        // session away from diners still sitting there, and would re-read their
+        // dine-in orders as in-room ones, which the folio charges a room service
+        // charge on. So the move is keyed to the room being left.
+        const [{ data: fromTable }, { data: newTable }] = await Promise.all([
+            supabase
+                .from('tables')
+                .select('id')
+                .eq('room_id', booking.room_id)
+                .eq('restaurant_id', currentUser.restaurantId)
+                .maybeSingle(),
+            supabase
+                .from('tables')
+                .select('id')
+                .eq('room_id', to_room_id)
+                .eq('restaurant_id', currentUser.restaurantId)
+                .maybeSingle(),
+        ])
 
-        if (newTable) {
-            await supabase
+        if (newTable && fromTable) {
+            const { error: sessionMoveError } = await supabase
                 .from('sessions')
                 .update({ table_id: newTable.id })
                 .eq('booking_id', booking_id)
+                .eq('table_id', fromTable.id)
                 .eq('restaurant_id', currentUser.restaurantId)
                 .eq('status', 'active')
+
+            // Reported rather than swallowed: the unique active-session-per-table
+            // index will reject this if the destination room still has a session
+            // of its own open, and the guest's tab then silently stays on a room
+            // they have left.
+            if (sessionMoveError) {
+                console.error('Failed to move room session', booking_id, sessionMoveError)
+            }
         }
 
         await logAudit({

@@ -26,7 +26,21 @@ export async function runPaymentReconciliation(
     toDate: string
 ): Promise<{ error?: string; rows?: ReconciliationRow[]; summary?: { total: number; ok: number; unverified: number; mismatch: number; discrepancyTotal: number } }> {
     const currentUser = await requireRole('manager', 'super_admin')
+    // The caller supplies the restaurant id and it was used unchecked, so a
+    // manager of one tenant could read another's paid orders, verified amounts
+    // and daily discrepancy total -- effectively their revenue. The three
+    // actions below this one all make exactly this comparison; this one did not,
+    // and it wrote its audit row under the victim's id afterwards.
+    if (restaurantId !== currentUser.restaurantId) {
+        return { error: 'Unauthorized' }
+    }
     const supabase = await createAdminClient()
+
+    // The range is Nepal time, not UTC. `gte('paid_at', '2026-08-01')` parsed as
+    // UTC midnight, which is 05:45 NST, so the first 5h45m of the opening day
+    // was excluded and the same slice of the day AFTER the range was pulled in.
+    const rangeStart = new Date(`${fromDate}T00:00:00+05:45`).toISOString()
+    const rangeEnd = new Date(`${toDate}T23:59:59.999+05:45`).toISOString()
 
     // Fetch paid orders in range
     const { data: orders, error: ordersError } = await supabase
@@ -34,8 +48,8 @@ export async function runPaymentReconciliation(
         .select('id, total_amount, payment_status, paid_at')
         .eq('restaurant_id', restaurantId)
         .eq('payment_status', 'paid')
-        .gte('paid_at', fromDate)
-        .lte('paid_at', toDate + 'T23:59:59Z')
+        .gte('paid_at', rangeStart)
+        .lte('paid_at', rangeEnd)
         .order('paid_at', { ascending: true })
 
     if (ordersError) return { error: ordersError.message }
