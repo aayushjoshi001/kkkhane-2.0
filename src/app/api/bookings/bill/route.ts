@@ -13,12 +13,22 @@ import { buildBookingBill } from '@/lib/bookingBill'
  *
  * See lib/bookingBill.ts for where each figure comes from and why the settled
  * bill is read from the settlement snapshot rather than recomputed.
+ *
+ * Manager and above only. The payload carries the full payment trail — what was
+ * taken in cash, what went on the guest's ledger, what was never collected — so
+ * it is not a kitchen or bar login's to read. The proxy gates /admin but not
+ * /api, so the check has to be here (see the fourth invariant in CLAUDE.md).
  */
 export async function GET(req: NextRequest) {
     try {
         const currentUser = await getCurrentUser()
         if (!currentUser?.restaurantId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+
+        const allowedRoles = ['manager', 'super_admin']
+        if (!allowedRoles.includes(currentUser.role)) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
         }
 
         const bookingId = req.nextUrl.searchParams.get('bookingId')

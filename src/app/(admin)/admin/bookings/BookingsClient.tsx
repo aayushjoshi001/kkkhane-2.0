@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Filter, Calendar, ChevronUp, ChevronDown, ShoppingBag, Loader2, AlertTriangle, RotateCcw, X, LogIn, LogOut, Banknote, QrCode, CreditCard, Receipt, Clock, UtensilsCrossed } from 'lucide-react'
+import { Filter, Calendar, ChevronUp, ChevronDown, ShoppingBag, Loader2, AlertTriangle, RotateCcw, X, LogIn, LogOut, Banknote, QrCode, CreditCard, Receipt, Clock, UtensilsCrossed, FileDown } from 'lucide-react'
 import type { Booking, Room, BookingStatus } from '@/types/database'
 import EmptyState from '@/components/ui/EmptyState'
 import { useDates } from '@/lib/contexts/CalendarContext'
@@ -11,12 +11,14 @@ import DateCell from '@/components/ui/DateCell'
 import { DateRangePicker, type DateRange } from '@/components/ui/DateRangePicker'
 import type { BookingBill, BookingBillOrder, BookingBillOrderKind } from '@/lib/bookingBill'
 import { bookingInvoiceNumber } from '@/lib/utils'
+import { downloadGuestStatement, type GuestStatementBusiness } from '@/lib/guestStatementPdf'
 
 interface BookingsClientProps {
     initialBookings: Booking[]
     rooms: Room[]
     restaurantId: string
-    restaurantName: string
+    /** Letterhead for the downloadable guest statement. */
+    business: GuestStatementBusiness
     tables?: any[]
     activeOrders?: any[]
 }
@@ -183,12 +185,12 @@ function ServiceOrderCard({ order, formatDateTime }: { order: BookingBillOrder; 
 // still keeps it from ever going stale for good.
 const bookingBillCache = new Map<string, BookingBill>()
 
-function BookingHistoryCard({ booking }: { booking: Booking }) {
+function BookingHistoryCard({ booking, business }: { booking: Booking; business: GuestStatementBusiness }) {
     const cached = bookingBillCache.get(booking.id) ?? null
     const [loading, setLoading] = useState(!cached)
     const [bill, setBill] = useState<BookingBill | null>(cached)
     const [error, setError] = useState<string | null>(null)
-    const { formatDateTime } = useDates()
+    const { formatDateTime, calendar } = useDates()
 
     useEffect(() => {
         let isMounted = true
@@ -274,9 +276,23 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
                     </div>
 
                     <div className="flex flex-col items-end gap-1.5">
-                        <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border bg-brand-50 text-brand-700 border-brand-200">
-                            {bill.status.replace('_', ' ')}
-                        </span>
+                        <div className="flex items-center gap-2">
+                            {/* The whole bill as an A4 document. Built from the
+                                same `bill` this card is rendering, so paper and
+                                screen cannot show different numbers. */}
+                            <button
+                                type="button"
+                                onClick={() => downloadGuestStatement(bill, business, { calendar })}
+                                className="text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full border border-hairline bg-surface text-ink-subtle hover:text-brand-700 hover:border-brand-200 hover:bg-brand-50 transition-colors flex items-center gap-1.5"
+                                title="Download this stay's full statement as a PDF"
+                            >
+                                <FileDown size={12} />
+                                Statement PDF
+                            </button>
+                            <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border bg-brand-50 text-brand-700 border-brand-200">
+                                {bill.status.replace('_', ' ')}
+                            </span>
+                        </div>
                         {isIssued && settlement ? (
                             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg flex items-center gap-1">
                                 <Receipt size={11} />
@@ -556,7 +572,7 @@ function BookingHistoryCard({ booking }: { booking: Booking }) {
     )
 }
 
-export default function BookingsClient({ initialBookings, restaurantName, rooms }: BookingsClientProps) {
+export default function BookingsClient({ initialBookings, business, rooms }: BookingsClientProps) {
     const router = useRouter()
     const [bookings, setBookings] = useState<Booking[]>(initialBookings)
     const [filterStatus, setFilterStatus] = useState<string>('all')
@@ -834,7 +850,7 @@ export default function BookingsClient({ initialBookings, restaurantName, rooms 
                                             {isExpanded && (
                                                 <tr key={`${b.id}-expanded`} className="border-l-4 border-l-brand-500">
                                                     <td colSpan={6} className="p-0">
-                                                        <BookingHistoryCard booking={b} />
+                                                        <BookingHistoryCard booking={b} business={business} />
                                                     </td>
                                                 </tr>
                                             )}
