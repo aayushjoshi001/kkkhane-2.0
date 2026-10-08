@@ -11,7 +11,6 @@ import { getRestaurantFeatures, getRestaurantMode } from '@/lib/features'
 import { FeatureProvider, BusinessModeProvider } from '@/lib/contexts/FeatureContext'
 import type { BusinessMode } from '@/lib/businessMode'
 import { SidebarProvider } from '@/lib/contexts/SidebarContext'
-import SidebarToggle from '@/components/admin/SidebarToggle'
 import { getNstDateString } from '@/lib/timezone'
 
 import { BusinessSessionProvider } from '@/lib/contexts/BusinessSessionContext'
@@ -156,10 +155,6 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
                     {/* Main Content */}
                     <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-                        {/* Mobile-only bar: just the hamburger to open the drawer */}
-                        <div className="print:hidden md:hidden shrink-0 h-12 flex items-center px-3 border-b border-hairline bg-[#fff8f5]">
-                            <SidebarToggle isSuperAdmin={isSuperAdmin} />
-                        </div>
                         <CommandPaletteMount role={roleNameRaw} theme="light" />
                         <div className="flex-1 overflow-auto p-5 md:p-8">
                             <div className="max-w-6xl mx-auto">

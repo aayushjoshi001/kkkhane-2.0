@@ -1,4 +1,5 @@
 import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
+import MobileMenuButton from '@/components/admin/MobileMenuButton'
 import AdSpace from '@/components/shared/AdSpace'
 import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
 import { resolveActiveDayBookSession } from '@/lib/ledger'
@@ -77,6 +78,10 @@ export default async function AdminDashboardPage() {
 
             {/* ── Hero ──────────────────────────────────────────────────────── */}
             <div className="relative overflow-hidden rounded-[2rem] bg-brand-500 text-white p-8 sm:p-10 shadow-2xl animate-fade-up min-h-[200px] flex flex-col justify-center">
+                {/* Mobile hamburger */}
+                <div className="absolute top-4 right-4 z-20">
+                    <MobileMenuButton />
+                </div>
                 {/* Herringbone texture */}
                 <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20'%3E%3Cpath d='M0 20 L10 10 L20 20' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3Cpath d='M20 20 L30 10 L40 20' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3Cpath d='M0 0 L10 10 L20 0' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3Cpath d='M20 0 L30 10 L40 0' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3C/svg%3E")`, backgroundSize: '40px 20px' }} />
                 <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white opacity-5 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />
