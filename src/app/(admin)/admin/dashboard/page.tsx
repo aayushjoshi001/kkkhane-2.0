@@ -150,7 +150,7 @@ export default async function AdminDashboardPage() {
             {/* ── Section label ─────────────────────────────────────────────── */}
             <div className="flex items-center gap-3">
                 <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A8896F]">Today&apos;s Overview</span>
-                <div className="flex-1 h-px bg-[#E6D8C8]" />
+                <div className="flex-1 h-px bg-[#f2c878]" />
             </div>
 
             {/* ── KPI Cards ─────────────────────────────────────────────────── */}
@@ -388,7 +388,7 @@ async function RevenueTrendSection({ restaurantId, money, isHotel }: { restauran
     const totalW = (barW + barGap) * 7 - barGap
 
     return (
-        <div className="bg-[#FFFCF8] rounded-[20px] border border-[#E6D8C8] shadow-[0_2px_8px_rgba(43,26,14,0.05)] p-5 animate-fade-up" style={{ animationDelay: '0.12s' }}>
+        <div className="bg-[#fef0cc] rounded-[20px] border border-[#f2c878] shadow-[0_2px_8px_rgba(43,26,14,0.05)] p-5 animate-fade-up" style={{ animationDelay: '0.12s' }}>
             <div className="flex items-start justify-between gap-4 mb-5">
                 <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -506,18 +506,18 @@ async function LiveStatusSection({ restaurantId, isHotel }: { restaurantId: stri
                                         isOccupied ? 'bg-brand-500 text-white shadow-sm' :
                                         isReserved ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
                                         isCleaning ? 'bg-sky-50 text-sky-700 border border-sky-100' :
-                                        'bg-[#F3E9DD] text-[#7A5F4A] border border-[#E6D8C8]'
+                                        'bg-[#fad9a0] text-[#7A5F4A] border border-[#f2c878]'
                                     }`}>
                                     {room.room_number}
                                 </Link>
                             )
                         })}
                     </div>
-                    <div className="flex items-center gap-4 mt-3 pt-3 border-t border-[#E6D8C8]">
+                    <div className="flex items-center gap-4 mt-3 pt-3 border-t border-[#f2c878]">
                         <StatusLegend color="bg-brand-500" label="Occupied" />
                         <StatusLegend color="bg-yellow-200 border border-yellow-300" label="Reserved" />
                         <StatusLegend color="bg-sky-100 border border-sky-200" label="Cleaning" />
-                        <StatusLegend color="bg-[#F3E9DD] border border-[#E6D8C8]" label="Free" />
+                        <StatusLegend color="bg-[#fad9a0] border border-[#f2c878]" label="Free" />
                     </div>
                 </div>
             </Card>
@@ -559,16 +559,16 @@ async function LiveStatusSection({ restaurantId, isHotel }: { restaurantId: stri
                         return (
                             <Link key={t.id} href="/cashier" title={`${t.name} — ${isActive ? 'occupied' : 'free'}`}
                                 className={`flex items-center justify-center min-w-[52px] h-9 px-2 rounded-xl text-[11px] font-bold transition-all duration-200 hover:scale-105 ${
-                                    isActive ? 'bg-brand-500 text-white shadow-sm' : 'bg-[#F3E9DD] text-[#7A5F4A] border border-[#E6D8C8]'
+                                    isActive ? 'bg-brand-500 text-white shadow-sm' : 'bg-[#fad9a0] text-[#7A5F4A] border border-[#f2c878]'
                                 }`}>
                                 {t.name}
                             </Link>
                         )
                     })}
                 </div>
-                <div className="flex items-center gap-4 mt-3 pt-3 border-t border-[#E6D8C8]">
+                <div className="flex items-center gap-4 mt-3 pt-3 border-t border-[#f2c878]">
                     <StatusLegend color="bg-brand-500" label="Occupied" />
-                    <StatusLegend color="bg-[#F3E9DD] border border-[#E6D8C8]" label="Free" />
+                    <StatusLegend color="bg-[#fad9a0] border border-[#f2c878]" label="Free" />
                 </div>
             </div>
         </Card>
@@ -620,7 +620,7 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, cale
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[480px]">
                         <thead>
-                            <tr className="text-[10px] uppercase tracking-[0.12em] font-bold text-[#A8896F] bg-[#FBF5EE]/60 border-b border-[#E6D8C8]">
+                            <tr className="text-[10px] uppercase tracking-[0.12em] font-bold text-[#A8896F] bg-[#fde8bb]/60 border-b border-[#f2c878]">
                                 <th className="px-5 py-3">Guest</th>
                                 <th className="px-5 py-3">Room</th>
                                 <th className="px-5 py-3">Dates</th>
@@ -628,14 +628,14 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, cale
                                 <th className="px-5 py-3 text-right">Amount</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#E6D8C8]/60">
+                        <tbody className="divide-y divide-[#f2c878]/60">
                             {recentBookings.map(booking => {
                                 const roomNumber = (booking.rooms as unknown as { room_number: string } | null)?.room_number || '—'
                                 const chIn = new Date(booking.check_in)
                                 const chOut = new Date(booking.check_out)
                                 const inParts = formatDateParts(chIn, calendar, { withYear: false })
                                 const outParts = formatDateParts(chOut, calendar, { withYear: false })
-                                const colorDot = STATUS_COLORS[booking.status] || 'bg-[#E6D8C8]'
+                                const colorDot = STATUS_COLORS[booking.status] || 'bg-[#f2c878]'
                                 return (
                                     <RowLink key={booking.id} href={`/admin/bookings?booking=${booking.id}`} className="group">
                                         <td className="px-5 py-3.5">
@@ -692,16 +692,16 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, cale
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[400px]">
                     <thead>
-                        <tr className="text-[10px] uppercase tracking-[0.12em] font-bold text-[#A8896F] bg-[#FBF5EE]/60 border-b border-[#E6D8C8]">
+                        <tr className="text-[10px] uppercase tracking-[0.12em] font-bold text-[#A8896F] bg-[#fde8bb]/60 border-b border-[#f2c878]">
                             <th className="px-5 py-3">Order</th>
                             <th className="px-5 py-3">Time</th>
                             <th className="px-5 py-3">Status</th>
                             <th className="px-5 py-3 text-right">Amount</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#E6D8C8]/60">
+                    <tbody className="divide-y divide-[#f2c878]/60">
                         {recentOrders?.map(order => {
-                            const colorDot = STATUS_COLORS[order.status] || 'bg-[#E6D8C8]'
+                            const colorDot = STATUS_COLORS[order.status] || 'bg-[#f2c878]'
                             return (
                                 <RowLink key={order.id} href={`/admin/orders?order=${order.id}`} className="group">
                                     <td className="px-5 py-3.5">
@@ -735,7 +735,7 @@ async function PipelineTableSection({ restaurantId, money, isHotel = false, cale
 
 function PipelineCardSkeleton() {
     return (
-        <div className="bg-[#FFFCF8] rounded-[20px] border border-[#E6D8C8] p-5 space-y-3">
+        <div className="bg-[#fef0cc] rounded-[20px] border border-[#f2c878] p-5 space-y-3">
             <RowSkeleton /><RowSkeleton /><RowSkeleton />
         </div>
     )
@@ -793,7 +793,7 @@ async function TopItemsSection({ restaurantId }: { restaurantId: string }) {
                                 </div>
                                 <span className="text-[11px] font-bold text-brand-500 shrink-0 tabular-nums">{count}×</span>
                             </div>
-                            <div className="h-1.5 bg-[#F3E9DD] rounded-full overflow-hidden">
+                            <div className="h-1.5 bg-[#fad9a0] rounded-full overflow-hidden">
                                 <div
                                     className="h-full rounded-full bg-brand-500 transition-all duration-700"
                                     style={{ width: `${pct}%`, opacity: i === 0 ? 1 : 0.4 + (1 - i * 0.12) }}
@@ -836,7 +836,7 @@ async function OnboardingChecklistSection({ restaurantId, dineInEnabled, hasBusi
 
     return (
         <Card>
-            <div className="px-5 py-4 border-b border-[#E6D8C8] bg-[#FBF5EE]/50">
+            <div className="px-5 py-4 border-b border-[#f2c878] bg-[#fde8bb]/50">
                 <div className="flex items-center justify-between gap-4 mb-3">
                     <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-[10px] bg-brand-500 text-white flex items-center justify-center">
@@ -851,17 +851,17 @@ async function OnboardingChecklistSection({ restaurantId, dineInEnabled, hasBusi
                         {doneSteps}<span className="text-[#A8896F] font-semibold">/{totalSteps}</span>
                     </span>
                 </div>
-                <div className="h-1.5 w-full rounded-full bg-[#E6D8C8] overflow-hidden">
+                <div className="h-1.5 w-full rounded-full bg-[#f2c878] overflow-hidden">
                     <div className="h-full rounded-full bg-brand-500 transition-all duration-700" style={{ width: `${progressPct}%` }} />
                 </div>
             </div>
-            <ul className="divide-y divide-[#E6D8C8]/60">
+            <ul className="divide-y divide-[#f2c878]/60">
                 {steps.map((step, i) => {
                     const Icon = step.icon
                     return (
                         <li key={i}>
-                            <Link href={step.href} className={`group flex items-center gap-3.5 px-5 py-3.5 transition-colors hover:bg-[#FBF5EE] ${step.done ? 'opacity-55' : ''}`}>
-                                <div className={`w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0 transition-colors ${step.done ? 'bg-green-100 text-green-600' : 'bg-[#F3E9DD] text-brand-500 group-hover:bg-brand-500 group-hover:text-white'}`}>
+                            <Link href={step.href} className={`group flex items-center gap-3.5 px-5 py-3.5 transition-colors hover:bg-[#fde8bb] ${step.done ? 'opacity-55' : ''}`}>
+                                <div className={`w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0 transition-colors ${step.done ? 'bg-green-100 text-green-600' : 'bg-[#fad9a0] text-brand-500 group-hover:bg-brand-500 group-hover:text-white'}`}>
                                     {step.done ? <CheckCircle2 size={14} /> : <Icon size={14} />}
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -947,7 +947,7 @@ async function ActiveStaffSection({ restaurantId }: { restaurantId: string }) {
 
     return (
         <Card>
-            <div className="px-5 py-3.5 border-b border-[#E6D8C8] flex items-center justify-between bg-[#FBF5EE]/50">
+            <div className="px-5 py-3.5 border-b border-[#f2c878] flex items-center justify-between bg-[#fde8bb]/50">
                 <div className="flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${shifts.length > 0 ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]' : 'bg-[#CEBCA8]'}`} />
                     <span className="text-[13px] font-bold text-[#2B1A0E]">Active Staff</span>
@@ -955,14 +955,14 @@ async function ActiveStaffSection({ restaurantId }: { restaurantId: string }) {
                         <span className="text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">{shifts.length}</span>
                     )}
                 </div>
-                <Link href="/admin/shifts" className="text-[#A8896F] hover:text-brand-500 transition-colors p-1 rounded-lg hover:bg-[#F3E9DD]">
+                <Link href="/admin/shifts" className="text-[#A8896F] hover:text-brand-500 transition-colors p-1 rounded-lg hover:bg-[#fad9a0]">
                     <MoreHorizontal size={15} />
                 </Link>
             </div>
             <div className="p-3 space-y-1">
                 {shifts.length === 0 ? (
                     <div className="py-6 text-center">
-                        <div className="w-10 h-10 rounded-full bg-[#F3E9DD] flex items-center justify-center mx-auto mb-2">
+                        <div className="w-10 h-10 rounded-full bg-[#fad9a0] flex items-center justify-center mx-auto mb-2">
                             <Clock size={18} className="text-[#CEBCA8]" />
                         </div>
                         <p className="text-[12px] text-[#A8896F] font-medium">No staff clocked in</p>
@@ -977,7 +977,7 @@ async function ActiveStaffSection({ restaurantId }: { restaurantId: string }) {
                         const hues = ['bg-orange-100 text-orange-700', 'bg-amber-100 text-amber-700', 'bg-yellow-100 text-yellow-700', 'bg-rose-100 text-rose-700', 'bg-teal-100 text-teal-700']
                         const avatarColor = hues[s.id.charCodeAt(0) % hues.length]
                         return (
-                            <div key={s.id} className="flex items-center gap-3 px-2 py-2.5 rounded-[12px] hover:bg-[#F3E9DD]/60 transition-colors">
+                            <div key={s.id} className="flex items-center gap-3 px-2 py-2.5 rounded-[12px] hover:bg-[#fad9a0]/60 transition-colors">
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-[13px] shrink-0 ${avatarColor}`}>
                                     {initials}
                                 </div>
@@ -997,7 +997,7 @@ async function ActiveStaffSection({ restaurantId }: { restaurantId: string }) {
 
 function ActiveStaffCardSkeleton() {
     return (
-        <div className="bg-[#FFFCF8] rounded-[20px] border border-[#E6D8C8] p-4 space-y-3">
+        <div className="bg-[#fef0cc] rounded-[20px] border border-[#f2c878] p-4 space-y-3">
             <RowSkeleton /><RowSkeleton />
         </div>
     )
@@ -1021,7 +1021,7 @@ function KpiCard({ title, value, icon: Icon, sub, change, accent = 'orange' }: {
 }) {
     const { bg, icon: iconColor } = KPI_ACCENT[accent]
     return (
-        <div className="relative bg-[#FFFCF8] rounded-[20px] p-5 border border-[#E6D8C8] shadow-[0_2px_8px_rgba(43,26,14,0.05)] hover:shadow-[0_4px_16px_rgba(43,26,14,0.09)] hover:-translate-y-0.5 transition-all duration-200 overflow-hidden group">
+        <div className="relative bg-[#fef0cc] rounded-[20px] p-5 border border-[#f2c878] shadow-[0_2px_8px_rgba(43,26,14,0.05)] hover:shadow-[0_4px_16px_rgba(43,26,14,0.09)] hover:-translate-y-0.5 transition-all duration-200 overflow-hidden group">
             {/* Subtle accent strip at top */}
             <div className={`absolute top-0 left-0 right-0 h-0.5 ${accent === 'orange' ? 'bg-brand-500' : accent === 'blue' ? 'bg-sky-400' : accent === 'purple' ? 'bg-violet-400' : 'bg-emerald-400'} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
             <div className="flex items-start justify-between mb-4">
@@ -1044,7 +1044,7 @@ function KpiCard({ title, value, icon: Icon, sub, change, accent = 'orange' }: {
 
 function QuickAction({ href, icon: Icon, label, badge }: { href: string; icon: any; label: string; badge?: number | null }) {
     return (
-        <Link href={href} className="group relative flex flex-col items-center justify-center gap-2 p-3 rounded-[14px] bg-[#F3E9DD]/60 hover:bg-brand-500 border border-[#E6D8C8] hover:border-brand-500 transition-all duration-200">
+        <Link href={href} className="group relative flex flex-col items-center justify-center gap-2 p-3 rounded-[14px] bg-[#fad9a0]/60 hover:bg-brand-500 border border-[#f2c878] hover:border-brand-500 transition-all duration-200">
             <Icon size={20} className="text-[#7A5F4A] group-hover:text-white transition-colors" />
             <span className="text-[10px] font-bold text-[#2B1A0E] group-hover:text-white text-center leading-tight transition-colors">{label}</span>
             {badge !== undefined && badge !== null && badge > 0 && (
@@ -1077,7 +1077,7 @@ function StatChip({ label, value, accent }: { label: string; value: string | num
         green:   'bg-green-50 text-green-700 border-green-100',
         yellow:  'bg-yellow-50 text-yellow-700 border-yellow-100',
         sky:     'bg-sky-50 text-sky-700 border-sky-100',
-        neutral: 'bg-[#F3E9DD] text-[#7A5F4A] border-[#E6D8C8]',
+        neutral: 'bg-[#fad9a0] text-[#7A5F4A] border-[#f2c878]',
     }
     return (
         <div className={`rounded-xl border px-3 py-2 text-center ${styles[accent]}`}>
@@ -1098,7 +1098,7 @@ function StatusLegend({ color, label }: { color: string; label: string }) {
 
 function Card({ children }: { children: React.ReactNode }) {
     return (
-        <div className="bg-[#FFFCF8] rounded-[20px] border border-[#E6D8C8] shadow-[0_2px_8px_rgba(43,26,14,0.05)] overflow-hidden animate-fade-up">
+        <div className="bg-[#fef0cc] rounded-[20px] border border-[#f2c878] shadow-[0_2px_8px_rgba(43,26,14,0.05)] overflow-hidden animate-fade-up">
             {children}
         </div>
     )
@@ -1106,7 +1106,7 @@ function Card({ children }: { children: React.ReactNode }) {
 
 function CardHeader({ icon, title, children }: { icon: React.ReactNode; title: string; children?: React.ReactNode }) {
     return (
-        <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-[#E6D8C8] bg-[#FBF5EE]/50">
+        <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-[#f2c878] bg-[#fde8bb]/50">
             <div className="flex items-center gap-2">
                 <span className="text-brand-500">{icon}</span>
                 <span className="text-[13px] font-bold text-[#2B1A0E]">{title}</span>
@@ -1118,7 +1118,7 @@ function CardHeader({ icon, title, children }: { icon: React.ReactNode; title: s
 
 function CardFooter({ href, label }: { href: string; label: string }) {
     return (
-        <div className="px-5 py-3.5 border-t border-[#E6D8C8] bg-[#FBF5EE]/40 text-center">
+        <div className="px-5 py-3.5 border-t border-[#f2c878] bg-[#fde8bb]/40 text-center">
             <Link href={href} className="text-[12px] font-bold text-brand-500 hover:text-[#D95A00] inline-flex items-center gap-1 transition-colors group">
                 {label} <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
             </Link>
