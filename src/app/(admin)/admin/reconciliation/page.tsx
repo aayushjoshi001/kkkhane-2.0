@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import ReconciliationClient from './ReconciliationClient'
 import { getRestaurantFeatures } from '@/lib/features'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { ArrowLeftRight } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,15 +64,18 @@ export default async function ReconciliationPage() {
     const receivables = receivablesRes.data || []
 
     return (
-        <ReconciliationClient
-            restaurant={restaurant}
-            partner={partner}
-            allRestaurants={allRestaurants}
-            sentRequests={sentRequests}
-            receivedRequests={receivedRequests}
-            payables={payables}
-            receivables={receivables}
-            auditLogs={auditLogs}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Reconciliation" description="Settle cross-venue payables and receivables with partner restaurants." icon={<ArrowLeftRight size={18} />} color="orange" />
+            <ReconciliationClient
+                restaurant={restaurant}
+                partner={partner}
+                allRestaurants={allRestaurants}
+                sentRequests={sentRequests}
+                receivedRequests={receivedRequests}
+                payables={payables}
+                receivables={receivables}
+                auditLogs={auditLogs}
+            />
+        </div>
     )
 }

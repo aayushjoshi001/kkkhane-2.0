@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
 import type { Settings, Restaurant } from '@/types/database'
 import { getBusinessMode, type BusinessMode } from '@/lib/businessMode'
-import { effectiveTier } from '@/lib/trial'
+import { effectiveTier, isTrialing } from '@/lib/trial'
 import {
     applyTierModuleDefaults,
     applyTierEntitlements,
@@ -13,6 +13,7 @@ import {
     tierIncludesEntitlement,
     MODULE_KEYS,
     TIER_ENTITLEMENTS,
+    TIER_MODULES,
     type ModuleKey,
     type TierEntitlement,
 } from '@/lib/tiers'
@@ -69,18 +70,35 @@ export async function getRestaurantFeatures(restaurantId: string): Promise<Setti
                     // applyTierEntitlements revokes the paid capabilities a
                     // lapsed trial no longer covers; on any live plan the tier
                     // is unchanged and it is a no-op.
+                    const trialing = isTrialing(
+                        restaurant?.subscription_status,
+                        restaurant?.subscription_expires_at,
+                    )
+                    const base = resolveFeatureDefaults(settings.features_v2 as Record<string, unknown>)
+                    if (trialing) {
+                        // During an active trial the stored features_v2 may have
+                        // been written for 'free' (backfilled accounts). Grant
+                        // every entitlement and module unconditionally — a stored
+                        // 'false' here was never a conscious choice, and a trial
+                        // that promises full access cannot let it block anything.
+                        for (const key of TIER_ENTITLEMENTS) {
+                            (base as Record<string, unknown>)[key] = true
+                        }
+                        for (const key of MODULE_KEYS) {
+                            (base as Record<string, unknown>)[key] = TIER_MODULES.platinum[key]
+                        }
+                    }
                     return applyTierModuleDefaults(
-                        applyTierEntitlements(
-                            resolveFeatureDefaults(settings.features_v2 as Record<string, unknown>),
-                            tier,
-                            tier,
-                        ),
+                        applyTierEntitlements(base, tier, trialing ? 'free' : tier),
                         tier,
                     )
                 }, 30)
             },
             [`features-${restaurantId}`],
-            { tags: [`features-${restaurantId}`], revalidate: 3600 }
+            // 60 s is short enough that a migration or a super-admin tier change
+            // propagates automatically without a manual cache bust, while still
+            // keeping the hot path off the DB for every request.
+            { tags: [`features-${restaurantId}`], revalidate: 60 }
         )
         const features = await fetcher().catch(() => null) as Settings['features_v2'] | null
         if (!features) return null

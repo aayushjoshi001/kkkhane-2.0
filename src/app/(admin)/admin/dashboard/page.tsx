@@ -12,7 +12,7 @@ import { CALENDAR_COOKIE, formatDateParts, parseCalendar, type Calendar } from '
 import {
     TrendingUp, ShoppingBag, Users, AlertTriangle, Clock, UserCheck,
     ArrowRight, CheckCircle2, ChevronRight, UtensilsCrossed, QrCode, Tag, ClipboardList, Boxes, Inbox,
-    Rocket, BarChart3, Receipt, Wallet, MoreHorizontal, Bed, CalendarRange, Hotel, Settings
+    Rocket, BarChart3, Receipt, Wallet, MoreHorizontal, Bed, CalendarRange, Settings
 } from 'lucide-react'
 import { getCurrentUser } from '@/lib/auth'
 import Link from 'next/link'
@@ -91,6 +91,37 @@ export default async function AdminDashboardPage() {
                 tables={isHotel ? ['orders', 'sessions', 'rooms', 'bookings'] : ['orders', 'sessions']}
                 debounceMs={5000}
             />
+            {/* Greeting banner — orange, same style as PremiumPageHeader */}
+            <div className="relative overflow-hidden rounded-[2rem] bg-brand-500 text-white p-8 sm:p-10 shadow-2xl mb-8 animate-fade-up min-h-[200px] flex flex-col justify-center">
+                {/* Herringbone texture */}
+                <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20'%3E%3Cpath d='M0 20 L10 10 L20 20' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3Cpath d='M20 20 L30 10 L40 20' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3Cpath d='M0 0 L10 10 L20 0' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3Cpath d='M20 0 L30 10 L40 0' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3C/svg%3E")`, backgroundSize: '40px 20px' }} />
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white opacity-5 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-black opacity-10 blur-[100px] rounded-full -translate-x-1/3 translate-y-1/4 pointer-events-none" />
+
+                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
+                    <div>
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 mb-6 text-sm font-medium text-white">
+                            <span className="relative flex h-2.5 w-2.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                            </span>
+                            Live
+                        </div>
+                        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 leading-tight">
+                            {greeting}, <span className="capitalize">{name}</span>.
+                        </h1>
+                        <p className="text-white/75 text-[16px] max-w-xl leading-relaxed">
+                            Here&apos;s what&apos;s happening at your {isHotel ? 'hotel' : 'restaurant'} today.
+                        </p>
+                    </div>
+                    <div className="shrink-0 flex flex-wrap gap-3">
+                        <Link href="/admin/orders" className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white border border-white/25 px-7 py-3.5 rounded-[16px] font-semibold transition-all duration-300 hover:scale-105 flex items-center gap-2">
+                            <ShoppingBag size={18} /> View {isHotel ? 'Room Service' : 'Orders'}
+                        </Link>
+                    </div>
+                </div>
+            </div>
+
             <BusinessSessionControl
                 initialSession={openSession ? {
                     id: openSession.id,
@@ -103,34 +134,6 @@ export default async function AdminDashboardPage() {
                 todayDate={todayDate}
             />
             <AdSpace />
-            {/* Premium Header */}
-            <div className="relative overflow-hidden rounded-[2rem] bg-[#0a0a0a] text-white p-8 sm:p-12 shadow-2xl animate-fade-up">
-                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-500 opacity-20 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />
-                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-blue-500 opacity-20 blur-[100px] rounded-full -translate-x-1/3 translate-y-1/4 pointer-events-none" />
-
-                <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
-                    <div>
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/10 backdrop-blur-md border border-white/10 mb-6 text-sm font-medium text-white/90">
-                            <span className="relative flex h-2.5 w-2.5">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-                            </span>
-                            Live Dashboard
-                        </div>
-                        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 leading-tight">
-                            {greeting}, <span className="capitalize">{name}</span>.
-                        </h1>
-                        <p className="text-white/60 text-[16px] max-w-xl leading-relaxed">
-                            Here&apos;s what&apos;s happening at your {isHotel ? 'hotel' : 'restaurant'} today.
-                        </p>
-                    </div>
-                    <div className="shrink-0 flex flex-wrap gap-3">
-                        <Link href="/admin/orders" className="bg-brand-500 hover:bg-brand-600 text-white px-7 py-3.5 rounded-[16px] font-semibold transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(255,90,0,0.3)] hover:shadow-[0_0_30px_rgba(255,90,0,0.5)] flex items-center gap-2">
-                            <ShoppingBag size={18} /> View {isHotel ? 'Room Service' : 'Orders'}
-                        </Link>
-                    </div>
-                </div>
-            </div>
 
             {showVatWarning && (
                 <div className="p-6 bg-rose-50/70 border border-rose-100 rounded-[2rem] flex items-start gap-4 animate-fade-up shadow-sm">

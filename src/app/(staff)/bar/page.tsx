@@ -100,7 +100,7 @@ export default async function BarPage() {
     }
 
     return (
-        <div className="h-full flex flex-col overflow-hidden bg-[#FBF7F3]">
+        <div className="h-full flex flex-col overflow-hidden bg-canvas">
             <RealtimeCatchUp restaurantId={restaurantId} />
             <div className="flex-1 overflow-hidden">
                 <OrderQueue

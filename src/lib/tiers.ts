@@ -16,17 +16,25 @@ export const UNLIMITED = 2_147_483_647
 
 export const isUnlimited = (limit: number): boolean => limit >= UNLIMITED
 
-/** Enforced caps. Must stay in step with the published plans in lib/pricing.ts. */
+/**
+ * Enforced caps. Must stay in step with the published plans in lib/pricing.ts.
+ *
+ * Free is deliberately tight — it is a lead-magnet for dhabas and kiosks,
+ * not a usable production tier. The upgrade gates are IRD invoicing and
+ * Nepal Pay (both Basic+). A Free restaurant hitting the dish/table cap is
+ * a conversion opportunity, not a support problem.
+ */
 export const TIER_LIMITS: Record<Tier, { max_staff: number; max_menu_items: number; max_tables: number }> = {
-    free:       { max_staff: 3,        max_menu_items: 100,      max_tables: 10        },
+    free:       { max_staff: 2,        max_menu_items: 50,       max_tables: 5         },
     basic:      { max_staff: 5,        max_menu_items: 500,      max_tables: 20        },
-    premium:    { max_staff: 24,       max_menu_items: 1000,     max_tables: 50        },
+    premium:    { max_staff: 20,       max_menu_items: 1_000,    max_tables: 50        },
     platinum:   { max_staff: UNLIMITED, max_menu_items: UNLIMITED, max_tables: UNLIMITED },
     enterprise: { max_staff: UNLIMITED, max_menu_items: UNLIMITED, max_tables: UNLIMITED },
 }
 
-/** Tiers whose plan includes the accounting/finance module. */
-export const FINANCE_TIERS: readonly Tier[] = ['premium', 'platinum', 'enterprise']
+/** Tiers whose plan includes the accounting/finance module.
+ *  Basic included because Nepali businesses need Day Book / Cash Book for IRD compliance. */
+export const FINANCE_TIERS: readonly Tier[] = ['basic', 'premium', 'platinum', 'enterprise']
 
 /**
  * Which major modules each plan includes.
@@ -50,7 +58,7 @@ export const TIER_MODULES: Record<Tier, {
     financeEnabled: boolean
 }> = {
     free:       { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: false },
-    basic:      { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: false },
+    basic:      { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: true  },
     premium:    { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: true  },
     platinum:   { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: true  },
     enterprise: { staffManagementEnabled: true, tableManagementEnabled: true, financeEnabled: true  },
@@ -144,6 +152,10 @@ export const DEFAULT_ON_FEATURES = [
     // without the keys silently had no auto-print at all and no way to notice —
     // placing an order simply produced no paper and no error.
     'kotEnabled',
+    // Finance sub-features: default on so existing tenants keep seeing them
+    // without a migration. A manager can turn either off in Settings.
+    'vouchersEnabled',
+    'chequeApprovalEnabled',
 ] as const
 
 export type DefaultOnFeature = typeof DEFAULT_ON_FEATURES[number]
@@ -182,6 +194,9 @@ export const TIER_ENTITLEMENTS = [
     'dynamicPricingEnabled',
     'ingredientTrackingEnabled',
     'staffShiftsEnabled',
+    // IRD CBMS real-time sync: Basic+ means the restaurant has a paid plan and
+    // is obligated to report to IRD. Free does not sync (cash receipt only).
+    'irdSyncEnabled',
 ] as const
 
 export type TierEntitlement = typeof TIER_ENTITLEMENTS[number]
@@ -216,6 +231,9 @@ export const TIER_FEATURES: Record<Tier, {
     dynamicPricingEnabled: boolean
     ingredientTrackingEnabled: boolean
     staffShiftsEnabled: boolean
+    // IRD CBMS real-time billing sync. True for any paid plan whose restaurant
+    // has vat_registered=true and valid ird_api_* credentials in Settings.
+    irdSyncEnabled: boolean
     // When true, a waiter must open a table session before guests can order.
     // When false (default), sessions auto-open on QR scan (self-service ordering).
     waiterSessionEnabled: boolean
@@ -230,6 +248,8 @@ export const TIER_FEATURES: Record<Tier, {
         multiLanguageEnabled: false, serviceRequestsEnabled: true,
         splitBillingEnabled: true, dynamicPricingEnabled: false,
         ingredientTrackingEnabled: false, staffShiftsEnabled: false,
+        // Free plan: cash receipt only, no IRD CBMS sync.
+        irdSyncEnabled: false,
         waiterSessionEnabled: false, waiterOrderConfirmation: true,
         printInvoiceEnabled: true, generateInvoiceEnabled: true,
     },
@@ -238,6 +258,8 @@ export const TIER_FEATURES: Record<Tier, {
         multiLanguageEnabled: false, serviceRequestsEnabled: true,
         splitBillingEnabled: true, dynamicPricingEnabled: false,
         ingredientTrackingEnabled: false, staffShiftsEnabled: false,
+        // Basic+: IRD VAT/PAN invoice and CBMS sync available.
+        irdSyncEnabled: true,
         waiterSessionEnabled: false, waiterOrderConfirmation: true,
         printInvoiceEnabled: true, generateInvoiceEnabled: true,
     },
@@ -246,6 +268,7 @@ export const TIER_FEATURES: Record<Tier, {
         multiLanguageEnabled: false, serviceRequestsEnabled: true,
         splitBillingEnabled: true, dynamicPricingEnabled: true,
         ingredientTrackingEnabled: true, staffShiftsEnabled: true,
+        irdSyncEnabled: true,
         waiterSessionEnabled: false, waiterOrderConfirmation: false,
         printInvoiceEnabled: true, generateInvoiceEnabled: true,
     },
@@ -254,6 +277,7 @@ export const TIER_FEATURES: Record<Tier, {
         multiLanguageEnabled: true, serviceRequestsEnabled: true,
         splitBillingEnabled: true, dynamicPricingEnabled: true,
         ingredientTrackingEnabled: true, staffShiftsEnabled: true,
+        irdSyncEnabled: true,
         waiterSessionEnabled: false, waiterOrderConfirmation: false,
         printInvoiceEnabled: true, generateInvoiceEnabled: true,
     },
@@ -262,6 +286,7 @@ export const TIER_FEATURES: Record<Tier, {
         multiLanguageEnabled: true, serviceRequestsEnabled: true,
         splitBillingEnabled: true, dynamicPricingEnabled: true,
         ingredientTrackingEnabled: true, staffShiftsEnabled: true,
+        irdSyncEnabled: true,
         waiterSessionEnabled: false, waiterOrderConfirmation: false,
         printInvoiceEnabled: true, generateInvoiceEnabled: true,
     },

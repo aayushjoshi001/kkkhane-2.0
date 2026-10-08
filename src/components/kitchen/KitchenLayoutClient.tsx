@@ -70,8 +70,10 @@ export default function KitchenLayoutClient({ children, staffName, userId, resta
     }
 
     return (
-        <div className="min-h-screen flex flex-col bg-[#FBF7F3] text-ink print:bg-surface">
-            <header className="shrink-0 bg-surface border-b border-hairline px-4 h-16 flex items-center justify-between gap-3 print:hidden">
+        <div className="min-h-screen flex flex-col bg-canvas text-ink print:bg-surface">
+            <header className="shrink-0 bg-canvas border-b border-hairline px-4 h-16 flex items-center justify-between gap-3 print:hidden relative overflow-hidden">
+                {/* Orange top accent strip */}
+                <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-gradient-to-r from-transparent via-brand-500/80 to-transparent pointer-events-none" />
                 <div className="flex items-center gap-2.5 min-w-0">
                     <Logo className="h-7 shrink-0" />
                     <div className="min-w-0">
@@ -136,7 +138,7 @@ export default function KitchenLayoutClient({ children, staffName, userId, resta
                         <h3 className="text-2xl font-black text-ink">Amazing Work!</h3>
                         <p className="text-ink-subtle text-sm mt-1">Thank you, <span className="font-bold text-ink">{staffName || (station === 'bar' ? 'bartender' : 'chef')}</span></p>
 
-                        <div className="my-5 rounded-2xl bg-[#FFF4EC] py-6 px-4">
+                        <div className="my-5 rounded-2xl bg-brand-50 py-6 px-4">
                             <p className="text-ink-subtle text-sm">Today you completed</p>
                             <p className="text-6xl font-black text-brand-500 leading-none my-1.5">{meals}</p>
                             <p className="font-extrabold text-ink">{station === 'bar' ? `drink${meals === 1 ? '' : 's'} made` : `meal${meals === 1 ? '' : 's'} cooked`} successfully!</p>

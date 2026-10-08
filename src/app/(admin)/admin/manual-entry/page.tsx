@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import { resolveActiveDayBookSession } from '@/lib/ledger'
 import ManualEntryClient from './ManualEntryClient'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { PenLine } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,17 +71,20 @@ export default async function ManualEntryPage() {
     const openSession = await resolveActiveDayBookSession(supabase, restaurantId, currentUser.id)
 
     return (
-        <ManualEntryClient
-            bankAccounts={bankAccounts || []}
-            suppliers={suppliers || []}
-            staffList={staff || []}
-            expenseCategories={expenseCategories || []}
-            ingredients={ingredients || []}
-            customerAccounts={customerAccounts || []}
-            hasOpenSession={!!openSession}
-            sessionId={openSession?.id ?? null}
-            userRole={currentUser.role}
-            restaurantId={restaurantId}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Manual Entry" description="Post manual journal entries directly to the open day book session." icon={<PenLine size={18} />} color="orange" />
+            <ManualEntryClient
+                bankAccounts={bankAccounts || []}
+                suppliers={suppliers || []}
+                staffList={staff || []}
+                expenseCategories={expenseCategories || []}
+                ingredients={ingredients || []}
+                customerAccounts={customerAccounts || []}
+                hasOpenSession={!!openSession}
+                sessionId={openSession?.id ?? null}
+                userRole={currentUser.role}
+                restaurantId={restaurantId}
+            />
+        </div>
     )
 }

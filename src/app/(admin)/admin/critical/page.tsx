@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CriticalClient from './CriticalClient'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { AlertTriangle } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,14 +80,17 @@ export default async function CriticalPage() {
     })
 
     return (
-        <CriticalClient
-            restaurantId={restaurantId}
-            currentUserId={currentUser.id}
-            lowStock={lowStock}
-            initialVouchers={voucherEntries || []}
-            supplierBills={formattedBills}
-            suppliers={suppliers || []}
-            categories={categories || []}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Critical Alerts" description="Low stock warnings, unpaid supplier bills, and pending approvals." icon={<AlertTriangle size={18} />} color="orange" />
+            <CriticalClient
+                restaurantId={restaurantId}
+                currentUserId={currentUser.id}
+                lowStock={lowStock}
+                initialVouchers={voucherEntries || []}
+                supplierBills={formattedBills}
+                suppliers={suppliers || []}
+                categories={categories || []}
+            />
+        </div>
     )
 }

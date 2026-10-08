@@ -2,6 +2,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import TakeoutDashboard from './TakeoutDashboard'
 import { TAKEOUT_ORDER_SELECT, mapOrderRowToTakeout, type TakeoutOrderRow } from '@/lib/takeout'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { ShoppingBag } from 'lucide-react'
 
 import { redirect } from 'next/navigation'
 import { getRestaurantFeatures } from '@/lib/features'
@@ -37,12 +39,7 @@ export default async function AdminTakeoutPage() {
     return (
         <div className="space-y-6">
             <RealtimeRefresh restaurantId={rid} tables={['orders']} />
-            <header className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h1 className="text-h2 font-extrabold text-ink">Takeout Orders</h1>
-                    <p className="text-ink-subtle font-medium mt-1">Manage pending and active takeout orders</p>
-                </div>
-            </header>
+            <PremiumPageHeader title="Takeout Orders" description="Manage pending and active takeout orders." icon={<ShoppingBag size={18} />} color="orange" />
             <TakeoutDashboard 
                 initialOrders={orders} 
                 restaurantId={rid} 

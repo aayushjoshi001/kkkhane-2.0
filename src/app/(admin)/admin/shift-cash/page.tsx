@@ -5,6 +5,8 @@ import { getRestaurantFeatures } from '@/lib/features'
 import { getNstDateString, isValidDateString, addDays } from '@/lib/timezone'
 import { computeShiftCashBreakdown } from '@/lib/shiftCash'
 import ShiftCashClient, { ShiftCashRow } from './ShiftCashClient'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { DollarSign } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -188,12 +190,7 @@ export default async function ShiftCashPage({
 
     return (
         <div className="space-y-6">
-            <div className="bg-surface p-6 rounded-xl border border-hairline-strong shadow-sm">
-                <h1 className="text-2xl font-bold text-ink">Shift Cash Collection</h1>
-                <p className="text-ink-subtle mt-1">
-                    Expected cash+QR to collect for each shift — count what was actually handed over, and review all advance, room, and dine-in billing payments received.
-                </p>
-            </div>
+            <PremiumPageHeader title="Shift Cash Collection" description="Count what was actually handed over per shift and reconcile cash against expected collections." icon={<DollarSign size={18} />} color="orange" />
             {/* Keyed by the date range so a range change remounts the client
                 component with fresh state — its rows/expanded-row state are
                 seeded from props via useState, which React would otherwise

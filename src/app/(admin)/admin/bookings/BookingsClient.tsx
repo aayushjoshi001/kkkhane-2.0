@@ -694,12 +694,6 @@ export default function BookingsClient({ initialBookings, business, rooms }: Boo
 
     return (
         <div className="space-y-6 pb-12 animate-fade-up">
-            {/* Header section */}
-            <div>
-                <h1 className="text-3xl font-extrabold text-ink tracking-tight">Bookings & Stays History</h1>
-                <p className="text-sm text-ink-subtle mt-1">Guest reservation record and room order history chart.</p>
-            </div>
-
             {/* Filters */}
             <div className="bg-surface p-4 border border-hairline rounded-[var(--r-lg)] shadow-sm space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-4">

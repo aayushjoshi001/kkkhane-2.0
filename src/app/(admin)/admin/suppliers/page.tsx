@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import SuppliersLedgerManager from './SuppliersLedgerManager'
 import { attachCreatorNames } from '@/lib/ledger'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Truck } from 'lucide-react'
 
 import { getRestaurantFeatures } from '@/lib/features'
 
@@ -57,12 +59,15 @@ export default async function SuppliersLedgerPage() {
     const expensesWithCreator = await attachCreatorNames(supabase, expenses || [])
 
     return (
-        <SuppliersLedgerManager
-            initialSuppliers={suppliers || []}
-            expenses={expensesWithCreator}
-            expenseCategories={expenseCategories || []}
-            bankAccounts={bankAccounts || []}
-            ingredients={ingredients || []}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Suppliers Ledger" description="Track supplier accounts, outstanding bills, and purchase history." icon={<Truck size={18} />} color="orange" />
+            <SuppliersLedgerManager
+                initialSuppliers={suppliers || []}
+                expenses={expensesWithCreator}
+                expenseCategories={expenseCategories || []}
+                bankAccounts={bankAccounts || []}
+                ingredients={ingredients || []}
+            />
+        </div>
     )
 }

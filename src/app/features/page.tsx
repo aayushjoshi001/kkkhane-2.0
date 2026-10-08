@@ -3,12 +3,12 @@ import { ArrowRight, CheckCircle, Smartphone, ChefHat, CreditCard, Users, Gift, 
 import { MarketingNav, MarketingFooter, Section, Eyebrow, MarketingButton } from '@/components/marketing'
 
 const FEATURES = [
-    { id: 1, title: 'QR Code Ordering', icon: Smartphone, description: 'Customers scan QR codes at their table to access your menu instantly on any smartphone.', items: ['No app download required', 'Real-time menu updates', 'Multiple modifier groups', 'Image support for dishes'] },
-    { id: 2, title: 'Kitchen Display System', icon: ChefHat, description: 'Real-time order management with live updates and color-coded status tracking for kitchen staff.', items: ['Live order queue', 'Status management', 'Takeout order queue', 'Prep time tracking'] },
-    { id: 3, title: 'Nepal QR Payments', icon: CreditCard, description: 'Accept all major Nepal payment methods with screenshot verification and full VAT compliance.', items: ['eSewa, Khalti, Fonepay', 'Screenshot verification', 'VAT & PAN compliant', 'Automatic invoice generation'] },
-    { id: 4, title: 'Staff Management', icon: Users, description: 'Complete staff management with role-based access, shift tracking, and performance analytics.', items: ['4 staff role types', 'Shift clock in/out', 'Break tracking', 'Performance metrics'] },
-    { id: 5, title: 'Loyalty Program', icon: Gift, description: 'Build customer loyalty with tiered rewards, points systems, and birthday bonuses.', items: ['4 membership tiers', 'Points earn/redeem', 'Birthday bonuses', 'Referral rewards'] },
-    { id: 6, title: 'Analytics & Reports', icon: BarChart, description: 'Comprehensive business analytics with revenue trends, KPIs, and detailed Z-reports.', items: ['7-day trend charts', 'EOD Z-reports', 'Revenue tracking', 'COGS analysis'] },
+    { id: 1, title: 'QR Menu & Ordering', icon: Smartphone, description: 'Guests scan a QR code at their table and order directly from their phone — no app needed, no printed menus.', items: ['Works on any smartphone', 'Real-time menu & price updates', 'Modifier groups & add-ons', 'Dish images & descriptions'] },
+    { id: 2, title: 'KOT / Kitchen Display', icon: ChefHat, description: 'Kitchen Order Tickets (KOT) and a live Kitchen Display System (KDS) keep your kitchen and bar in sync with every order.', items: ['Live KOT & BOT printing', 'Kitchen Display System (KDS)', 'Takeout & delivery queue', 'Order status tracking'] },
+    { id: 3, title: 'Nepal Pay & Billing', icon: CreditCard, description: 'Accept eSewa, Khalti, Fonepay and cash with automatic IRD-compliant VAT/PAN invoice generation on every transaction.', items: ['eSewa, Khalti, Fonepay', 'Cash & split billing', 'IRD-compliant VAT invoice', 'VAT & PAN auto-filled'] },
+    { id: 4, title: 'Day Book & Accounting', icon: BarChart, description: 'Built-in Day Book (Rojnamcha), Cash Book, and Bank Book give every restaurant full financial visibility from Day 1.', items: ['Daily Rojnamcha (Day Book)', 'Cash Book & Bank Book', 'Income & expense tracking', 'EOD closing & email alert'] },
+    { id: 5, title: 'Staff & Salary Management', icon: Users, description: 'Manage your entire team — roles, attendance, shifts, and salary — all from one place.', items: ['Role-based access control', 'Attendance & shift tracking', 'Salary & salary history', 'Staff activity logs'] },
+    { id: 6, title: 'Loyalty & CRM', icon: Gift, description: 'Reward repeat customers with tiered loyalty points, birthday bonuses, and a full customer relationship history.', items: ['Points earn & redeem', '4 membership tiers', 'Birthday bonuses', 'Customer order history'] },
 ]
 
 export default function FeaturesPage() {

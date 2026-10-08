@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter, Wallet, Settings, Printer, ChefHat } from 'lucide-react'
-import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment, toggleRestaurantFinance, updateRestaurantFeatures } from './actions'
+import { Building2, ShoppingBag, Crown, Ban, CheckCircle, Loader2, ChevronDown, Plus, X, Store, UserRound, Mail, KeyRound, Phone, MapPin, Check, CreditCard, AlertTriangle, Search, Filter, Wallet, Settings, Printer, ChefHat, Sparkles } from 'lucide-react'
+import { createTenantWithOwner, suspendRestaurant, updateSubscriptionTier, sendPasswordResetEmail, updateOwnerContact, recordSubscriptionPayment, toggleRestaurantFinance, updateRestaurantFeatures, grantTrialToRestaurant } from './actions'
 import { TIER_LIMITS, TIERS, TIER_LABELS, FINANCE_TIERS, isUnlimited, type Tier } from '@/lib/tiers'
 import { toast } from 'react-hot-toast'
 import Select from '@/components/ui/Select'
@@ -248,6 +248,22 @@ export default function SuperAdminDashboard({
             toast.success(`Features updated successfully`)
         } else {
             toast.error(res.error || 'Failed')
+        }
+        setLoading(null)
+    }
+
+    const handleGrantTrial = async (id: string) => {
+        setLoading(id)
+        const res = await grantTrialToRestaurant(id)
+        if (res.success) {
+            setItems(prev => prev.map(r =>
+                r.id === id
+                    ? { ...r, subscription_tier: 'platinum', subscription_status: 'trialing' }
+                    : r
+            ))
+            toast.success('14-day full-access trial started — all features unlocked')
+        } else {
+            toast.error(res.error || 'Failed to grant trial')
         }
         setLoading(null)
     }
@@ -559,6 +575,23 @@ export default function SuperAdminDashboard({
                                           <div className="w-9 h-5 bg-surface-muted border border-hairline peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-surface after:border-hairline after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500 peer-checked:border-brand-500 shadow-inner group-hover:shadow-md transition-all peer-disabled:opacity-40"></div>
                                       </label>
                                   </div>
+
+                                {/* Start Trial — shown for accounts not already trialing */}
+                                {restaurant.subscription_status !== 'trialing' && (
+                                    <button
+                                        onClick={() => handleGrantTrial(restaurant.id)}
+                                        disabled={loading === restaurant.id}
+                                        className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 text-brand-700 bg-brand-50 border border-brand-200 hover:bg-brand-100 disabled:opacity-50 transition"
+                                        title="Grant 14-day full-access trial"
+                                    >
+                                        <Sparkles size={14} />
+                                    </button>
+                                )}
+                                {restaurant.subscription_status === 'trialing' && (
+                                    <span className="px-2 py-1.5 rounded-lg text-[11px] font-bold text-brand-600 bg-brand-50 border border-brand-200 whitespace-nowrap">
+                                        Trial
+                                    </span>
+                                )}
 
                                 {/* Suspend/Reactivate */}
                                 <button

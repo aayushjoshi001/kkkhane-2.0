@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import VouchersManager from './VouchersManager'
 import { resolveActiveDayBookSession } from '@/lib/ledger'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { FileText } from 'lucide-react'
 
 import { getRestaurantFeatures } from '@/lib/features'
 
@@ -58,12 +60,15 @@ export default async function VouchersPage() {
     const openSession = await resolveActiveDayBookSession(supabase, restaurantId, currentUser.id)
 
     return (
-        <VouchersManager
-            bankAccounts={bankAccounts || []}
-            initialEntries={voucherEntries || []}
-            suppliers={suppliers || []}
-            staffList={staff || []}
-            hasOpenSession={!!openSession}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Vouchers Ledger" description="Log receipt and payment vouchers, and manage cheque deposit approvals." icon={<FileText size={18} />} color="orange" />
+            <VouchersManager
+                bankAccounts={bankAccounts || []}
+                initialEntries={voucherEntries || []}
+                suppliers={suppliers || []}
+                staffList={staff || []}
+                hasOpenSession={!!openSession}
+            />
+        </div>
     )
 }

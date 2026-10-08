@@ -6,6 +6,7 @@ import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense, postFinanc
 import { findOrCreateCustomerCreditAccount, postCreditCharge, postCreditRepayment, settleLoyalty } from '@/lib/customerCredit'
 import { markTableDirtyForSession } from '@/lib/tableLifecycle'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
+import { getNextInvoiceNumber } from '@/lib/invoiceNumber'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
 type OrderRow = { id: string; total_amount: number }
@@ -485,7 +486,7 @@ export async function POST(req: Request) {
         const discountVal = Number(discountAmount) || 0
         const vatVal = isVatRegistered ? (totalAmount - (totalAmount / 1.13)) : 0
         const taxableVal = totalAmount - vatVal
-        const invoiceNumber = `INV-DINE-${session_id.split('-')[0].toUpperCase()}`
+        const invoiceNumber = await getNextInvoiceNumber(currentUser.restaurantId)
 
         void syncInvoiceToIrd(currentUser.restaurantId, {
             invoiceNumber,

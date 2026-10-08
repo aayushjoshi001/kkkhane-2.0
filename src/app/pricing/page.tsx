@@ -2,12 +2,16 @@ import { HelpCircle } from 'lucide-react'
 import { MarketingNav, MarketingFooter, Eyebrow, PricingCards } from '@/components/marketing'
 
 const FAQS = [
-    { q: "Is there a free plan?", a: "Yes. The Free plan is free forever — up to 100 dishes, 10 categories and 3 staff logins, with the daybook and basic income & expense tracking. No credit card required." },
-    { q: "Can I upgrade or downgrade later?", a: "Yes. You can change plan at any time. If you downgrade, you keep the data you already have; you simply cannot add beyond the new plan's limits." },
-    { q: "What does the renewal discount mean?", a: "Premium and Platinum renew at 50% of their list price. Premium lists at Rs. 30,000 and renews at Rs. 15,000/yr; Platinum lists at Rs. 55,000 and renews at Rs. 27,500/yr." },
-    { q: "Are there any hidden setup fees?", a: "No hidden fees. Setup and standard onboarding support are included in your subscription." },
-    { q: "Do I need special hardware?", a: "No, kkkhane works on any device with a modern web browser." },
-    { q: "Is it IRD compliant?", a: "Yes. Invoices carry sequential, tamper-evident numbering with VAT/PAN fields, built to Nepal's Inland Revenue Department billing rules." },
+    { q: "Is the Free plan really free forever?", a: "Yes — no credit card, no expiry. The Free plan is built for small dhabas and food kiosks: up to 50 dishes, 5 tables, and 2 staff. The main limit is that IRD-compliant VAT invoicing and Nepal Pay (eSewa/Khalti/Fonepay) require Basic or above." },
+    { q: "Which plan do I need for a proper restaurant?", a: "Basic (Rs. 9,999/yr) is the right starting point for any registered restaurant. It adds IRD VAT/PAN invoices, Nepal Pay, Day Book (Rojnamcha), Cash Book, and Bank Book — everything the IRD expects and every accountant will ask for." },
+    { q: "Can I pay monthly instead of yearly?", a: "Yes. Basic is Rs. 1,099/mo, Premium Rs. 2,699/mo, and Platinum Rs. 5,499/mo. Annual billing saves roughly 30%. Premium and Platinum also renew at 50% of list after the first year — so the longer you stay, the less you pay." },
+    { q: "What does the renewal discount mean?", a: "Premium lists at Rs. 34,999 and renews at Rs. 17,499/yr after year one. Platinum lists at Rs. 59,999 and renews at Rs. 29,999/yr. The first-year price is an entry offer; the renewal is a loyalty reward." },
+    { q: "How is KKKhane different from Hamrobill or Petpooja?", a: "Hamrobill covers billing and basic accounts — it has no QR ordering, no live Kitchen Display, and no cloud access. Petpooja is India-first and costs more for equivalent features in Nepal. KKKhane is built specifically for Nepal: Bikram Sambat dates, eSewa/Khalti/Fonepay built in, and IRD compliance from Day 1." },
+    { q: "Does it work for hotels?", a: "Yes — Platinum includes full hotel management: room bookings, guest check-in/out, folio billing, and integrated restaurant charges all on one bill. No separate PMS software needed." },
+    { q: "Is it IRD compliant?", a: "Yes. Invoices carry sequential, tamper-evident numbering with VAT/PAN fields, built to Nepal IRD rules. Bikram Sambat date support and IRD eBilling sync (coming soon) are on Platinum and above." },
+    { q: "Can I upgrade or downgrade at any time?", a: "Yes. Upgrading is instant. Downgrading takes effect at the next billing cycle; your data stays — you just can't add beyond the new plan's limits." },
+    { q: "Do I need special hardware or a fast internet?", a: "No special hardware. KKKhane runs on any phone, tablet, or desktop browser. Thermal printers are supported for KOT and invoices. Offline ordering support is on our roadmap." },
+    { q: "Are there hidden fees or setup charges?", a: "None. Setup, data migration help, and standard onboarding are included in every paid plan. Payment gateway fees (eSewa, Khalti, Fonepay) are charged by the gateway directly to you — we don't take a cut." },
 ]
 
 export default function PricingPage() {

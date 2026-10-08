@@ -1,6 +1,8 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import ThemeCustomizer from '@/components/admin/ThemeCustomizer'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Palette } from 'lucide-react'
 
 export const revalidate = 0
 
@@ -20,11 +22,14 @@ export default async function AdminThemePage() {
     }
 
     return (
-        <ThemeCustomizer
-            initialSettings={settings}
-            restaurantName={restaurant?.name}
-            restaurantSlug={restaurant?.slug ?? null}
-            initialLogoUrl={restaurant?.logo_url ?? null}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Theme & Branding" description="Customize your brand colors, fonts, and visual identity." icon={<Palette size={18} />} color="orange" />
+            <ThemeCustomizer
+                initialSettings={settings}
+                restaurantName={restaurant?.name}
+                restaurantSlug={restaurant?.slug ?? null}
+                initialLogoUrl={restaurant?.logo_url ?? null}
+            />
+        </div>
     )
 }

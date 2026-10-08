@@ -1,246 +1,468 @@
 import { requireRole } from '@/lib/auth'
-import { getSaasMetricsFull } from '../actions'
-import { Building2, CheckCircle, Ban, DollarSign, ShoppingBag, Crown, AlertTriangle, TrendingUp, ArrowRight, Settings, Users, FileText, CreditCard, Activity } from 'lucide-react'
+import { getDashboardSnapshot } from '../actions'
+import {
+    Building2, CheckCircle2, AlertTriangle, DollarSign,
+    ShoppingCart, Users, CreditCard, BarChart3,
+    Settings, FileText, Store, Zap, Clock,
+    ArrowRight, TrendingUp, Crown,
+} from 'lucide-react'
 import Link from 'next/link'
-import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 
 export const dynamic = 'force-dynamic'
 
-const TIER_BADGE: Record<string, string> = {
-    free:       'bg-surface-muted text-ink-muted border-hairline-strong',
-    basic:      'bg-blue-100 text-blue-700 border-blue-200',
-    pro:        'bg-purple-100 text-purple-700 border-purple-200',
-    enterprise: 'bg-amber-100 text-amber-700 border-amber-200',
+// ─── colour maps ────────────────────────────────────────────────────────────
+
+const TIER_DOT: Record<string, string> = {
+    free:       'bg-slate-400',
+    basic:      'bg-blue-500',
+    premium:    'bg-purple-500',
+    platinum:   'bg-amber-500',
+    enterprise: 'bg-emerald-500',
+}
+const TIER_PILL: Record<string, string> = {
+    free:       'bg-slate-100 text-slate-600',
+    basic:      'bg-blue-100 text-blue-700',
+    premium:    'bg-purple-100 text-purple-700',
+    platinum:   'bg-amber-100 text-amber-700',
+    enterprise: 'bg-emerald-100 text-emerald-700',
+}
+const METHOD_ICON: Record<string, string> = {
+    esewa:   '#60BB46',
+    khalti:  '#5C2D91',
+    fonepay: '#1565C0',
+    bank:    '#64748b',
 }
 
-const TIER_BAR: Record<string, string> = {
-    free: 'from-gray-400 to-gray-500',
-    basic: 'from-blue-400 to-blue-500',
-    premium: 'from-purple-400 to-purple-500',
-    platinum: 'from-slate-400 to-slate-500',
-    enterprise: 'from-amber-400 to-amber-500',
-}
+// ─── page ───────────────────────────────────────────────────────────────────
 
 export default async function SuperAdminDashboardPage() {
     await requireRole('super_admin')
-    const metrics = await getSaasMetricsFull()
-    const premiumPlus = (metrics.tierBreakdown.premium || 0) + (metrics.tierBreakdown.platinum || 0) + (metrics.tierBreakdown.enterprise || 0)
+    const d = await getDashboardSnapshot()
+
+    const pendingCount = d.pendingPayments.length
+    const alertCount   = pendingCount + d.expiring14.length
+
+    // Revenue sparkline
+    const months      = Object.keys(d.revenueByMonth).sort()
+    const monthVals   = months.map(m => d.revenueByMonth[m])
+    const maxMonthVal = Math.max(...monthVals, 1)
+
+    // Conversion rate
+    const conversion  = d.total > 0 ? Math.round((d.paidTenants / d.total) * 100) : 0
 
     return (
-        <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
-            <PremiumPageHeader 
-                title="Platform Dashboard" 
-                description="Real-time SaaS health and tenant metrics across the entire platform" 
-                icon={<Crown size={18} />}
-                color="blue"
-                actions={
-                    <Link href="/admin/super-admin/restaurants"
-                          className="bg-blue-600 hover:bg-blue-500 text-white px-7 py-3.5 rounded-[16px] font-semibold transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] flex items-center gap-2">
-                        Manage Tenants <ArrowRight size={18} />
-                    </Link>
-                }
-            />
+        <div className="space-y-5 max-w-[1440px] mx-auto pb-14">
 
-            {/* Expiring alert */}
-            {metrics.expiringSoon.length > 0 && (
-                <div className="bg-surface rounded-[24px] border border-amber-200 shadow-[0_8px_30px_rgb(245,158,11,0.06)] overflow-hidden relative group animate-fade-up">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-amber-500" />
-                    <div className="p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2 text-amber-600">
-                                <AlertTriangle size={20} className="animate-pulse" />
-                                <h3 className="font-bold text-[15px]">Subscription Renewals Upcoming</h3>
-                            </div>
-                            <span className="bg-amber-100 text-amber-700 text-[12px] font-bold px-3 py-1 rounded-full border border-amber-200">
-                                {metrics.expiringSoon.length} tenant{metrics.expiringSoon.length > 1 ? 's' : ''}
-                            </span>
-                        </div>
-                        <div className="space-y-3">
-                            {metrics.expiringSoon.map(r => (
-                                <div key={r.id} className="flex items-center justify-between">
-                                    <span className="text-[14px] font-medium text-ink-muted flex items-center gap-2">
-                                        <Building2 size={14} className="text-ink-subtle" /> {r.name}
+            {/* ── Page title ─────────────────────────────────────────────── */}
+            <div className="flex items-center justify-between pt-1">
+                <div>
+                    <h1 className="text-[1.4rem] font-extrabold text-ink tracking-tight flex items-center gap-2">
+                        <Crown size={20} className="text-amber-500" /> Platform Overview
+                    </h1>
+                    <p className="text-sm text-ink-subtle mt-0.5">KKKhane · SaaS operations</p>
+                </div>
+                <Link
+                    href="/admin/super-admin/restaurants"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-ink text-surface text-sm font-bold hover:bg-ink/80 transition-colors"
+                >
+                    Manage Tenants <ArrowRight size={15} />
+                </Link>
+            </div>
+
+            {/* ── Action-required banner ─────────────────────────────────── */}
+            {alertCount > 0 && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex flex-wrap gap-4 items-start">
+                    <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0 space-y-1">
+                        {pendingCount > 0 && (
+                            <p className="text-sm font-semibold text-amber-800">
+                                {pendingCount} payment{pendingCount > 1 ? 's' : ''} waiting for approval —
+                                {d.pendingPayments.slice(0, 3).map(p => (
+                                    <span key={p.id} className="mx-1 font-bold text-amber-900">
+                                        {p.restaurants?.name ?? '?'}
                                     </span>
-                                    <span className="text-[13px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md">
-                                        Expires {new Date(r.subscription_expires_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                                {pendingCount > 3 && <span className="text-amber-700">+{pendingCount - 3} more</span>}
+                            </p>
+                        )}
+                        {d.expiring14.length > 0 && (
+                            <p className="text-sm text-amber-700">
+                                {d.expiring14.length} tenant{d.expiring14.length > 1 ? 's' : ''} expiring within 14 days
+                            </p>
+                        )}
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                        {pendingCount > 0 && (
+                            <Link href="/admin/super-admin/payments"
+                                  className="px-4 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors">
+                                Approve now
+                            </Link>
+                        )}
                     </div>
                 </div>
             )}
 
-            {/* Premium KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 animate-fade-up" style={{ animationDelay: '0.1s' }}>
-                <KpiCard title="Total Tenants" value={metrics.totalRestaurants} icon={Building2} color="indigo" />
-                <KpiCard title="Active Tenants" value={metrics.activeRestaurants} icon={CheckCircle} color="emerald" />
-                <KpiCard title="Suspended" value={metrics.suspendedRestaurants} icon={Ban} color="red" />
-                <KpiCard title="Total MRR" value={`Rs. ${metrics.mrr.toLocaleString()}`} icon={DollarSign} color="green" />
-                <KpiCard title="Platform Orders" value={metrics.totalOrders} icon={ShoppingBag} color="blue" />
-                <KpiCard title="Premium+ Accounts" value={premiumPlus} icon={Crown} color="amber" />
+            {/* ── 4 hero KPIs ───────────────────────────────────────────── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <KpiCard
+                    label="Revenue (30d)"
+                    value={`Rs. ${fmtN(d.mrr30)}`}
+                    sub={`${d.paidTenants} paid tenants · ${conversion}% conversion`}
+                    icon={DollarSign}
+                    accent="emerald"
+                />
+                <KpiCard
+                    label="Active Tenants"
+                    value={String(d.active)}
+                    sub={`${d.total} total · ${d.suspended} suspended`}
+                    icon={Building2}
+                    accent="blue"
+                />
+                <KpiCard
+                    label="GMV (30d)"
+                    value={`Rs. ${fmtN(d.gmv30)}`}
+                    sub="total order revenue across all tenants"
+                    icon={ShoppingCart}
+                    accent="indigo"
+                />
+                <KpiCard
+                    label="Pending Approvals"
+                    value={String(pendingCount)}
+                    sub={pendingCount === 0 ? 'All payments processed' : 'Tap to review'}
+                    icon={CreditCard}
+                    accent={pendingCount > 0 ? 'amber' : 'slate'}
+                    href="/admin/super-admin/payments"
+                    urgent={pendingCount > 0}
+                />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 space-y-6">
-                    {/* Top restaurants */}
-                    <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                        <div className="px-6 py-5 border-b border-hairline flex items-center justify-between bg-surface-muted/50">
-                            <h2 className="text-[1.15rem] font-bold text-ink flex items-center gap-2">
-                                <TrendingUp size={20} className="text-indigo-500" /> Top Performers (30 Days)
-                            </h2>
-                            <Link href="/admin/super-admin/analytics" className="text-[13px] font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
-                                View full report
-                            </Link>
-                        </div>
-                        <div className="divide-y divide-hairline p-2">
-                            {metrics.top5ByOrders.length === 0 ? (
-                                <div className="p-10 text-center text-ink-subtle">
-                                    <Activity size={32} className="mx-auto mb-3 opacity-20" />
-                                    <p className="text-[14px] font-medium">No order data yet</p>
-                                </div>
-                            ) : metrics.top5ByOrders.map((r, i) => (
-                                <div key={r.id} className="flex items-center gap-4 p-3 hover:bg-surface-muted rounded-xl transition-colors group">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-bold shadow-sm ${i === 0 ? 'bg-gradient-to-br from-amber-200 to-amber-400 text-amber-900' : i === 1 ? 'bg-gradient-to-br from-gray-200 to-gray-300 text-ink-muted' : i === 2 ? 'bg-gradient-to-br from-orange-200 to-orange-300 text-orange-900' : 'bg-indigo-50 text-indigo-700'}`}>
-                                        #{i + 1}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[15px] font-bold text-ink group-hover:text-indigo-600 transition-colors truncate">{r.name}</p>
-                                        <p className="text-[13px] text-ink-subtle">{r.count.toLocaleString()} orders generated</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="text-[15px] font-bold text-ink tabular-nums">Rs. {r.revenue.toLocaleString()}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+            {/* ── Main 2-col layout ─────────────────────────────────────── */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5">
 
-                    {/* Tier distribution */}
-                    <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.3s' }}>
-                        <h2 className="text-[1.15rem] font-bold text-ink mb-6 flex items-center gap-2">
-                            <Activity size={20} className="text-purple-500" /> Subscription Distribution
-                        </h2>
-                        
-                        <div className="flex flex-wrap gap-3 mb-6">
-                            {Object.entries(metrics.tierBreakdown).map(([tier, count]) => (
-                                <div key={tier} className={`px-4 py-2 rounded-xl text-[13px] font-bold border shadow-sm flex items-center gap-2 ${TIER_BADGE[tier] || TIER_BADGE.free}`}>
-                                    <span className="capitalize">{tier}</span>
-                                    <span className="bg-surface/50 px-1.5 py-0.5 rounded-md tabular-nums">{count}</span>
-                                </div>
-                            ))}
-                        </div>
-                        
-                        <div className="flex w-full h-4 rounded-full overflow-hidden shadow-inner gap-0.5 bg-surface-muted">
-                            {Object.entries(metrics.tierBreakdown).map(([tier, count]) => {
-                                const total = metrics.totalRestaurants || 1
-                                const pct = (count / total) * 100
-                                return pct > 0 ? (
-                                    <div key={tier} 
-                                         className={`h-full bg-gradient-to-r ${TIER_BAR[tier] || 'from-gray-400 to-gray-500'} transition-all hover:brightness-110 cursor-help`}
-                                         style={{ width: `${pct}%` }}
-                                         title={`${tier}: ${count} (${Math.round(pct)}%)`}
-                                    />
-                                ) : null
+                {/* Left column */}
+                <div className="space-y-5">
+
+                    {/* Revenue trend sparkline */}
+                    <Panel>
+                        <PanelHeader
+                            icon={<TrendingUp size={15} className="text-emerald-600" />}
+                            title="Revenue Trend"
+                            sub="Approved subscription payments · last 6 months"
+                        />
+                        <div className="flex items-end gap-2 h-24 mt-4 px-1">
+                            {months.map((m, i) => {
+                                const val = monthVals[i]
+                                const pct = maxMonthVal > 0 ? (val / maxMonthVal) * 100 : 0
+                                const isLatest = i === months.length - 1
+                                return (
+                                    <div key={m} className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
+                                        <span className="text-[10px] font-bold text-ink-subtle tabular-nums hidden sm:block">
+                                            {val > 0 ? `${Math.round(val / 1000)}k` : '—'}
+                                        </span>
+                                        <div className="w-full relative flex items-end" style={{ height: '60px' }}>
+                                            <div
+                                                className={`w-full rounded-t-lg transition-all ${isLatest ? 'bg-emerald-500' : 'bg-emerald-200'}`}
+                                                style={{ height: `${Math.max(pct, val > 0 ? 4 : 0)}%` }}
+                                            />
+                                        </div>
+                                        <span className="text-[10px] text-ink-subtle truncate w-full text-center font-medium">
+                                            {shortMonth(m)}
+                                        </span>
+                                    </div>
+                                )
                             })}
                         </div>
-                    </div>
+                    </Panel>
+
+                    {/* Top tenants */}
+                    <Panel>
+                        <PanelHeader
+                            icon={<BarChart3 size={15} className="text-indigo-600" />}
+                            title="Top Tenants by Revenue"
+                            sub="Order GMV · last 30 days"
+                            action={{ label: 'All analytics', href: '/admin/super-admin/analytics' }}
+                        />
+                        {d.topTenants.length === 0 ? (
+                            <EmptyState icon={ShoppingCart} label="No order data yet" />
+                        ) : (
+                            <div className="divide-y divide-hairline mt-1">
+                                {d.topTenants.map((t, i) => (
+                                    <div key={t.id} className="flex items-center gap-3 py-3">
+                                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-extrabold shrink-0 ${
+                                            i === 0 ? 'bg-amber-100 text-amber-700' :
+                                            i === 1 ? 'bg-slate-100 text-slate-600' :
+                                            i === 2 ? 'bg-orange-100 text-orange-600' :
+                                            'bg-surface-muted text-ink-subtle'
+                                        }`}>
+                                            {i + 1}
+                                        </span>
+                                        <span className="flex-1 text-sm font-semibold text-ink truncate">{t.name}</span>
+                                        <span className="text-xs text-ink-subtle tabular-nums">{t.count} orders</span>
+                                        <span className="text-sm font-bold text-ink tabular-nums w-28 text-right">
+                                            Rs.&nbsp;{fmtN(t.revenue)}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </Panel>
+
+                    {/* Pending approvals detail */}
+                    {pendingCount > 0 && (
+                        <Panel>
+                            <PanelHeader
+                                icon={<Clock size={15} className="text-amber-600" />}
+                                title="Pending Payments"
+                                action={{ label: 'Approve all', href: '/admin/super-admin/payments' }}
+                            />
+                            <div className="divide-y divide-hairline mt-1">
+                                {d.pendingPayments.slice(0, 5).map(p => (
+                                    <div key={p.id} className="flex items-center gap-3 py-3">
+                                        <span
+                                            className="w-2 h-2 rounded-full shrink-0"
+                                            style={{ backgroundColor: METHOD_ICON[p.payment_method] ?? '#94a3b8' }}
+                                        />
+                                        <span className="flex-1 text-sm font-semibold text-ink truncate">
+                                            {p.restaurants?.name ?? '—'}
+                                        </span>
+                                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${TIER_PILL[p.plan_tier ?? 'basic'] ?? TIER_PILL.basic}`}>
+                                            {p.plan_tier ?? '?'}
+                                        </span>
+                                        <span className="text-sm font-bold text-ink tabular-nums">
+                                            Rs.&nbsp;{fmtN(p.amount)}
+                                        </span>
+                                    </div>
+                                ))}
+                                {pendingCount > 5 && (
+                                    <p className="text-xs text-ink-subtle py-2 text-center">
+                                        +{pendingCount - 5} more
+                                    </p>
+                                )}
+                            </div>
+                        </Panel>
+                    )}
                 </div>
 
-                <div className="space-y-6">
-                    {/* Recent signups */}
-                    <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] overflow-hidden animate-fade-up" style={{ animationDelay: '0.2s' }}>
-                        <div className="px-6 py-5 border-b border-hairline flex items-center justify-between">
-                            <h2 className="text-[1.15rem] font-bold text-ink flex items-center gap-2">
-                                <Users size={18} className="text-emerald-500" /> Recent Signups
-                            </h2>
-                            <Link href="/admin/super-admin/restaurants" className="p-1.5 text-ink-subtle hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                                <ArrowRight size={18} />
-                            </Link>
+                {/* Right column */}
+                <div className="space-y-5">
+
+                    {/* Tier distribution */}
+                    <Panel>
+                        <PanelHeader
+                            icon={<Crown size={15} className="text-amber-500" />}
+                            title="Tier Distribution"
+                            sub={`${d.total} tenants`}
+                        />
+                        <div className="mt-4 space-y-2.5">
+                            {(['enterprise', 'platinum', 'premium', 'basic', 'free'] as const).map(tier => {
+                                const count = d.tierCounts[tier] ?? 0
+                                const pct   = d.total > 0 ? (count / d.total) * 100 : 0
+                                return (
+                                    <div key={tier} className="flex items-center gap-3">
+                                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${TIER_DOT[tier]}`} />
+                                        <span className="text-xs font-semibold text-ink capitalize w-16">{tier}</span>
+                                        <div className="flex-1 h-1.5 bg-surface-muted rounded-full overflow-hidden">
+                                            <div
+                                                className={`h-full rounded-full ${TIER_DOT[tier]}`}
+                                                style={{ width: `${pct}%` }}
+                                            />
+                                        </div>
+                                        <span className="text-xs font-bold text-ink tabular-nums w-5 text-right">{count}</span>
+                                    </div>
+                                )
+                            })}
                         </div>
-                        <div className="divide-y divide-hairline p-2">
-                            {metrics.recentTenants.length === 0 ? (
-                                <div className="p-8 text-center text-ink-subtle">
-                                    <Building2 size={32} className="mx-auto mb-3 opacity-20" />
-                                    <p className="text-[14px] font-medium">No tenants yet</p>
-                                </div>
-                            ) : metrics.recentTenants.map(r => (
-                                <div key={r.id} className="flex items-center gap-3 p-3 hover:bg-surface-muted rounded-xl transition-colors">
-                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-100 flex items-center justify-center shrink-0">
-                                        <Building2 size={18} className="text-indigo-600" />
+                    </Panel>
+
+                    {/* Expiring soon */}
+                    {d.expiring14.length > 0 && (
+                        <Panel>
+                            <PanelHeader
+                                icon={<AlertTriangle size={15} className="text-amber-500" />}
+                                title="Expiring Soon"
+                                sub="Within 14 days"
+                            />
+                            <div className="mt-2 space-y-2">
+                                {d.expiring14.map(r => {
+                                    const daysLeft = Math.ceil((new Date(r.subscription_expires_at).getTime() - Date.now()) / 86400000)
+                                    return (
+                                        <div key={r.id} className="flex items-center justify-between text-sm py-1.5">
+                                            <span className="font-medium text-ink truncate flex-1 mr-2">{r.name}</span>
+                                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ${daysLeft <= 3 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                {daysLeft}d
+                                            </span>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </Panel>
+                    )}
+
+                    {/* Recent signups */}
+                    <Panel>
+                        <PanelHeader
+                            icon={<Users size={15} className="text-blue-600" />}
+                            title="Recent Signups"
+                            action={{ label: 'All', href: '/admin/super-admin/restaurants' }}
+                        />
+                        <div className="mt-2 divide-y divide-hairline">
+                            {d.recentTenants.map(r => (
+                                <div key={r.id} className="flex items-center gap-2.5 py-2.5">
+                                    <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                                        <Store size={13} className="text-blue-600" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-[14px] font-bold text-ink truncate">{r.name}</p>
-                                        <p className="text-[12px] text-ink-subtle font-medium">Joined {new Date(r.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}</p>
+                                        <p className="text-sm font-semibold text-ink truncate">{r.name}</p>
+                                        <p className="text-[11px] text-ink-subtle">
+                                            {new Date(r.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </p>
                                     </div>
-                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md border uppercase tracking-wider ${TIER_BADGE[r.subscription_tier] || TIER_BADGE.free}`}>
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${TIER_PILL[r.subscription_tier] ?? TIER_PILL.free}`}>
                                         {r.subscription_tier}
                                     </span>
                                 </div>
                             ))}
                         </div>
-                    </div>
-
-                    {/* Quick Actions Grid */}
-                    <div className="bg-surface rounded-[24px] border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 animate-fade-up" style={{ animationDelay: '0.3s' }}>
-                        <h3 className="text-[1.15rem] font-bold text-ink mb-5 flex items-center gap-2">
-                            <Settings size={18} className="text-ink-subtle" /> Quick Tools
-                        </h3>
-                        <div className="grid grid-cols-2 gap-3">
-                            <QuickAction href="/admin/super-admin/restaurants" icon={Building2} label="Tenants" />
-                            <QuickAction href="/admin/super-admin/analytics" icon={Activity} label="Analytics" />
-                            <QuickAction href="/admin/super-admin/payments" icon={CreditCard} label="Payments" />
-                            <QuickAction href="/admin/super-admin/reports" icon={FileText} label="Reports" />
-                        </div>
-                        <Link href="/admin/super-admin/config" className="mt-3 group relative flex items-center justify-center gap-2 w-full p-4 rounded-[16px] bg-surface-muted hover:bg-surface-muted border border-transparent hover:border-hairline-strong transition-all duration-300">
-                            <Settings size={18} className="text-ink-subtle group-hover:text-ink transition-colors" />
-                            <span className="text-[13px] font-bold text-ink-muted group-hover:text-ink">Platform Configuration</span>
-                        </Link>
-                    </div>
+                    </Panel>
                 </div>
+            </div>
+
+            {/* ── Navigation hub ────────────────────────────────────────── */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                {(
+                    [
+                        { href: '/admin/super-admin/restaurants', icon: Building2,  label: 'Tenants',   color: 'text-blue-600    bg-blue-50'   },
+                        { href: '/admin/super-admin/payments',    icon: CreditCard, label: 'Payments',  color: 'text-emerald-600 bg-emerald-50', badge: pendingCount > 0 ? pendingCount : 0 },
+                        { href: '/admin/super-admin/analytics',   icon: BarChart3,  label: 'Analytics', color: 'text-indigo-600  bg-indigo-50'  },
+                        { href: '/admin/super-admin/reports',     icon: FileText,   label: 'Reports',   color: 'text-purple-600  bg-purple-50'  },
+                        { href: '/admin/super-admin/config',      icon: Settings,   label: 'Config',    color: 'text-slate-600   bg-slate-100'  },
+                        { href: '/admin/super-admin/staff',       icon: Users,      label: 'Staff',     color: 'text-rose-600    bg-rose-50'    },
+                    ] as Array<{
+                        href: string
+                        icon: React.ComponentType<{ size: number; className?: string }>
+                        label: string
+                        color: string
+                        badge?: number
+                    }>
+                ).map(item => (
+                    <Link
+                        key={item.href}
+                        href={item.href}
+                        className="relative flex flex-col items-center gap-2 p-4 rounded-2xl bg-surface border border-hairline hover:border-hairline-strong shadow-[0_2px_8px_rgb(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgb(0,0,0,0.08)] transition-all group"
+                    >
+                        {!!item.badge && (
+                            <span className="absolute top-2 right-2 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-extrabold px-1">
+                                {item.badge}
+                            </span>
+                        )}
+                        <span className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.color}`}>
+                            <item.icon size={18} />
+                        </span>
+                        <span className="text-xs font-bold text-ink-muted group-hover:text-ink transition-colors">{item.label}</span>
+                    </Link>
+                ))}
             </div>
         </div>
     )
 }
 
-function KpiCard({ title, value, icon: Icon, color }: { title: string, value: number | string, icon: any, color: 'indigo' | 'emerald' | 'red' | 'blue' | 'amber' | 'green' | 'purple' }) {
-    const colors = {
-        indigo: 'from-indigo-500 to-violet-500 text-indigo-500 bg-indigo-50',
-        emerald: 'from-emerald-500 to-teal-500 text-emerald-500 bg-emerald-50',
-        red: 'from-red-500 to-rose-500 text-red-500 bg-red-50',
-        blue: 'from-blue-500 to-cyan-500 text-blue-500 bg-blue-50',
-        amber: 'from-amber-400 to-orange-500 text-amber-500 bg-amber-50',
-        green: 'from-green-500 to-emerald-500 text-green-500 bg-green-50',
-        purple: 'from-purple-500 to-fuchsia-500 text-purple-500 bg-purple-50'
-    }
-    const c = colors[color] || colors.indigo
+// ─── helpers ────────────────────────────────────────────────────────────────
 
+function fmtN(n: number): string {
+    if (n >= 100_000) return `${(n / 100_000).toFixed(1)}L`
+    if (n >= 1_000)   return `${(n / 1_000).toFixed(1)}k`
+    return n.toLocaleString()
+}
+
+function shortMonth(iso: string): string {
+    const [y, m] = iso.split('-')
+    return new Date(Number(y), Number(m) - 1).toLocaleString('en-US', { month: 'short' })
+}
+
+// ─── sub-components ─────────────────────────────────────────────────────────
+
+function Panel({ children }: { children: React.ReactNode }) {
     return (
-        <div className="group relative bg-surface rounded-[24px] p-6 border border-hairline shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 overflow-hidden">
-            <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${c.split(' ')[0]} ${c.split(' ')[1]} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-            
-            <div className="flex flex-col h-full justify-between">
-                <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center ${c.split(' ')[2]} ${c.split(' ')[3]} group-hover:scale-110 transition-transform duration-300 mb-4`}>
-                    <Icon size={24} />
-                </div>
+        <div className="bg-surface rounded-2xl border border-hairline shadow-[0_2px_12px_rgb(0,0,0,0.04)] p-5">
+            {children}
+        </div>
+    )
+}
+
+function PanelHeader({
+    icon, title, sub, action,
+}: {
+    icon: React.ReactNode
+    title: string
+    sub?: string
+    action?: { label: string; href: string }
+}) {
+    return (
+        <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+                {icon}
                 <div>
-                    <h3 className="text-ink-subtle text-[13px] font-semibold uppercase tracking-wider mb-1">{title}</h3>
-                    <p className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight tabular-nums truncate">
-                        {typeof value === 'number' ? value.toLocaleString() : value}
-                    </p>
+                    <p className="text-sm font-bold text-ink leading-tight">{title}</p>
+                    {sub && <p className="text-[11px] text-ink-subtle mt-0.5">{sub}</p>}
                 </div>
             </div>
+            {action && (
+                <Link href={action.href}
+                      className="text-[11px] font-bold text-[var(--color-primary)] hover:opacity-70 transition-opacity shrink-0 flex items-center gap-1">
+                    {action.label} <ArrowRight size={11} />
+                </Link>
+            )}
         </div>
     )
 }
 
-function QuickAction({ href, icon: Icon, label }: { href: string, icon: any, label: string }) {
+function EmptyState({ icon: Icon, label }: { icon: React.ComponentType<{ size: number; className?: string }>; label: string }) {
     return (
-        <Link href={href} className="group relative flex flex-col items-center justify-center gap-3 p-4 rounded-[16px] bg-surface-muted hover:bg-indigo-50/50 border border-transparent hover:border-indigo-100 transition-all duration-300 hover:scale-[1.02]">
-            <div className="text-ink-subtle group-hover:text-indigo-600 transition-colors">
-                <Icon size={24} />
-            </div>
-            <span className="text-[13px] font-bold text-ink-muted group-hover:text-indigo-900">{label}</span>
-        </Link>
+        <div className="flex flex-col items-center justify-center py-8 gap-2 text-ink-subtle">
+            <Icon size={28} className="opacity-20" />
+            <p className="text-xs font-medium">{label}</p>
+        </div>
     )
+}
+
+type AccentColor = 'emerald' | 'blue' | 'indigo' | 'amber' | 'slate'
+
+function KpiCard({
+    label, value, sub, icon: Icon, accent, href, urgent,
+}: {
+    label:   string
+    value:   string
+    sub?:    string
+    icon:    React.ComponentType<{ size: number; className?: string }>
+    accent:  AccentColor
+    href?:   string
+    urgent?: boolean
+}) {
+    const colors: Record<AccentColor, { icon: string; bg: string; border: string }> = {
+        emerald: { icon: 'text-emerald-600', bg: 'bg-emerald-50',  border: 'border-hairline'         },
+        blue:    { icon: 'text-blue-600',    bg: 'bg-blue-50',     border: 'border-hairline'         },
+        indigo:  { icon: 'text-indigo-600',  bg: 'bg-indigo-50',   border: 'border-hairline'         },
+        amber:   { icon: 'text-amber-600',   bg: 'bg-amber-50',    border: 'border-amber-200'        },
+        slate:   { icon: 'text-slate-500',   bg: 'bg-slate-50',    border: 'border-hairline'         },
+    }
+    const c = colors[accent]
+
+    const inner = (
+        <div className={`relative rounded-2xl border ${urgent ? 'border-amber-200 bg-amber-50' : `bg-surface ${c.border}`} shadow-[0_2px_8px_rgb(0,0,0,0.04)] p-5 flex flex-col gap-3 h-full`}>
+            <div className="flex items-center justify-between">
+                <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${c.bg}`}>
+                    <Icon size={17} className={c.icon} />
+                </span>
+                {href && <ArrowRight size={14} className="text-ink-subtle" />}
+            </div>
+            <div>
+                <p className="text-[1.5rem] font-extrabold text-ink tracking-tight leading-none tabular-nums">{value}</p>
+                <p className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider mt-1">{label}</p>
+                {sub && <p className="text-[11px] text-ink-subtle mt-1 leading-tight">{sub}</p>}
+            </div>
+        </div>
+    )
+
+    if (href) return <Link href={href} className="block h-full hover:opacity-90 transition-opacity">{inner}</Link>
+    return inner
 }

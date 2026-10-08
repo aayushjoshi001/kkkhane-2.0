@@ -734,28 +734,13 @@ export default function SuppliersLedgerManager({
         <>
             <div className="space-y-6 pb-16 animate-fade-up">
                 {/* Clean Light Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center">
-                                <Truck size={20} className="text-brand-500" />
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-extrabold text-ink tracking-tight">Suppliers Ledger</h1>
-                                <p className="text-sm text-ink-subtle mt-0.5">
-                                    Manage supplier profiles, tax details (PAN/VAT), and track expense purchase ledgers.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={openAddModal}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-brand-500/20"
-                        >
-                            <Plus size={16} /> Add Supplier
-                        </button>
-                    </div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4">
+                    <button
+                        onClick={openAddModal}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-sm transition-all shadow-md shadow-brand-500/20"
+                    >
+                        <Plus size={16} /> Add Supplier
+                    </button>
                 </div>
 
                 {/* Pending Cheque Approvals — hidden entirely when empty */}
@@ -814,15 +799,13 @@ export default function SuppliersLedgerManager({
                         
                         {/* Search Bar */}
                         <div className="relative w-full sm:w-64">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle">
-                                <Search size={14} />
-                            </span>
+                            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
                             <input
                                 type="text"
                                 placeholder="Search suppliers..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-surface border border-hairline rounded-xl text-xs font-semibold text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-sm"
+                                className="w-full pl-8 pr-3 py-1.5 bg-surface border border-hairline rounded-lg text-[11px] font-semibold text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
                             />
                         </div>
                     </div>

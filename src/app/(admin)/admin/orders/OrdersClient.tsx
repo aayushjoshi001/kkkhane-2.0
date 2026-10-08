@@ -87,7 +87,7 @@ const PAY_COLORS: Record<string, string> = {
 const STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled']
 const PAYMENTS = ['unpaid', 'paid', 'refunded']
 
-const selectClass = 'h-10 rounded-[var(--r-md)] border border-hairline px-4 text-sm bg-surface outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]'
+const selectClass = 'rounded-[var(--r-md)] border border-hairline bg-surface outline-none focus:ring-2 focus:ring-brand-500/15 focus:border-brand-500 transition-all'
 
 export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder[]; canRefund: boolean }) {
     const [search, setSearch] = useState('')
@@ -170,11 +170,11 @@ export default function OrdersClient({ orders, canRefund }: { orders: AdminOrder
                         />
                     </div>
                     <div className="grid grid-cols-2 sm:flex gap-3">
-                        <Select value={status} onChange={e => setStatus(e.target.value)} className={selectClass} aria-label="Filter by status">
+                        <Select value={status} onChange={e => setStatus(e.target.value)} className={selectClass} compact aria-label="Filter by status">
                             <option value="all">All Status</option>
                             {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
                         </Select>
-                        <Select value={payment} onChange={e => setPayment(e.target.value)} className={selectClass} aria-label="Filter by payment">
+                        <Select value={payment} onChange={e => setPayment(e.target.value)} className={selectClass} compact aria-label="Filter by payment">
                             <option value="all">All Payment</option>
                             {PAYMENTS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
                         </Select>

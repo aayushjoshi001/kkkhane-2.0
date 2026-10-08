@@ -5,6 +5,8 @@ import DayBookClient, { DayBookRangeView } from './DayBookClient'
 import type { DayBookEntry, DayBookSession } from '@/types/database'
 import { getNstDateString } from '@/lib/timezone'
 import { resolveActiveDayBookSession, computeDayBookRange, attachCreatorNames, computeCashierBreakdown } from '@/lib/ledger'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { BookOpen } from 'lucide-react'
 
 import { getRestaurantFeatures } from '@/lib/features'
 
@@ -120,13 +122,16 @@ export default async function DayBookPage({
     const byCashier = computeCashierBreakdown(entries)
 
     return (
-        <DayBookClient
-            session={session ?? null}
-            entries={entries}
-            totals={totals}
-            byCashier={byCashier}
-            todayDate={todayDate}
-            selectedDate={selectedDate}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Day Book" description="The daily accounting session — all cash and bank movements in one place." icon={<BookOpen size={18} />} color="orange" />
+            <DayBookClient
+                session={session ?? null}
+                entries={entries}
+                totals={totals}
+                byCashier={byCashier}
+                todayDate={todayDate}
+                selectedDate={selectedDate}
+            />
+        </div>
     )
 }

@@ -364,21 +364,11 @@ export function DayBookRangeView({ range }: { range: DayBookRangeProp }) {
     return (
         <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto">
             <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-amber-100 flex items-center justify-center shrink-0">
-                        <BookOpen className="text-amber-600" size={20} />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-black text-ink">Day Book</h1>
-                        <p className="text-xs text-ink-subtle mt-0.5 flex items-center gap-1.5">
-                            <span>{fromLabel} — {toLabel}</span>
-                            <span className="px-1.5 py-0.5 rounded-md bg-brand-50 text-brand-700 border border-brand-100 text-[10px] font-black uppercase">
-                                Statement
-                            </span>
-                            {navigating && <Loader2 size={11} className="animate-spin" />}
-                        </p>
-                    </div>
-                </div>
+                <p className="text-xs text-ink-subtle flex items-center gap-1.5">
+                    <span>{fromLabel} — {toLabel}</span>
+                    <span className="px-1.5 py-0.5 rounded-md bg-brand-50 text-brand-700 border border-brand-100 text-[10px] font-black uppercase">Statement</span>
+                    {navigating && <Loader2 size={11} className="animate-spin" />}
+                </p>
                 <div className="flex gap-2 print:hidden">
                     <button onClick={handleExportCsv} className="flex items-center gap-1.5 px-3.5 py-2 bg-surface text-ink hover:bg-surface-muted font-extrabold rounded-xl text-xs border border-hairline shadow-sm transition-colors">
                         <Download size={14} /> CSV
@@ -685,23 +675,13 @@ export default function DayBookClient({ session, entries, totals, byCashier, tod
     return (
         <div className="p-6 md:p-8 space-y-6 max-w-6xl mx-auto">
             <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-amber-100 flex items-center justify-center shrink-0">
-                        <BookOpen className="text-amber-600" size={20} />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-black text-ink">Day Book</h1>
-                        <p className="text-xs text-ink-subtle mt-0.5 flex items-center gap-1.5">
-                            <span>{dateLabel}</span>
-                            {!isToday && (
-                                <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-black uppercase">
-                                    Past day
-                                </span>
-                            )}
-                            {navigating && <Loader2 size={11} className="animate-spin" />}
-                        </p>
-                    </div>
-                </div>
+                <p className="text-xs text-ink-subtle flex items-center gap-1.5">
+                    <span>{dateLabel}</span>
+                    {!isToday && (
+                        <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-black uppercase">Past day</span>
+                    )}
+                    {navigating && <Loader2 size={11} className="animate-spin" />}
+                </p>
                 {session && (
                     <div className="flex gap-2 print:hidden">
                         <button

@@ -1,6 +1,8 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth'
 import AnalyticsDashboard from '@/components/admin/AnalyticsDashboard'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { BarChart3 } from 'lucide-react'
 
 export const revalidate = 60
 
@@ -203,6 +205,7 @@ export default async function AnalyticsPage() {
 
     return (
         <div className="space-y-6">
+            <PremiumPageHeader title="Analytics" description="Track revenue, orders, ratings, and performance trends over time." icon={<BarChart3 size={18} />} color="orange" />
             <AnalyticsDashboard
                 daily={daily}
                 hourly={hourly}

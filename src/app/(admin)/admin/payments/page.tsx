@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/server'
 import PaymentVerificationPanel from '@/components/admin/PaymentVerificationPanel'
 import { getRestaurantFeatures } from '@/lib/features'
 import { redirect } from 'next/navigation'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { CreditCard } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,10 +26,7 @@ export default async function AdminPaymentsPage() {
 
     return (
         <div className="space-y-6">
-            <header className="mb-6">
-                <h1 className="text-h2 font-extrabold text-ink">Payment Verification</h1>
-                <p className="text-ink-subtle font-medium mt-1">Review and approve customer payment claims</p>
-            </header>
+            <PremiumPageHeader title="Payment Verification" description="Review and approve customer payment claims." icon={<CreditCard size={18} />} color="orange" />
 
             <PaymentVerificationPanel
                 initialClaims={claims || []}

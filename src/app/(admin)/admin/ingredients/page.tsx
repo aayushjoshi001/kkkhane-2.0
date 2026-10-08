@@ -1,6 +1,8 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import IngredientsManager, { type IngredientMovementRow } from './IngredientsManager'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Boxes } from 'lucide-react'
 
 import { redirect } from 'next/navigation'
 import { getRestaurantFeatures } from '@/lib/features'
@@ -58,10 +60,7 @@ export default async function AdminIngredientsPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-surface p-6 rounded-xl border border-hairline-strong shadow-sm">
-                <h1 className="text-2xl font-bold text-ink">Stock</h1>
-                <p className="text-ink-subtle mt-1">Track stock levels, costs and movements.</p>
-            </div>
+            <PremiumPageHeader title="Stock" description="Track ingredient levels, costs, and movements across your kitchen." icon={<Boxes size={18} />} color="orange" />
             <IngredientsManager
                 initialIngredients={ingredients || []}
                 restaurantId={rid}

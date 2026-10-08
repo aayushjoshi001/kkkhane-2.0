@@ -416,19 +416,9 @@ export default function IncomeExpensesManager({
 
     return (
         <div className="space-y-6">
-            {/* Page Title Header */}
-            <div className="bg-surface p-5 md:p-6 rounded-[var(--r-md)] border border-hairline shadow-sm">
-                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-extrabold text-ink">Income & Expenses</h1>
-                        <p className="text-ink-subtle text-sm mt-1">
-                            Track transactions manually. Accessible to all users.
-                        </p>
-                    </div>
-                    
-                    {/* Time Filter Controls */}
-                    <DateRangePicker from={dateRange.from} to={dateRange.to} onChange={setDateRange} className="w-full sm:w-auto sm:max-w-xl" />
-                </div>
+            {/* Time Filter Controls */}
+            <div className="flex justify-end">
+                <DateRangePicker from={dateRange.from} to={dateRange.to} onChange={setDateRange} className="w-full sm:w-auto sm:max-w-xl" />
             </div>
 
             {/* Huge Full-Width Switcher Tabs */}
@@ -501,7 +491,8 @@ export default function IncomeExpensesManager({
                                     value={selectedIncomeCat}
                                     onChange={e => setSelectedIncomeCat(e.target.value)}
                                     searchable
-                                    className="px-3 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)] w-full sm:w-44"
+                                    compact
+                                    className="w-full sm:w-44"
                                 >
                                     <option value="all">All Income Categories</option>
                                     {incomeCategoryOptions.map(({ category, label }) => (
@@ -513,7 +504,8 @@ export default function IncomeExpensesManager({
                                     value={selectedExpenseCat}
                                     onChange={e => setSelectedExpenseCat(e.target.value)}
                                     searchable
-                                    className="px-3 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)] w-full sm:w-44"
+                                    compact
+                                    className="w-full sm:w-44"
                                 >
                                     <option value="all">All Expense Categories</option>
                                     {expenseCategoryOptions.map(({ category, label }) => (
@@ -524,15 +516,13 @@ export default function IncomeExpensesManager({
 
                             {/* Search Input */}
                             <div className="relative w-full sm:w-64">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted">
-                                    <Search size={14} />
-                                </span>
+                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted pointer-events-none" />
                                 <input
                                     type="text"
                                     placeholder="Search logs..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
-                                    className="w-full pl-9 pr-4 py-1.5 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]"
+                                    className="w-full pl-8 pr-3 py-1.5 bg-surface border border-hairline rounded-lg text-[11px] font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
                                 />
                             </div>
 

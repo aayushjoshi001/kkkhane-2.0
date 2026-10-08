@@ -343,21 +343,7 @@ export default function BankLedgerManager({
 
     return (
         <div className="space-y-6 pb-16 animate-fade-up">
-            {/* Clean Light Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center">
-                            <Landmark size={20} className="text-brand-500" />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-extrabold text-ink tracking-tight">Bank Ledger</h1>
-                            <p className="text-sm text-ink-subtle mt-0.5">
-                                Select bank account to analyze detailed statements, running balances, and cash deposits.
-                            </p>
-                        </div>
-                    </div>
-                </div>
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => setAddBankModalOpen(true)}

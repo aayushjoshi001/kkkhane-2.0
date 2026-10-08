@@ -1,6 +1,8 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import PromoCodesManager from './PromoCodesManager'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Percent } from 'lucide-react'
 
 import { redirect } from 'next/navigation'
 import { getRestaurantFeatures } from '@/lib/features'
@@ -23,10 +25,7 @@ export default async function AdminPromosPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-surface p-6 rounded-xl border border-hairline-strong shadow-sm">
-                <h1 className="text-2xl font-bold text-ink">Promo Codes</h1>
-                <p className="text-ink-subtle mt-1">Create and manage promotional codes for your customers.</p>
-            </div>
+            <PremiumPageHeader title="Promo Codes" description="Create and manage promotional discount codes for your customers." icon={<Percent size={18} />} color="orange" />
             <PromoCodesManager
                 initialPromos={promos || []}
                 restaurantId={restaurantId}

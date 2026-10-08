@@ -7,7 +7,7 @@ import {
     TrendingUp, ShoppingBag, Tag, Heart, DollarSign, Package,
     FileText, Truck, Clock, CreditCard, Sparkles, Sun, Moon, X,
     Bed, CalendarRange, Hotel, BookOpen, Wallet, Landmark, HandCoins, PenLine,
-    AlertTriangle, Printer, Activity, Banknote
+    AlertTriangle, Printer, Activity, Banknote, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -19,6 +19,10 @@ import { useSidebar } from '@/lib/contexts/SidebarContext'
 import SidebarShell from '@/components/admin/SidebarShell'
 import { useFeatures, useFeatureEnabled, useBusinessMode } from '@/lib/contexts/FeatureContext'
 import { generatedAvatar, isGeneratedAvatar } from '@/lib/avatar'
+import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
+import CalendarToggle from '@/components/shared/CalendarToggle'
+import SoundEnableButton from '@/components/shared/SoundEnableButton'
+import { CommandHint } from '@/components/ui/CommandHint'
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -27,8 +31,8 @@ function cn(...inputs: ClassValue[]) {
 export default function AdminSidebar({ userRole, restaurantName, userAvatar }: { userRole?: string; restaurantName?: string; userAvatar?: string }) {
     const pathname = usePathname()
     const router = useRouter()
-    const { closeMobile } = useSidebar()
-    const [isDark, setIsDark] = useState(true) // Defaulting to the dark premium vibe
+    const { closeMobile, toggleDesktop, isCollapsed: sidebarIsCollapsed } = useSidebar()
+    const [isDark, setIsDark] = useState(false) // Default to light pale-orange sidebar
     const [imgError, setImgError] = useState(false)
     // Every flag resolves through useFeatureEnabled, which shares the absent-key
     // defaults (DEFAULT_ON_FEATURES / MODULE_DEFAULT_ON) with the server's
@@ -42,6 +46,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     const dineInEnabled = useFeatureEnabled('dineInEnabled')
     const financeEnabled = useFeatureEnabled('financeEnabled')
     const manualEntryEnabled = useFeatureEnabled('manualEntryEnabled')
+    const vouchersEnabled = useFeatureEnabled('vouchersEnabled')
     const promosEnabled = useFeatureEnabled('promosEnabled')
     const loyaltyEnabled = useFeatureEnabled('loyaltyEnabled')
     const takeoutEnabled = useFeatureEnabled('takeoutEnabled')
@@ -57,7 +62,7 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     // initialiser because localStorage does not exist during the server render.
     useEffect(() => {
         const storedTheme = localStorage.getItem('srms-theme')
-        const nextIsDark = storedTheme !== 'light'
+        const nextIsDark = storedTheme === 'dark'
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsDark(nextIsDark)
         document.documentElement.classList.toggle('dark', nextIsDark)
@@ -85,8 +90,13 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
     const renderContent = (isCollapsed: boolean) => (
         <div className={cn(
             "flex flex-col h-full relative overflow-hidden transition-colors duration-500",
-            isDark ? "bg-[#0a0a0a] text-white/70" : "bg-[#f8f9fa] text-ink-muted border-r border-hairline-strong"
-        )}>
+            isDark ? "bg-[#1a0800] text-white/70" : "text-ink-muted border-r border-hairline-strong"
+        )}
+        style={!isDark ? { background: 'linear-gradient(175deg, #F5E9DB 0%, #FAF1E8 30%, #FBF5EE 70%, #FFFCF8 100%)' } : undefined}>
+            {/* Top brand accent strip */}
+            <div className={cn("absolute top-0 left-0 right-0 h-[2.5px] pointer-events-none z-20",
+                isDark ? "bg-gradient-to-r from-transparent via-brand-500/70 to-transparent" : "bg-gradient-to-r from-transparent via-brand-500/80 to-transparent"
+            )} />
             {/* Ambient Background Glow (Only in Dark Mode) */}
             {isDark && (
                 <>
@@ -96,148 +106,184 @@ export default function AdminSidebar({ userRole, restaurantName, userAvatar }: {
             )}
 
             {/* Header / Logo */}
-            <div className={cn("py-6 flex items-center shrink-0 relative z-10 transition-all duration-300", isCollapsed ? "px-0 justify-center" : "px-6 justify-between gap-3")}>
+            <div className={cn("py-5 flex items-center shrink-0 relative z-10 transition-all duration-300", isCollapsed ? "px-0 justify-center" : "px-5 justify-between gap-3")}>
                 <div className={cn("flex items-center min-w-0", isCollapsed ? "justify-center" : "gap-3")}>
-                    <Logo variant="dark" className={cn("shrink-0", isDark ? "h-7" : "h-7")} />
+                    <Logo variant="dark" className="h-9 shrink-0" />
                     {!isCollapsed && (
-                        <div className="min-w-0 flex flex-col justify-center transition-all duration-300 opacity-100">
-                            <p className={cn("text-base font-extrabold truncate leading-none tracking-tight", isDark ? "text-white" : "text-ink")}>
+                        <div className="min-w-0 flex flex-col gap-1 justify-center transition-all duration-300 opacity-100">
+                            <p className={cn("text-[19px] font-black truncate leading-none tracking-[-0.03em]", isDark ? "text-white" : "text-ink")}>
                                 {restaurantName || 'kkkhane'}
                             </p>
-                            <p className="text-[10px] font-bold text-brand-500 uppercase tracking-[0.2em] mt-1.5">
+                            <p className="text-[10px] font-extrabold text-brand-500 uppercase tracking-[0.22em] leading-none">
                                 Workspace
                             </p>
                         </div>
                     )}
                 </div>
-                <button onClick={closeMobile}
-                        type="button"
-                        aria-label="Close navigation menu"
-                        className={cn(
-                            // 44px tap target; `p-2` around an 18px icon was 34px.
-                            "md:hidden -mr-2 inline-flex items-center justify-center min-w-11 min-h-11 rounded-xl transition-colors",
-                            isDark ? "text-white/50 hover:text-white hover:bg-surface/10" : "text-ink-subtle hover:text-ink hover:bg-surface-muted"
-                        )}>
+                {/* Mobile: close drawer — Desktop: collapse/expand sidebar */}
+                <button onClick={closeMobile} type="button" aria-label="Close navigation menu"
+                        className={cn("md:hidden -mr-1 inline-flex items-center justify-center min-w-11 min-h-11 rounded-xl transition-colors",
+                            isDark ? "text-white/50 hover:text-white hover:bg-surface/10" : "text-ink-subtle hover:text-ink hover:bg-surface-muted")}>
                     <X size={20} />
+                </button>
+                <button onClick={toggleDesktop} type="button"
+                        aria-label={sidebarIsCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                        className={cn("hidden md:inline-flex -mr-1 items-center justify-center min-w-9 min-h-9 rounded-xl transition-colors",
+                            isDark ? "text-white/40 hover:text-white hover:bg-surface/10" : "text-ink-subtle hover:text-ink hover:bg-surface-muted")}>
+                    {sidebarIsCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
                 </button>
             </div>
 
+            {/* Header separator */}
+            {!isCollapsed && (
+                <div className={cn("mx-5 mb-1 h-px", isDark ? "bg-white/5" : "bg-gradient-to-r from-transparent via-brand-500/25 to-transparent")} />
+            )}
+
+            {/* Controls bar — three cells: day status · BS/AD · search */}
+            {!isCollapsed && (
+                <div className={cn(
+                    "mx-4 mb-3 shrink-0 flex items-stretch rounded-xl border overflow-hidden relative z-10",
+                    isDark ? "bg-white/5 border-white/10" : "bg-white/80 border-brand-500/18 shadow-sm"
+                )}>
+                    {/* Day status cell */}
+                    <div className={cn("flex items-center px-2.5 py-1 border-r shrink-0", isDark ? "border-white/10" : "border-brand-500/12")}>
+                        <BusinessSessionControl variant="mini" />
+                    </div>
+                    {/* Calendar cell */}
+                    <div className={cn("flex items-center px-2 py-1 border-r shrink-0", isDark ? "border-white/10" : "border-brand-500/12")}>
+                        <CalendarToggle compact />
+                    </div>
+                    {/* Search cell — takes remaining space */}
+                    <CommandHint
+                        hideKbd
+                        className={cn(
+                            "flex-1 px-2.5 py-1 text-[11px] font-semibold rounded-none",
+                            isDark ? "text-white/45 hover:text-white hover:bg-white/5" : "text-ink-subtle hover:text-ink hover:bg-brand-500/[0.06]"
+                        )}
+                    />
+                    <SoundEnableButton variant="light" />
+                </div>
+            )}
+
+            {/* Separator between controls and nav */}
+            {!isCollapsed && (
+                <div className={cn("mx-4 mb-1 h-px shrink-0", isDark ? "bg-white/8" : "bg-gradient-to-r from-transparent via-brand-500/22 to-transparent")} />
+            )}
+
             {/* Navigation */}
             <nav className={cn("flex-1 overflow-y-auto overscroll-contain py-2 scrollbar-none space-y-1 relative z-10", isCollapsed ? "px-2" : "px-4")}>
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/dashboard"     icon={BarChart3}       label="Overview"        path={pathname} />
-                {financeEnabled && manualEntryEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/manual-entry"  icon={PenLine}         label="Manual Entry"    path={pathname} />}
-                <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Alerts & Status</SectionLabel>
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/critical"      icon={AlertTriangle}   label="Critical Center" path={pathname} />
+                {/* Top-level — no section header, these are always visible */}
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/dashboard"    icon={BarChart3}     label="Overview"        path={pathname} />
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/critical"     icon={AlertTriangle} label="Critical Center"  path={pathname} />
+                {financeEnabled && manualEntryEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/manual-entry" icon={PenLine} label="Manual Entry" path={pathname} />}
+
                 {isHotel ? (
                     <>
                         <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Hospitality</SectionLabel>
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/rooms"     icon={Bed}             label="Rooms & Suites"  path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bookings"  icon={CalendarRange}   label="Bookings History"        path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"    icon={ShoppingBag}     label="Service Orders History"  path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/rooms"    icon={Bed}           label="Rooms & Suites"         path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bookings" icon={CalendarRange} label="Bookings History"        path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"   icon={ShoppingBag}   label="Service Orders History"  path={pathname} />
                         {features.irdSyncEnabled && userRole !== 'manager' && (
-                            <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"  icon={CreditCard}      label="Room Billing"    path={pathname} />
+                            <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments" icon={CreditCard} label="Room Billing" path={pathname} />
                         )}
 
-                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Menu & Catalog</SectionLabel>
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/menu"        icon={UtensilsCrossed} label="Menu Catalog"    path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/combos"      icon={Sparkles}        label="Combo Offers"    path={pathname} />
-                        {dynamicPricingEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/pricing"     icon={DollarSign}      label="Dynamic Pricing" path={pathname} />}
-                        {promosEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/promos"      icon={Tag}             label="Promo Codes"     path={pathname} />}
-                        {tableManagementEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />}
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Catalog</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/menu"   icon={UtensilsCrossed} label="Menu Catalog"    path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/combos" icon={Sparkles}        label="Combo Offers"    path={pathname} />
+                        {dynamicPricingEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/pricing" icon={DollarSign} label="Dynamic Pricing" path={pathname} />}
+                        {promosEnabled          && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/promos"  icon={Tag}        label="Promo Codes"     path={pathname} />}
+                        {tableManagementEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"  icon={Grid3X3}    label="Tables & QR"     path={pathname} />}
+
+                        {(ingredientTrackingEnabled || staffManagementEnabled || staffShiftsEnabled || financeEnabled) && (
+                            <>
+                                <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Operations</SectionLabel>
+                                {ingredientTrackingEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/ingredients" icon={Package} label="Inventory"        path={pathname} />}
+                                {staffManagementEnabled    && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/staff"       icon={Users}   label="Staff Members"   path={pathname} />}
+                                {financeEnabled            && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/suppliers"   icon={Truck}   label="Suppliers Ledger" path={pathname} />}
+                                {staffShiftsEnabled        && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shifts"      icon={Clock}   label="Schedule"        path={pathname} />}
+                                {staffShiftsEnabled        && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shift-cash"  icon={Banknote} label="Shift Cash"     path={pathname} />}
+                            </>
+                        )}
 
                         <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Intelligence</SectionLabel>
-                        {financeEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/reports"     icon={FileText}        label="EOD Reports"     path={pathname} />}
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/analytics"   icon={TrendingUp}      label="Analytics"       path={pathname} />
+                        {financeEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/reports"   icon={FileText}   label="EOD Reports" path={pathname} />}
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/analytics" icon={TrendingUp} label="Analytics"   path={pathname} />
                     </>
                 ) : (
                     <>
-                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Menu & Catalog</SectionLabel>
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/menu"        icon={UtensilsCrossed} label="Menu Catalog"    path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/combos"      icon={Sparkles}        label="Combo Offers"    path={pathname} />
-                        {dynamicPricingEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/pricing"     icon={DollarSign}      label="Dynamic Pricing" path={pathname} />}
-                        {promosEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/promos"      icon={Tag}             label="Promo Codes"     path={pathname} />}
-                        {/* Same rule and same section as the hotel branch above,
-                            and the same rule as the page behind it
-                            (admin/tables/page.tsx gates on tableManagementEnabled
-                            alone). This link used to additionally require
-                            dineInEnabled while the hotel branch and the page did
-                            not — three rules for one destination, so a hotel saw
-                            the link with dine-in off, a delivery-only restaurant
-                            had it hidden yet could still open the page by URL,
-                            and turning dine-in off looked like it removed a
-                            module it does not own. Whether a tenant lays out
-                            tables is tableManagementEnabled's question; whether
-                            guests order from them at the table is dineInEnabled's,
-                            and that gates Live Orders below, not this. */}
-                        {tableManagementEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"      icon={Grid3X3}         label="Tables & QR"     path={pathname} />}
+                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Catalog</SectionLabel>
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/menu"   icon={UtensilsCrossed} label="Menu Catalog"    path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/combos" icon={Sparkles}        label="Combo Offers"    path={pathname} />
+                        {dynamicPricingEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/pricing" icon={DollarSign} label="Dynamic Pricing" path={pathname} />}
+                        {promosEnabled          && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/promos"  icon={Tag}        label="Promo Codes"     path={pathname} />}
+                        {/* tableManagementEnabled alone gates this link and its page —
+                            dineInEnabled is about ordering at the table, not table layout. */}
+                        {tableManagementEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/tables"  icon={Grid3X3}    label="Tables & QR"     path={pathname} />}
 
-                        {(dineInEnabled || takeoutEnabled) && (
+                        {/* Single "Operations" section — live orders, takeout, staff, and
+                            inventory all belong here; splitting them into "Live Operations"
+                            and "Operations" created two sections with the same name. */}
+                        {(dineInEnabled || takeoutEnabled || ingredientTrackingEnabled || staffManagementEnabled || staffShiftsEnabled || financeEnabled) && (
                             <>
-                                <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Live Operations</SectionLabel>
-                                {/* No badge until it can show a real count — this
-                                    read `badge="12"` unconditionally, so every
-                                    restaurant saw "12 live orders" forever. */}
-                                {dineInEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"      icon={ShoppingBag}     label="Live Orders"     path={pathname} />}
-                                {dineInEnabled && features.irdSyncEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"    icon={CreditCard}      label="Payments"        path={pathname} />}
-                                {takeoutEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/takeout"     icon={Truck}           label="Takeout & Disp." path={pathname} />}
+                                <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Operations</SectionLabel>
+                                {dineInEnabled                          && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/orders"      icon={ShoppingBag} label="Live Orders"       path={pathname} />}
+                                {dineInEnabled && features.irdSyncEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/payments"  icon={CreditCard}  label="Payments"          path={pathname} />}
+                                {takeoutEnabled                         && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/takeout"      icon={Truck}       label="Takeout & Disp."  path={pathname} />}
+                                {ingredientTrackingEnabled              && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/ingredients"  icon={Package}     label="Inventory"         path={pathname} />}
+                                {staffManagementEnabled                 && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/staff"        icon={Users}       label="Staff Members"     path={pathname} />}
+                                {financeEnabled                         && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/suppliers"    icon={Truck}       label="Suppliers Ledger"  path={pathname} />}
+                                {staffShiftsEnabled                     && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shifts"       icon={Clock}       label="Schedule"          path={pathname} />}
+                                {staffShiftsEnabled                     && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shift-cash"   icon={Banknote}    label="Shift Cash"        path={pathname} />}
                             </>
                         )}
-                        
+
                         <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Intelligence</SectionLabel>
-                        {loyaltyEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/loyalty"     icon={Heart}           label="Loyalty Program" path={pathname} />}
-                        {financeEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/reports"     icon={FileText}        label="EOD Reports"     path={pathname} />}
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/analytics"   icon={TrendingUp}      label="Analytics"       path={pathname} />
+                        {loyaltyEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/loyalty"   icon={Heart}     label="Loyalty Program" path={pathname} />}
+                        {financeEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/reports"   icon={FileText}  label="EOD Reports"     path={pathname} />}
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/analytics" icon={TrendingUp} label="Analytics"              path={pathname} />
                     </>
                 )}
 
-                {(ingredientTrackingEnabled || staffManagementEnabled || staffShiftsEnabled || financeEnabled) && (
-                    <>
-                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Operations</SectionLabel>
-                        {ingredientTrackingEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/ingredients" icon={Package}         label="Inventory"       path={pathname} />}
-                        {staffManagementEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/staff"       icon={Users}           label="Staff Members"   path={pathname} />}
-                        {financeEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/suppliers"   icon={Truck}           label="Suppliers Ledger" path={pathname} />}
-                        {staffShiftsEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shifts"      icon={Clock}           label="Schedule"        path={pathname} />}
-                        {staffShiftsEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/shift-cash"  icon={Banknote}        label="Shift Cash"      path={pathname} />}
-                    </>
-                )}
-
+                {/* Finance — one section covering the overview page and all ledgers;
+                    "Ledgers" was a separate section immediately above a "Finance" section
+                    with a single link of the same name, which read as a duplicate. */}
                 {financeEnabled && (
                     <>
-                        <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Ledgers</SectionLabel>
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/day-book"    icon={BookOpen}        label="Day Book"        path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/cash-book"   icon={Wallet}          label="Cash Book"       path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bank-book"   icon={Landmark}        label="Bank Book"       path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bank-ledger" icon={Landmark}        label="Bank Ledger"     path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/vouchers"    icon={FileText}        label="Vouchers Ledger" path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/customers"   icon={HandCoins}       label="Customers Ledger" path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/income-expenses" icon={TrendingUp}  label="Income & Expenses" path={pathname} />
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/activities" icon={Activity} label="Activities Log" path={pathname} />
-
                         <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Finance</SectionLabel>
-                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/finance"     icon={Wallet}          label="Finance"         path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/finance"         icon={Wallet}     label="Finance Overview"   path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/day-book"        icon={BookOpen}   label="Day Book"            path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/cash-book"       icon={Wallet}     label="Cash Book"           path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bank-book"       icon={Landmark}   label="Bank Book"           path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/bank-ledger"     icon={Landmark}   label="Bank Ledger"         path={pathname} />
+                        {vouchersEnabled && <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/vouchers"     icon={FileText}   label="Vouchers Ledger"    path={pathname} />}
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/customers"       icon={HandCoins}  label="Customers Ledger"    path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/income-expenses" icon={TrendingUp} label="Income & Expenses"   path={pathname} />
+                        <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/activities"      icon={Activity}   label="Activities Log"      path={pathname} />
                     </>
                 )}
 
                 <SectionLabel isDark={isDark} isCollapsed={isCollapsed}>Settings</SectionLabel>
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/homepage"    icon={Palette}         label="Homepage Setup"  path={pathname} />
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/homepage" icon={Palette}  label="Homepage Setup"  path={pathname} />
                 {features.irdSyncEnabled && (
-                    <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/reconciliation" icon={Users}        label="Partner Linking" path={pathname} />
+                    <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/reconciliation" icon={Users} label="Partner Linking" path={pathname} />
                 )}
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/theme"       icon={Palette}         label="Brand & Theme"   path={pathname} />
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/printers"    icon={Printer}         label="Printers"        path={pathname} />
-                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/settings"    icon={Settings}        label="Settings"        path={pathname} />
-                
-                <div className="h-4" /> {/* Bottom padding */}
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/theme"    icon={Palette}  label="Brand & Theme"   path={pathname} />
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/printers" icon={Printer}  label="Printers"        path={pathname} />
+                <NavItem isDark={isDark} isCollapsed={isCollapsed} href="/admin/settings" icon={Settings} label="Settings"        path={pathname} />
+
+                <div className="h-4" />
             </nav>
 
             {/* Footer Profile & Theme Toggle */}
-            <div className={cn("p-4 relative z-10 shrink-0", isCollapsed && "p-2 flex flex-col gap-2 items-center")}>
+            <div className={cn("p-3 relative z-10 shrink-0", isCollapsed && "p-2 flex flex-col gap-2 items-center")}>
+                {/* Subtle footer separator */}
+                <div className={cn("mb-3 h-px", isDark ? "bg-white/5" : "bg-gradient-to-r from-transparent via-brand-500/20 to-transparent")} />
                 <Link href="/admin/profile" className={cn(
-                    "flex items-center rounded-2xl transition-all duration-300 group cursor-pointer backdrop-blur-md",
+                    "flex items-center rounded-2xl transition-all duration-300 group cursor-pointer",
                     isCollapsed ? "flex-col p-2 gap-2" : "gap-3 p-3",
-                    isDark 
-                        ? "bg-surface/5 border border-white/10 hover:bg-surface/10" 
-                        : "bg-surface border border-hairline-strong hover:border-hairline-strong hover:shadow-sm"
+                    isDark
+                        ? "bg-white/5 border border-white/10 hover:bg-white/8 hover:border-white/15"
+                        : "bg-white/70 border border-brand-500/15 shadow-sm hover:shadow-md hover:border-brand-500/25 hover:bg-white/90"
                 )}>
                     {/* User Avatar */}
                     <div className={cn("rounded-xl overflow-hidden shrink-0 border border-black/5 shadow-sm relative", isCollapsed ? "w-8 h-8" : "w-10 h-10")}>
@@ -322,9 +368,10 @@ function SectionLabel({ children, isDark, isCollapsed }: { children: React.React
     }
     return (
         <p className={cn(
-            "px-4 pt-6 pb-2 text-[10px] font-extrabold uppercase tracking-[0.2em] flex items-center gap-2",
-            isDark ? "text-white/30" : "text-ink-subtle"
+            "px-4 pt-5 pb-1.5 text-[10px] font-extrabold uppercase tracking-[0.18em] flex items-center gap-2",
+            isDark ? "text-white/30" : "text-ink-subtle/80"
         )}>
+            <span className="w-1 h-1 rounded-full shrink-0 bg-brand-500/60" />
             {children}
         </p>
     )
@@ -346,22 +393,20 @@ function NavItem({ href, icon: Icon, label, path, badge, isDark, isCollapsed }: 
                 "transition-colors duration-200 motion-reduce:transition-none",
                 isCollapsed ? "justify-center" : "justify-between",
                 isActive
-                    ? isDark
-                        ? "bg-gradient-to-r from-brand-500 to-[#ff7a00] text-white shadow-[0_2px_10px_-2px_rgba(255,90,0,0.45)]"
-                        : "bg-brand-500/10 text-brand-600 border border-brand-500/20"
+                    ? "bg-gradient-to-r from-brand-500 to-[#ff7a00] text-white shadow-[0_2px_12px_-2px_rgba(255,90,0,0.45)]"
                     : isDark
                         // /60 on near-black is about 3.4:1 — under the 4.5:1 floor
                         // for the smaller text this nav uses.
                         ? "text-white/75 hover:bg-white/5 hover:text-white"
-                        : "text-ink-subtle hover:bg-surface-muted hover:text-ink"
+                        : "text-ink-subtle hover:bg-brand-500/[0.07] hover:text-ink"
             )}
         >
             <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3.5")}>
                 <Icon size={isCollapsed ? 20 : 18} className={cn(
                     "shrink-0 transition-all duration-300", 
-                    isActive 
-                        ? isDark ? "text-white" : "text-brand-500" 
-                        : isDark ? "text-white/40 group-hover:text-white/80" : "text-ink-subtle group-hover:text-ink-muted"
+                    isActive
+                        ? "text-white"
+                        : isDark ? "text-white/40 group-hover:text-white/80" : "text-ink-subtle group-hover:text-ink"
                 )} />
                 {!isCollapsed && <span>{label}</span>}
             </div>

@@ -1,4 +1,7 @@
+'use client'
+
 import Link from 'next/link'
+import { useState } from 'react'
 import { Check, Minus, ArrowRight } from 'lucide-react'
 import {
     PLANS,
@@ -8,6 +11,8 @@ import {
     type Plan,
     type Benefit,
 } from '@/lib/pricing'
+
+type Billing = 'monthly' | 'yearly'
 
 /** Muted, badged row for anything not shipped yet. Never reads as available. */
 function BenefitRow({ benefit, tone = 'default' }: { benefit: Benefit; tone?: 'default' | 'invert' }) {
@@ -40,7 +45,7 @@ function BenefitRow({ benefit, tone = 'default' }: { benefit: Benefit; tone?: 'd
     )
 }
 
-function PriceBlock({ plan, invert }: { plan: Plan; invert: boolean }) {
+function PriceBlock({ plan, billing, invert }: { plan: Plan; billing: Billing; invert: boolean }) {
     const { price } = plan
 
     if (price.kind === 'contact') {
@@ -64,8 +69,29 @@ function PriceBlock({ plan, invert }: { plan: Plan; invert: boolean }) {
         )
     }
 
+    if (billing === 'monthly' && price.monthly) {
+        const perDay = Math.round(price.monthly / 30)
+        return (
+            <div className="mb-8">
+                <div className="flex items-end gap-2">
+                    <span className={`text-4xl font-black tracking-tight ${invert ? 'text-white' : 'text-ink'}`}>
+                        {CURRENCY_SYMBOL} {formatPrice(price.monthly)}
+                    </span>
+                    <span className="mb-1 text-sm font-medium text-ink-subtle">/mo</span>
+                </div>
+                <p className={`mt-1.5 text-xs font-semibold ${invert ? 'text-brand-300' : 'text-[var(--color-primary)]'}`}>
+                    Only {CURRENCY_SYMBOL} {perDay}/day
+                </p>
+                <p className="mt-1 text-xs font-medium text-ink-subtle">
+                    Billed monthly. Save with annual billing.
+                </p>
+            </div>
+        )
+    }
+
     const discounted = price.firstYear !== price.list
     const renewal = renewalPrice(price)
+    const perDay = Math.round(price.firstYear / 365)
 
     return (
         <div className="mb-8">
@@ -80,8 +106,11 @@ function PriceBlock({ plan, invert }: { plan: Plan; invert: boolean }) {
                 </span>
                 <span className="mb-1 text-sm font-medium text-ink-subtle">/yr</span>
             </div>
+            <p className={`mt-1.5 text-xs font-semibold ${invert ? 'text-brand-300' : 'text-[var(--color-primary)]'}`}>
+                Only {CURRENCY_SYMBOL} {perDay}/day
+            </p>
             {price.renewsAtHalfList && renewal !== null && (
-                <p className="mt-2 text-xs font-medium text-ink-subtle">
+                <p className="mt-1 text-xs font-medium text-ink-subtle">
                     Renews at {CURRENCY_SYMBOL} {formatPrice(renewal)}/yr — 50% off list.
                 </p>
             )}
@@ -89,7 +118,7 @@ function PriceBlock({ plan, invert }: { plan: Plan; invert: boolean }) {
     )
 }
 
-function PlanCard({ plan }: { plan: Plan }) {
+function PlanCard({ plan, billing }: { plan: Plan; billing: Billing }) {
     const invert = Boolean(plan.popular)
 
     return (
@@ -113,7 +142,7 @@ function PlanCard({ plan }: { plan: Plan }) {
                 <h3 className={`mb-2 text-xl font-extrabold ${invert ? 'text-white' : 'text-ink'}`}>{plan.name}</h3>
                 <p className="mb-6 min-h-[40px] text-sm font-medium leading-relaxed text-ink-subtle">{plan.tagline}</p>
 
-                <PriceBlock plan={plan} invert={invert} />
+                <PriceBlock plan={plan} billing={billing} invert={invert} />
 
                 <Link
                     href={plan.cta.href}
@@ -214,15 +243,50 @@ function EnterpriseBand({ plan }: { plan: Plan }) {
     )
 }
 
+function BillingToggle({ billing, onChange }: { billing: Billing; onChange: (b: Billing) => void }) {
+    return (
+        <div className="flex justify-center mb-10">
+            <div className="flex items-center rounded-full border border-hairline-strong bg-surface-muted p-1 gap-1">
+                <button
+                    onClick={() => onChange('monthly')}
+                    className={`rounded-full px-6 py-2 text-sm font-bold transition-all duration-200 ${
+                        billing === 'monthly'
+                            ? 'bg-surface shadow text-ink'
+                            : 'text-ink-subtle hover:text-ink'
+                    }`}
+                >
+                    Monthly
+                </button>
+                <button
+                    onClick={() => onChange('yearly')}
+                    className={`flex items-center gap-2 rounded-full px-6 py-2 text-sm font-bold transition-all duration-200 ${
+                        billing === 'yearly'
+                            ? 'bg-surface shadow text-ink'
+                            : 'text-ink-subtle hover:text-ink'
+                    }`}
+                >
+                    Yearly
+                    <span className="rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                        Save 30%
+                    </span>
+                </button>
+            </div>
+        </div>
+    )
+}
+
 export default function PricingCards() {
+    const [billing, setBilling] = useState<Billing>('yearly')
     const selfServe = PLANS.filter(p => p.price.kind !== 'contact')
     const enterprise = PLANS.find(p => p.price.kind === 'contact')
 
     return (
         <div className="mx-auto max-w-[1400px]">
+            <BillingToggle billing={billing} onChange={setBilling} />
+
             <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-4">
                 {selfServe.map(plan => (
-                    <PlanCard key={plan.tier} plan={plan} />
+                    <PlanCard key={plan.tier} plan={plan} billing={billing} />
                 ))}
             </div>
 

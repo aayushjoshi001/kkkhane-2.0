@@ -512,12 +512,7 @@ export default function RoomsClient({
 
     return (
         <div className="space-y-6 pb-12">
-            {/* Header section */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-ink tracking-tight">Rooms & Suites</h1>
-                    <p className="text-sm text-ink-subtle mt-1">Manage hotel rooms, occupancy status, and housekeeping.</p>
-                </div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4">
                 <div className="flex items-center gap-3 shrink-0">
                     <DownloadAllQrsButton className="flex items-center gap-2 px-4 py-2.5 bg-surface-muted hover:bg-surface-muted text-ink font-semibold rounded-xl border border-hairline text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed" />
                     <button
@@ -572,7 +567,7 @@ export default function RoomsClient({
                     <Select
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
-                        className="px-3.5 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-semibold text-ink focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 cursor-pointer transition-all"
+                        compact
                     >
                         <option value="all">All Statuses</option>
                         {(Object.keys(ROOM_STATUS_CONFIG) as Array<keyof typeof ROOM_STATUS_CONFIG>).map(status => (
@@ -583,7 +578,7 @@ export default function RoomsClient({
                     <Select
                         value={filterType}
                         onChange={(e) => setFilterType(e.target.value)}
-                        className="px-3.5 py-2 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-semibold text-ink focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 cursor-pointer transition-all"
+                        compact
                     >
                         <option value="all">All Room Types</option>
                         {roomTypesList.map(t => (

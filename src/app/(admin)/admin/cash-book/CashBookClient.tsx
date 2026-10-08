@@ -386,19 +386,9 @@ export default function CashBookClient({
 
             {/* ── Header ── */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                            <Wallet size={20} className="text-amber-600" />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-extrabold text-ink tracking-tight">Cash Book</h1>
-                            <p className="text-sm text-ink-subtle flex items-center gap-1 mt-0.5">
-                                <CalendarDays size={13} /> {dateLabel}
-                            </p>
-                        </div>
-                    </div>
-                </div>
+                <p className="text-sm text-ink-subtle flex items-center gap-1">
+                    <CalendarDays size={13} /> {dateLabel}
+                </p>
                 <div className="flex items-center gap-3">
                     {entries.length > 0 && (
                         <>

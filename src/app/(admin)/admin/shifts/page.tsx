@@ -1,6 +1,8 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import ShiftsManager from './ShiftsManager'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Clock } from 'lucide-react'
 
 import { redirect } from 'next/navigation'
 import { getRestaurantFeatures } from '@/lib/features'
@@ -25,10 +27,7 @@ export default async function AdminShiftsPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-surface p-6 rounded-xl border border-hairline-strong shadow-sm">
-                <h1 className="text-2xl font-bold text-ink">Staff Shifts</h1>
-                <p className="text-ink-subtle mt-1">Monitor active shifts and approve past timecards.</p>
-            </div>
+            <PremiumPageHeader title="Staff Shifts" description="Monitor active shifts and approve past timecards." icon={<Clock size={18} />} color="orange" />
             <ShiftsManager activeShifts={active || []} recentShifts={recent || []} />
         </div>
     )

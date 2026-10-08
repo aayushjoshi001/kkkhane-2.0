@@ -5,6 +5,7 @@ import { logAudit } from '@/lib/audit'
 import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense, postFinancialTransaction } from '@/lib/ledger'
 import { findOrCreateCustomerCreditAccount, postCreditCharge, postCreditRepayment, settleLoyalty } from '@/lib/customerCredit'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
+import { getNextInvoiceNumber } from '@/lib/invoiceNumber'
 import { assertBusinessOpen } from '@/lib/auth/businessGuard'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -329,7 +330,7 @@ export async function POST(req: Request) {
         const discountVal = Number(discountAmount) || 0
         const vatVal = isVatRegistered ? (totalAmount - (totalAmount / 1.13)) : 0
         const taxableVal = totalAmount - vatVal
-        const invoiceNumber = `INV-${isDelivery ? 'DEL' : 'TAKE'}-${order.id.slice(0, 8).toUpperCase()}`
+        const invoiceNumber = await getNextInvoiceNumber(currentUser.restaurantId)
 
         void syncInvoiceToIrd(currentUser.restaurantId, {
             invoiceNumber,

@@ -5,6 +5,8 @@ import BankLedgerManager from './BankLedgerManager'
 
 import { getRestaurantFeatures } from '@/lib/features'
 import { attachCreatorNames } from '@/lib/ledger'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { BookOpen } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,9 +50,12 @@ export default async function BankLedgerPage() {
     const namedBankEntries = await attachCreatorNames(supabase, filteredBankEntries)
 
     return (
-        <BankLedgerManager
-            bankAccounts={bankAccounts || []}
-            bankEntries={namedBankEntries}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Bank Ledger" description="View the complete history of all bank account transactions." icon={<BookOpen size={18} />} color="orange" />
+            <BankLedgerManager
+                bankAccounts={bankAccounts || []}
+                bankEntries={namedBankEntries}
+            />
+        </div>
     )
 }

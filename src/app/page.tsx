@@ -11,12 +11,12 @@ import {
 } from 'lucide-react'
 
 const faqs = [
-    { q: "What is KKKhane?", a: "KKKhane is a mobile-first restaurant ordering and table management system built in Nepal — menus, KOTs, billing, and everything in between." },
-    { q: "What are the features of KKKhane?", a: "Order management, digital QR menus, kitchen tickets, billing, inventory tracking, accounting, and real-time reporting. Which of these you get depends on your plan." },
-    { q: "Can I use KKKhane for free?", a: "Yes. The Free plan is free forever and covers up to 100 dishes, 10 categories and 3 staff logins. No credit card required." },
-    { q: "How secure is my restaurant data?", a: "Data is encrypted in transit and at rest, isolated per restaurant by row-level security, and access is governed by per-role permissions." },
-    { q: "Is KKKhane available on mobile devices?", a: "Yes, you can access the platform on any device with a modern web browser, iOS or Android." },
-    { q: "Do you offer a QR code menu feature?", a: "Yes. Guests scan a table QR code to browse the menu and order from their own phone, on every plan." },
+    { q: "What is KKKhane?", a: "KKKhane is a Nepal-first hotel and restaurant management SaaS — QR ordering, KOT/KDS, billing, Day Book, Cash Book, inventory, loyalty, and hotel management all in one platform." },
+    { q: "Is it IRD compliant?", a: "Yes. Every invoice is sequentially numbered with VAT/PAN fields and built to Nepal's Inland Revenue Department billing rules. It also supports Bikram Sambat dates on Platinum and above." },
+    { q: "Can I use KKKhane for free?", a: "Yes. The Free plan is free forever — up to 100 dishes, 10 tables and 3 staff accounts. No credit card required. Basic and above start at Rs. 999/mo." },
+    { q: "Does it accept Nepal Pay?", a: "Yes. eSewa, Khalti and Fonepay are supported on every plan with screenshot verification and automatic VAT invoice generation." },
+    { q: "Does it work for hotels?", a: "Yes. The Platinum plan includes full hotel management — room bookings, check-in/out, folio billing, and integrated restaurant + room charges." },
+    { q: "How secure is my data?", a: "Data is encrypted in transit and at rest, isolated per business by row-level security, and access is governed by per-role permissions." },
 ]
 
 export default async function Home({

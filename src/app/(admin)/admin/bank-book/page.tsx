@@ -7,6 +7,8 @@ import { getNstDateString } from '@/lib/timezone'
 import { resolveActiveDayBookSession, attachCreatorNames } from '@/lib/ledger'
 
 import { getRestaurantFeatures } from '@/lib/features'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Landmark } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -96,17 +98,20 @@ export default async function BankBookPage() {
     const previousClosingCashBalance: number = 0
 
     return (
-        <BankBookClient
-            initialSession={session ?? null}
-            initialEntries={entries}
-            initialTotals={initialTotals}
-            todayDate={todayDate}
-            userRole={currentUser.role}
-            currentUserName={currentUserName}
-            previousClosingBankBalance={previousClosingBankBalance}
-            previousClosingCashBalance={previousClosingCashBalance}
-            bankAccounts={bankAccounts || []}
-            expenseCategories={(expenseCategories as ExpenseCategory[]) || []}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Bank Book" description="Track bank deposits, withdrawals, and daily bank balance movements." icon={<Landmark size={18} />} color="orange" />
+            <BankBookClient
+                initialSession={session ?? null}
+                initialEntries={entries}
+                initialTotals={initialTotals}
+                todayDate={todayDate}
+                userRole={currentUser.role}
+                currentUserName={currentUserName}
+                previousClosingBankBalance={previousClosingBankBalance}
+                previousClosingCashBalance={previousClosingCashBalance}
+                bankAccounts={bankAccounts || []}
+                expenseCategories={(expenseCategories as ExpenseCategory[]) || []}
+            />
+        </div>
     )
 }

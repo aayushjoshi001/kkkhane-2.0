@@ -1030,6 +1030,8 @@ export default function SettingsManager({
                         { key: 'phoneOtpEnabled' as const, label: 'Phone OTP Login', desc: 'Allow phone number login via SMS OTP' },
                         { key: 'multiLanguageEnabled' as const, label: 'Multi-Language', desc: 'Menu in multiple languages' },
                         { key: 'manualEntryEnabled' as const, label: 'Manual Finance Entry', desc: 'Allow manual debit/credit journal entries and vouchers under the Finance section' },
+                        { key: 'vouchersEnabled' as const, label: 'Active Vouchers', desc: 'Show the Vouchers Ledger with receipt and payment voucher logs' },
+                        { key: 'chequeApprovalEnabled' as const, label: 'Pending Cheque Approvals', desc: 'Enable cheque deposit approval workflow — cheques wait for manager sign-off before posting to ledger' },
                         { key: 'printBillEnabled' as const, label: 'Print Checkout Bill', desc: 'Show button to print checkout invoices or receipts' },
                         { key: 'showInvoiceEnabled' as const, label: 'Show/Generate Invoices', desc: 'Allow generating official invoices at checkout' },
                     ]).filter((t) => !('show' in t) || t.show).map(({ key, label, desc }) => (

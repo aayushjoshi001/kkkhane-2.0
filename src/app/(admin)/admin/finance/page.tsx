@@ -3,6 +3,7 @@ import {
     Wallet, Landmark, Receipt, ArrowUpRight, Banknote, PiggyBank,
     TrendingUp, HandCoins, Percent, BookOpen,
 } from 'lucide-react'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import StatCard from '@/components/ui/StatCard'
@@ -47,6 +48,7 @@ export default async function FinanceDashboardPage() {
 
     return (
         <div className="space-y-6">
+            <PremiumPageHeader title="Finance" description="Financial overview — accounts, reports, and modules at a glance." icon={<TrendingUp size={18} />} color="orange" />
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard label="Active Cash Drawers" value={cashDrawers} icon={Wallet} tone="brand" />
                 <StatCard label="Active Bank Accounts" value={bankAccounts} icon={Landmark} tone="info" />

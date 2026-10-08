@@ -2,12 +2,15 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireRoleWithOptions } from '@/lib/auth'
+import type { Tier } from '@/lib/tiers'
 
 export async function submitPaymentReferenceAction(data: {
     amount: number
-    method: 'esewa' | 'bank'
+    method: 'esewa' | 'khalti' | 'fonepay' | 'bank'
     reference_code: string
     notes: string
+    plan_tier: Tier
+    billing_months: number
 }) {
     try {
         const currentUser = await requireRoleWithOptions(['super_admin', 'manager', 'owner'], { allowSuspended: true })
@@ -15,7 +18,6 @@ export async function submitPaymentReferenceAction(data: {
 
         const adminSupabase = await createAdminClient()
 
-        // Insert into subscription_payments table
         const { error } = await adminSupabase
             .from('subscription_payments')
             .insert({
@@ -24,7 +26,11 @@ export async function submitPaymentReferenceAction(data: {
                 payment_method: data.method,
                 reference_code: data.reference_code,
                 notes: data.notes,
-                recorded_by: currentUser.id
+                recorded_by: currentUser.id,
+                // Workflow columns (added in 20261007120000 migration)
+                status: 'pending',
+                plan_tier: data.plan_tier,
+                billing_months: data.billing_months,
             })
 
         if (error) throw error

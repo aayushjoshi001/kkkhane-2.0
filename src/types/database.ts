@@ -460,6 +460,10 @@ export interface Settings {
         kdsEnabled?: boolean
         roomServiceChargeEnabled?: boolean
         roomServiceChargeRooms?: string[]
+        // Finance sub-features — both default on so existing tenants are unaffected.
+        // A manager can switch either off to hide the tab entirely.
+        vouchersEnabled?: boolean
+        chequeApprovalEnabled?: boolean
     }
     business_hours: BusinessHours | null
     updated_at: string

@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CustomersLedgerManager from './CustomersLedgerManager'
 import { attachCreatorNames } from '@/lib/ledger'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Users } from 'lucide-react'
 
 import { getRestaurantFeatures } from '@/lib/features'
 
@@ -33,5 +35,10 @@ export default async function CustomersLedgerPage() {
 
     const transactionsWithCreator = await attachCreatorNames(supabase, transactions || [])
 
-    return <CustomersLedgerManager initialAccounts={accounts || []} initialTransactions={transactionsWithCreator} />
+    return (
+        <div className="space-y-6">
+            <PremiumPageHeader title="Customers Ledger" description="Track customer credit accounts and outstanding receivable balances." icon={<Users size={18} />} color="orange" />
+            <CustomersLedgerManager initialAccounts={accounts || []} initialTransactions={transactionsWithCreator} />
+        </div>
+    )
 }

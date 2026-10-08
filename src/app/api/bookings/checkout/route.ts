@@ -6,6 +6,7 @@ import { postHotelPaymentIncomeAndLedger, postBargainDiscountExpense, postFinanc
 import { computeFolioForStays } from '@/lib/folio'
 import { findOrCreateCustomerCreditAccount, postCreditCharge, postCreditRepayment, settleLoyalty } from '@/lib/customerCredit'
 import { syncInvoiceToIrd } from '@/lib/irdSync'
+import { getNextInvoiceNumber } from '@/lib/invoiceNumber'
 import { bookingInvoiceNumber } from '@/lib/utils'
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>
@@ -802,7 +803,7 @@ export async function POST(req: Request) {
         // carried any — or under-filed one that did.
         const vatVal = isVatRegistered ? round2(Number(folio.vat) || 0) : 0
         const taxableVal = round2(totalAmount - vatVal)
-        const invoiceNumber = bookingInvoiceNumber(booking_id)
+        const invoiceNumber = await getNextInvoiceNumber(booking.restaurant_id)
 
         void syncInvoiceToIrd(booking.restaurant_id, {
             invoiceNumber,

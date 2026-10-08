@@ -372,7 +372,8 @@ export default function PricingRulesManager({ initialRules, menuItems, categorie
                         <Select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
-                            className="rounded-[var(--r-md)] border border-hairline bg-surface px-4 py-2.5 text-sm text-ink outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 w-36 shadow-sm transition-all"
+                            compact
+                            className="w-36"
                         >
                             <option value="all">All Status</option>
                             <option value="active">Active</option>

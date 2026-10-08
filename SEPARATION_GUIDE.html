@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KKKhane 2.0 — Complete Migration & Disconnection Guide</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --code-bg: #090d16;
+      --success: #22c55e;
+    }
+
+    @media print {
+      body {
+        background: #ffffff !important;
+        color: #0f172a !important;
+        padding: 0 !important;
+      }
+      .card {
+        border: 1px solid #cbd5e1 !important;
+        box-shadow: none !important;
+        background: #f8fafc !important;
+        color: #0f172a !important;
+      }
+      pre, code {
+        background: #f1f5f9 !important;
+        color: #0f172a !important;
+        border: 1px solid #cbd5e1 !important;
+      }
+      .print-btn {
+        display: none !important;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background-color: rgba(37, 99, 235, 0.2);
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      margin-bottom: 10px;
+      color: var(--text);
+      letter-spacing: -0.025em;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 20px;
+    }
+
+    .print-btn {
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background-color 0.2s;
+    }
+
+    .print-btn:hover {
+      background-color: var(--primary-dark);
+    }
+
+    .section {
+      margin-bottom: 32px;
+    }
+
+    .card {
+      background-color: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background-color: var(--primary);
+      color: white;
+      font-weight: bold;
+      margin-right: 12px;
+      font-size: 0.95rem;
+    }
+
+    .step-title {
+      display: flex;
+      align-items: center;
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: #cbd5e1;
+    }
+
+    pre {
+      background-color: var(--code-bg);
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+      font-size: 0.9rem;
+      color: #38bdf8;
+      margin: 12px 0;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+      background-color: rgba(255, 255, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.88rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    th {
+      background-color: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+
+    td {
+      font-size: 0.9rem;
+      color: #cbd5e1;
+    }
+
+    .checklist {
+      list-style: none;
+    }
+
+    .checklist-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    .checklist-item:last-child {
+      border-bottom: none;
+    }
+
+    .checkbox {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      border: 2px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--surface-border);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="actions">
+      <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+    </div>
+
+    <div class="header">
+      <span class="badge">DECOUPLING & MIGRATION MANUAL</span>
+      <h1>KKKhane 2.0 Deployment & Separation Guide</h1>
+      <p class="subtitle">Step-by-step procedure to completely disconnect from the old Vercel project, Supabase DB, and domain.</p>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="card">
+      <div class="step-title">
+        <span class="step-number">1</span>
+        Disconnect Old GitHub Repository
+      </div>
+      <p>Remove the connection to the original git remote and point the codebase to your own GitHub repository:</p>
+      <pre>cd "/Users/aayushjoshi/kkkhane 2.0"
+
+# Remove original remote reference
+git remote remove origin
+
+# Link your new GitHub repository
+git remote add origin https://github.com/YOUR_USERNAME/YOUR_NEW_REPO_NAME.git
+
+# Set main branch and push code
+git branch -M main
+git push -u origin main</pre>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="card">
+      <div class="step-title">
+        <span class="step-number">2</span>
+        Set Up Your Own Supabase Database
+      </div>
+      <p>1. Log in to <a href="https://supabase.com" target="_blank" style="color: var(--accent);">supabase.com</a> and click <strong>New Project</strong>.</p>
+      <p>2. Run migrations locally to build your complete database schema on the new instance:</p>
+      <pre>npx supabase link --project-ref YOUR_NEW_PROJECT_REF
+npm run db:push</pre>
+      <p>3. Retrieve your API credentials from <em>Project Settings → API</em>:</p>
+      <ul>
+        <li><code>NEXT_PUBLIC_SUPABASE_URL</code></li>
+        <li><code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code></li>
+        <li><code>SUPABASE_SERVICE_ROLE_KEY</code></li>
+      </ul>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="card">
+      <div class="step-title">
+        <span class="step-number">3</span>
+        Deploy to Your Vercel Account
+      </div>
+      <p>1. Log into your Vercel account and click <strong>Add New... → Project</strong>.</p>
+      <p>2. Import your new GitHub repository created in Step 1.</p>
+      <p>3. Configure the following environment variables in Vercel settings:</p>
+      
+      <table>
+        <thead>
+          <tr>
+            <th>Environment Variable</th>
+            <th>Description / Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>NEXT_PUBLIC_SUPABASE_URL</code></td>
+            <td>Your new Supabase Project URL</td>
+          </tr>
+          <tr>
+            <td><code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code></td>
+            <td>Your new Supabase Anon Public Key</td>
+          </tr>
+          <tr>
+            <td><code>SUPABASE_SERVICE_ROLE_KEY</code></td>
+            <td>Your new Supabase Service Role Secret Key</td>
+          </tr>
+          <tr>
+            <td><code>NEXT_PUBLIC_APP_URL</code></td>
+            <td><code>https://your-domain.com</code> (or Vercel URL)</td>
+          </tr>
+          <tr>
+            <td><code>CRON_SECRET</code></td>
+            <td>Random secret string (e.g. <code>openssl rand -hex 32</code>)</td>
+          </tr>
+          <tr>
+            <td><code>REVALIDATE_SECRET</code></td>
+            <td>Random secret string</td>
+          </tr>
+          <tr>
+            <td><code>SRMS_API_KEY</code></td>
+            <td>Random secret string</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="card">
+      <div class="step-title">
+        <span class="step-number">4</span>
+        Configure Custom Domain DNS
+      </div>
+      <p>1. In your Vercel project, go to <strong>Settings → Domains</strong> and enter your domain name.</p>
+      <p>2. Configure DNS records at your domain provider (Cloudflare, GoDaddy, Namecheap, etc.):</p>
+      <pre>Type:  A      | Name: @   | Value: 76.76.21.21
+Type:  CNAME  | Name: www | Value: cname.vercel-dns.com</pre>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="card">
+      <div class="step-title">
+        <span class="step-number">5</span>
+        Local Development Environment (.env.local)
+      </div>
+      <p>Update your local environment file at <code>/Users/aayushjoshi/kkkhane 2.0/.env.local</code>:</p>
+      <pre># --- Supabase (Your New Instance) ---
+NEXT_PUBLIC_SUPABASE_URL=https://your-new-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_new_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_new_service_role_key
+
+# --- Local Host ---
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# --- Flags ---
+SHOW_DEMO_ACCOUNTS=true</pre>
+    </div>
+
+    <!-- Checklist -->
+    <div class="card">
+      <div class="step-title">
+        <span>✅</span>
+        Migration Verification Checklist
+      </div>
+      <ul class="checklist">
+        <li class="checklist-item">
+          <div class="checkbox">✓</div>
+          <div>Git remote disconnected from old repo & connected to your GitHub account</div>
+        </li>
+        <li class="checklist-item">
+          <div class="checkbox">✓</div>
+          <div>Supabase project created & migrations applied via <code>npm run db:push</code></div>
+        </li>
+        <li class="checklist-item">
+          <div class="checkbox">✓</div>
+          <div>Vercel deployment active under your own account</div>
+        </li>
+        <li class="checklist-item">
+          <div class="checkbox">✓</div>
+          <div>Custom domain pointing to Vercel DNS with valid SSL</div>
+        </li>
+        <li class="checklist-item">
+          <div class="checkbox">✓</div>
+          <div>No remaining references to old database or domain</div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="footer">
+      <p>Generated for KKKhane 2.0 • Synergy POPS Platform</p>
+    </div>
+  </div>
+
+</body>
+</html>

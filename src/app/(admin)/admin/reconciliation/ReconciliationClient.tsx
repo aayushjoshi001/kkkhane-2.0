@@ -353,14 +353,7 @@ export default function ReconciliationClient({
 
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-8 bg-surface text-ink min-h-screen">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-hairline pb-6">
-                <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight">Cross-Tenant Integration Settings</h1>
-                    <p className="text-ink-subtle mt-1 text-sm">
-                        Configure direct restaurant checkout post to rooms, share loyalty ledgers, and synchronize credit balances between properties from a single computer panel.
-                    </p>
-                </div>
+            <div className="flex flex-col md:flex-row md:items-center justify-end gap-4">
                 <div className="flex items-center gap-3">
                     {partner ? (
                         <div className="flex items-center gap-3">

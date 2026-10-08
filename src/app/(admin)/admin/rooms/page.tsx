@@ -4,6 +4,8 @@ import { getCurrentUser } from '@/lib/auth'
 import RoomsClient from './RoomsClient'
 import type { Room, RoomType } from '@/types/database'
 import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Bed } from 'lucide-react'
 
 export const revalidate = 0
 
@@ -115,18 +117,19 @@ export default async function RoomsPage() {
     }
 
     return (
-        <>
-        <RealtimeRefresh restaurantId={restaurantId} tables={['rooms', 'bookings']} />
-        <RoomsClient 
-            initialRooms={rooms} 
-            roomTypes={roomTypes} 
-            restaurantId={restaurantId} 
-            restaurantSlug={restaurantSlug}
-            restaurantName={restaurantName}
-            userName={currentUserRow?.full_name || ''}
-            tables={tablesMapped}
-            activeOrders={activeOrders}
-        />
-        </>
+        <div className="space-y-6">
+            <RealtimeRefresh restaurantId={restaurantId} tables={['rooms', 'bookings']} />
+            <PremiumPageHeader title="Rooms" description="Manage room status, housekeeping, and guest availability." icon={<Bed size={18} />} color="orange" />
+            <RoomsClient
+                initialRooms={rooms}
+                roomTypes={roomTypes}
+                restaurantId={restaurantId}
+                restaurantSlug={restaurantSlug}
+                restaurantName={restaurantName}
+                userName={currentUserRow?.full_name || ''}
+                tables={tablesMapped}
+                activeOrders={activeOrders}
+            />
+        </div>
     )
 }

@@ -5,6 +5,8 @@ import BookingsClient from './BookingsClient'
 import type { GuestStatementBusiness } from '@/lib/guestStatementPdf'
 import type { Booking, Room } from '@/types/database'
 import RealtimeRefresh from '@/components/shared/RealtimeRefresh'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { CalendarRange } from 'lucide-react'
 
 export const revalidate = 0
 
@@ -104,16 +106,17 @@ export default async function BookingsPage() {
     }
 
     return (
-        <>
-        <RealtimeRefresh restaurantId={restaurantId} tables={['bookings', 'rooms']} />
-        <BookingsClient
-            initialBookings={bookings}
-            rooms={rooms}
-            restaurantId={restaurantId}
-            business={business}
-            tables={tablesMapped}
-            activeOrders={activeOrders}
-        />
-        </>
+        <div className="space-y-6">
+            <RealtimeRefresh restaurantId={restaurantId} tables={['bookings', 'rooms']} />
+            <PremiumPageHeader title="Bookings" description="Manage guest check-ins, check-outs, and room reservations." icon={<CalendarRange size={18} />} color="orange" />
+            <BookingsClient
+                initialBookings={bookings}
+                rooms={rooms}
+                restaurantId={restaurantId}
+                business={business}
+                tables={tablesMapped}
+                activeOrders={activeOrders}
+            />
+        </div>
     )
 }

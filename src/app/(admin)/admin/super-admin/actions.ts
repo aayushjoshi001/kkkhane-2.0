@@ -13,6 +13,7 @@ import {
     TIER_ENTITLEMENTS,
     type Tier,
 } from '@/lib/tiers'
+import { TRIAL_TIER, TRIAL_STATUS, trialExpiryFrom } from '@/lib/trial'
 import { provisionRestaurant } from '@/lib/provisioning'
 
 export interface CreateTenantInput {
@@ -203,6 +204,55 @@ export async function updateSubscriptionTier(
     return { success: true }
 }
 
+/**
+ * Grant (or renew) the 14-day full-access trial for a restaurant.
+ *
+ * Called from the super-admin restaurant list for tenants that have never had
+ * a trial (trial_ends_at IS NULL) or for any existing account. Does NOT apply
+ * to accounts that are already trialing — use updateSubscriptionTier for those.
+ *
+ * The trial tier and status are the same values provisionRestaurant writes when
+ * trial: true. The expiry is always 14 days from NOW() (not from created_at) so
+ * a manual grant gives the full 14 days regardless of account age.
+ *
+ * features_v2 is NOT updated here. getRestaurantFeatures() already forces all
+ * entitlements on when isTrialing() is true, so the stored flags do not matter
+ * for the duration of the trial.
+ */
+export async function grantTrialToRestaurant(restaurantId: string): Promise<{ success?: true; error?: string }> {
+    await requireRole('super_admin')
+    const supabase = await createAdminClient()
+    const limits = TIER_LIMITS[TRIAL_TIER]
+    const expiresAt = trialExpiryFrom()
+
+    const { error } = await supabase
+        .from('restaurants')
+        .update({
+            subscription_tier:       TRIAL_TIER,
+            subscription_status:     TRIAL_STATUS,
+            subscription_expires_at: expiresAt,
+            trial_ends_at:           expiresAt,
+            max_staff:               limits.max_staff,
+            max_menu_items:          limits.max_menu_items,
+            max_tables:              limits.max_tables,
+        })
+        .eq('id', restaurantId)
+
+    if (error) return { error: error.message }
+
+    try {
+        const { invalidateCache } = await import('@/lib/redis')
+        await invalidateCache(`features:${restaurantId}`)
+    } catch { /* fails open */ }
+    try {
+        const { revalidateTag } = await import('next/cache')
+        revalidateTag(`features-${restaurantId}`, 'max')
+    } catch { /* fails open */ }
+
+    revalidatePath('/admin/super-admin')
+    return { success: true }
+}
+
 export async function createTenantWithOwner(input: CreateTenantInput) {
     await requireRole('super_admin')
 
@@ -268,6 +318,10 @@ export async function createTenantWithOwner(input: CreateTenantInput) {
         tier: subscriptionTier,
         businessType,
         seedSample: true,
+        // Free-tier tenants start on the 14-day full-access trial whether they
+        // sign up themselves or a super-admin creates them. Paid tiers come with
+        // the features they paid for and do not get a trial on top.
+        trial: subscriptionTier === 'free',
     })
 
     if (result.error || !result.restaurantId) {
@@ -1001,4 +1055,201 @@ export async function deleteSystemAdvertisementAction(id: string) {
 
     if (error) return { error: error.message }
     return { success: true }
+}
+
+// ─── Payment approval workflow ─────────────────────────────────────────────
+//
+// Previously there was no approval action at all — the super-admin had to
+// navigate to a separate tier-change form and type the restaurant name.
+// Now a pending payment has an Approve button that: (1) upgrades the tier,
+// (2) sets subscription_expires_at, (3) marks the payment as approved.
+// All three updates are independent writes; if any fail the return carries the
+// error and the admin can retry.
+
+export async function approveSubscriptionPaymentAction(paymentId: string) {
+    const currentUser = await requireRole('super_admin')
+    const supabase = await createAdminClient()
+
+    // Read the pending payment.
+    const { data: payment, error: fetchErr } = await supabase
+        .from('subscription_payments')
+        .select('id, restaurant_id, amount, plan_tier, billing_months, status')
+        .eq('id', paymentId)
+        .maybeSingle()
+
+    if (fetchErr || !payment) return { error: 'Payment not found' }
+    if (payment.status === 'approved') return { error: 'Payment is already approved' }
+
+    const tier = (payment.plan_tier as Tier) ?? 'basic'
+    const months = payment.billing_months ?? 12
+
+    // Upgrade the tier (updates subscription_tier, max_*, features_v2, clears trial).
+    const tierResult = await updateSubscriptionTier(payment.restaurant_id, tier)
+    if (tierResult?.error) return { error: `Tier upgrade failed: ${tierResult.error}` }
+
+    // Set subscription_expires_at: extend from current expiry or today.
+    const { data: rest } = await supabase
+        .from('restaurants')
+        .select('subscription_expires_at')
+        .eq('id', payment.restaurant_id)
+        .maybeSingle()
+
+    const base = rest?.subscription_expires_at
+        ? new Date(Math.max(new Date(rest.subscription_expires_at).getTime(), Date.now()))
+        : new Date()
+    const newExpiry = new Date(base)
+    newExpiry.setMonth(newExpiry.getMonth() + months)
+
+    await supabase
+        .from('restaurants')
+        .update({ subscription_expires_at: newExpiry.toISOString(), subscription_status: 'active', is_suspended: false })
+        .eq('id', payment.restaurant_id)
+
+    // Mark payment approved.
+    const { error: approveErr } = await supabase
+        .from('subscription_payments')
+        .update({ status: 'approved', approved_at: new Date().toISOString(), approved_by: currentUser.id })
+        .eq('id', paymentId)
+
+    if (approveErr) return { error: `Approval recorded but DB update failed: ${approveErr.message}` }
+
+    revalidatePath('/admin/super-admin/payments')
+    revalidatePath('/admin/super-admin')
+    return { success: true, newExpiry: newExpiry.toISOString(), tier }
+}
+
+export async function rejectSubscriptionPaymentAction(paymentId: string, reason: string) {
+    await requireRole('super_admin')
+    const supabase = await createAdminClient()
+
+    const { error } = await supabase
+        .from('subscription_payments')
+        .update({ status: 'rejected', rejection_reason: reason || 'Rejected by admin' })
+        .eq('id', paymentId)
+
+    if (error) return { error: error.message }
+
+    revalidatePath('/admin/super-admin/payments')
+    return { success: true }
+}
+
+// One-shot dashboard snapshot — fetches every metric the new dashboard
+// needs in a single parallel batch. No callers outside the dashboard page.
+export async function getDashboardSnapshot() {
+    await requireRole('super_admin')
+    const supabase = await createAdminClient()
+
+    const now          = Date.now()
+    const thirtyAgo    = new Date(now - 30  * 24 * 3600 * 1000).toISOString()
+    const sixMonthsAgo = new Date(now - 183 * 24 * 3600 * 1000).toISOString()
+
+    const [
+        { count: total },
+        { count: active },
+        { data: tierRows },
+        { data: suspended },
+        { data: mrr30Rows },
+        { data: revenueHistory },
+        { data: gmvRows },
+        { data: pendingPayments },
+        { data: expiringRows },
+        { data: recentTenants },
+        { data: topOrderRows },
+    ] = await Promise.all([
+        supabase.from('restaurants').select('*', { count: 'exact', head: true }),
+        supabase.from('restaurants').select('*', { count: 'exact', head: true })
+            .eq('is_active', true).eq('is_suspended', false),
+        supabase.from('restaurants').select('id, name, subscription_tier, subscription_status, is_suspended'),
+        supabase.from('restaurants').select('id').eq('is_suspended', true),
+        // MRR = approved subscription payments in last 30 days
+        supabase.from('subscription_payments').select('amount')
+            .eq('status', 'approved').gte('created_at', thirtyAgo),
+        // Revenue trend — approved payments last 6 months for sparkline
+        supabase.from('subscription_payments').select('amount, created_at')
+            .eq('status', 'approved').gte('created_at', sixMonthsAgo).order('created_at'),
+        // GMV = sum of order totals in last 30 days
+        supabase.from('orders').select('total_amount').gte('placed_at', thirtyAgo),
+        // Pending approvals
+        supabase.from('subscription_payments').select('id, restaurant_id, amount, plan_tier, created_at, payment_method, restaurants(name)')
+            .eq('status', 'pending').order('created_at', { ascending: false }),
+        // Expiring within 14 days
+        supabase.from('restaurants').select('id, name, subscription_tier, subscription_expires_at')
+            .not('subscription_expires_at', 'is', null),
+        supabase.from('restaurants').select('id, name, subscription_tier, created_at')
+            .order('created_at', { ascending: false }).limit(6),
+        // Top by order count last 30 days
+        supabase.from('orders').select('restaurant_id, total_amount').gte('placed_at', thirtyAgo),
+    ])
+
+    // Tier counts
+    const tierCounts: Record<string, number> = { free: 0, basic: 0, premium: 0, platinum: 0, enterprise: 0 }
+    for (const r of (tierRows || []) as Array<{ subscription_tier?: string }>) {
+        const t = r.subscription_tier || 'free'
+        tierCounts[t] = (tierCounts[t] || 0) + 1
+    }
+
+    // MRR
+    const mrr30 = (mrr30Rows || []).reduce((s: number, p: { amount: number }) => s + (p.amount || 0), 0)
+
+    // GMV
+    const gmv30 = (gmvRows || []).reduce((s: number, o: { total_amount: number }) => s + (o.total_amount || 0), 0)
+
+    // Monthly revenue buckets (last 6 months)
+    const revenueByMonth: Record<string, number> = {}
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date(now)
+        d.setMonth(d.getMonth() - i)
+        revenueByMonth[d.toISOString().slice(0, 7)] = 0
+    }
+    for (const p of (revenueHistory || []) as Array<{ amount: number; created_at: string }>) {
+        const m = p.created_at.slice(0, 7)
+        if (m in revenueByMonth) revenueByMonth[m] = (revenueByMonth[m] || 0) + (p.amount || 0)
+    }
+
+    // Expiring within 14 days
+    const expiring14 = ((expiringRows || []) as Array<{ id: string; name: string; subscription_tier: string; subscription_expires_at: string }>)
+        .filter(r => {
+            const diff = new Date(r.subscription_expires_at).getTime() - now
+            return diff > 0 && diff < 14 * 24 * 3600 * 1000
+        })
+        .sort((a, b) => new Date(a.subscription_expires_at).getTime() - new Date(b.subscription_expires_at).getTime())
+
+    // Top restaurants by order volume (last 30 days)
+    const orderMap: Record<string, { count: number; revenue: number }> = {}
+    for (const o of (topOrderRows || []) as Array<{ restaurant_id: string; total_amount: number }>) {
+        if (!orderMap[o.restaurant_id]) orderMap[o.restaurant_id] = { count: 0, revenue: 0 }
+        orderMap[o.restaurant_id].count++
+        orderMap[o.restaurant_id].revenue += o.total_amount || 0
+    }
+    const topTenantIds = Object.keys(orderMap)
+    let topTenantNames: Record<string, string> = {}
+    if (topTenantIds.length > 0) {
+        const { data: nameRows } = await supabase.from('restaurants').select('id, name').in('id', topTenantIds)
+        for (const r of (nameRows || []) as Array<{ id: string; name: string }>) topTenantNames[r.id] = r.name
+    }
+    const topTenants = Object.entries(orderMap)
+        .sort((a, b) => b[1].revenue - a[1].revenue)
+        .slice(0, 5)
+        .map(([id, s]) => ({ id, name: topTenantNames[id] || id.slice(0, 8), ...s }))
+
+    return {
+        total:          total  || 0,
+        active:         active || 0,
+        suspended:      (suspended || []).length,
+        mrr30,
+        gmv30,
+        tierCounts,
+        revenueByMonth,
+        pendingPayments: ((pendingPayments || []) as unknown) as Array<{
+            id: string; restaurant_id: string; amount: number
+            plan_tier: string | null; created_at: string; payment_method: string
+            restaurants: { name: string } | null
+        }>,
+        expiring14,
+        recentTenants: (recentTenants || []) as Array<{
+            id: string; name: string; subscription_tier: string; created_at: string
+        }>,
+        topTenants,
+        paidTenants: (tierCounts.basic || 0) + (tierCounts.premium || 0) + (tierCounts.platinum || 0) + (tierCounts.enterprise || 0),
+    }
 }

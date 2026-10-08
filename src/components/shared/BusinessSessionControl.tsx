@@ -15,7 +15,7 @@ interface BusinessSessionControlProps {
     } | null
     userRole?: string
     todayDate?: string
-    variant?: 'banner' | 'compact'
+    variant?: 'banner' | 'compact' | 'mini'
 }
 
 export default function BusinessSessionControl({
@@ -92,6 +92,39 @@ export default function BusinessSessionControl({
                             </span>
                         )}
                         <span>Day Active ({session?.date ?? todayDate})</span>
+                    </button>
+                )}
+            </div>
+        )
+    }
+
+    if (variant === 'mini') {
+        return (
+            <div className="inline-flex items-center print:hidden shrink-0">
+                {isClosed ? (
+                    <button
+                        onClick={handleOpenBusiness}
+                        disabled={loading}
+                        className="flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 h-6 rounded-md transition-colors active:scale-95 shrink-0"
+                        title="Business Day Closed — Click to Open"
+                    >
+                        {loading ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} fill="currentColor" className="text-amber-500" />}
+                        <span>Open</span>
+                    </button>
+                ) : (
+                    <button
+                        onClick={handleCloseBusiness}
+                        disabled={loading}
+                        className="flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-rose-50 hover:text-rose-700 border border-emerald-200 hover:border-rose-200 px-2 h-6 rounded-md transition-colors active:scale-95 shrink-0"
+                        title={`Day Active (${session?.date ?? todayDate}) — Click to Close`}
+                    >
+                        {loading ? <Loader2 size={10} className="animate-spin" /> : (
+                            <span className="relative flex h-1.5 w-1.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                            </span>
+                        )}
+                        <span>Active</span>
                     </button>
                 )}
             </div>

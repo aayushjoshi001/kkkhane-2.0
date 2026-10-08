@@ -1,6 +1,8 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import PricingRulesManager from './PricingRulesManager'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Tag } from 'lucide-react'
 
 import { redirect } from 'next/navigation'
 import { getRestaurantFeatures } from '@/lib/features'
@@ -23,10 +25,7 @@ export default async function AdminPricingPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-surface p-6 rounded-xl border border-hairline-strong shadow-sm">
-                <h1 className="text-2xl font-bold text-ink">Dynamic Pricing</h1>
-                <p className="text-ink-subtle mt-1">Schedule time-, day- and date-based price changes for items, categories or the whole menu.</p>
-            </div>
+            <PremiumPageHeader title="Dynamic Pricing" description="Schedule time-, day- and date-based price changes for items, categories or the whole menu." icon={<Tag size={18} />} color="orange" />
             <PricingRulesManager
                 initialRules={rules || []}
                 menuItems={items || []}

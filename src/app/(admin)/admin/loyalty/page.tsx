@@ -1,6 +1,8 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import LoyaltyManager from './LoyaltyManager'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Heart } from 'lucide-react'
 
 import { redirect } from 'next/navigation'
 import { getRestaurantFeatures } from '@/lib/features'
@@ -22,12 +24,7 @@ export default async function AdminLoyaltyPage() {
 
     return (
         <div className="space-y-6">
-            <header className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h1 className="text-h2 font-extrabold text-ink">Loyalty Program</h1>
-                    <p className="text-ink-subtle font-medium mt-1">Configure rewards, tiers and view members</p>
-                </div>
-            </header>
+            <PremiumPageHeader title="Loyalty Program" description="Configure rewards, tiers and view all loyalty members." icon={<Heart size={18} />} color="orange" />
             <LoyaltyManager initialConfig={config} initialMembers={members || []} restaurantId={rid} />
         </div>
     )

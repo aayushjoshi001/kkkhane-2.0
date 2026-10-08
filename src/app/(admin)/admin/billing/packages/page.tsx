@@ -4,39 +4,25 @@ import { useState } from 'react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { CheckCircle2, Zap, Shield, HelpCircle } from 'lucide-react'
+import { CheckCircle2, Star, Building2, HelpCircle, Zap } from 'lucide-react'
 import { selectFreePlanAction } from './actions'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
+import { PLANS, CURRENCY_SYMBOL, formatPrice } from '@/lib/pricing'
 
-type BillingCycle = '3_months' | '6_months' | '1_year'
+type BillingCycle = 'monthly' | 'yearly'
 
 export default function PackagesPage() {
     const router = useRouter()
     const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
-    const [cycle, setCycle] = useState<BillingCycle>('3_months')
-
-    // Premium billing-cycle prices. The 1-year rate matches the first-year
-    // Premium price in lib/pricing.ts (Rs 22,000); shorter cycles bill at a
-    // higher monthly rate. Keep these in step with the checkout page.
-    const premiumPrices = {
-        '3_months': 6600,  // NPR 6,600 total (2,200/mo)
-        '6_months': 12000, // NPR 12,000 total (2,000/mo)
-        '1_year': 22000,   // NPR 22,000 total (~1,833/mo)
-    }
-
-    const premiumMonthlyEquiv = {
-        '3_months': 2200,
-        '6_months': 2000,
-        '1_year': 1833,
-    }
+    const [cycle, setCycle] = useState<BillingCycle>('yearly')
 
     async function handleSelectFree() {
         setLoadingPlan('free')
         try {
             const res = await selectFreePlanAction()
             if (res.error) throw new Error(res.error)
-            toast.success('Successfully switched to Free Plan')
+            toast.success('Switched to Free plan')
             window.location.href = '/admin/dashboard'
         } catch (error) {
             toast.error(error instanceof Error ? error.message : 'An error occurred')
@@ -45,184 +31,185 @@ export default function PackagesPage() {
         }
     }
 
-    async function handleSelectPaid() {
-        setLoadingPlan('premium')
-        try {
-            // Redirect to a checkout or manual payment instructions page
-            router.push(`/admin/billing/checkout?plan=premium&cycle=${cycle}`)
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : 'An error occurred')
-            setLoadingPlan(null)
-        }
+    function handleSelectPaid(tier: string) {
+        setLoadingPlan(tier)
+        router.push(`/admin/billing/checkout?plan=${tier}&cycle=${cycle}`)
     }
 
+    const paidPlans = PLANS.filter(p => p.price.kind === 'yearly')
+    const enterprise = PLANS.find(p => p.price.kind === 'contact')
+
     return (
-        <div className="max-w-6xl mx-auto py-8 px-4">
-            <div className="text-center max-w-2xl mx-auto mb-12">
+        <div className="max-w-7xl mx-auto py-8 px-4">
+            <div className="text-center max-w-2xl mx-auto mb-10">
                 <Badge tone="brand" className="mb-4">Subscription & Billing</Badge>
-                <h1 className="text-4xl font-bold text-ink mb-4 tracking-tight">
-                    Choose the right plan for your restaurant
-                </h1>
-                <p className="text-lg text-ink-muted">
-                    Your trial or previous subscription has expired. Select a package below to reactivate your access and continue managing your restaurant seamlessly.
+                <h1 className="text-3xl font-bold text-ink mb-3 tracking-tight">Choose your plan</h1>
+                <p className="text-ink-muted">
+                    Your trial or previous subscription has ended. Activate a plan to keep your restaurant running.
                 </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8 items-start">
-                {/* Free Plan */}
-                <Card className="relative overflow-hidden border-2 border-transparent hover:border-hairline-strong transition-colors p-8 flex flex-col h-full bg-surface shadow-sm hover:shadow-md">
-                    <div className="mb-6">
-                        <h3 className="text-2xl font-bold text-ink mb-2">Free Starter</h3>
-                        <p className="text-ink-subtle min-h-[48px]">Perfect for small food stalls or testing the waters.</p>
+            {/* Billing toggle */}
+            <div className="flex justify-center mb-10">
+                <div className="flex items-center rounded-full border border-hairline-strong bg-surface-muted p-1 gap-1">
+                    <button
+                        onClick={() => setCycle('monthly')}
+                        className={`rounded-full px-5 py-2 text-sm font-bold transition-all duration-200 ${cycle === 'monthly' ? 'bg-surface shadow text-ink' : 'text-ink-subtle hover:text-ink'}`}
+                    >
+                        Monthly
+                    </button>
+                    <button
+                        onClick={() => setCycle('yearly')}
+                        className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all duration-200 ${cycle === 'yearly' ? 'bg-surface shadow text-ink' : 'text-ink-subtle hover:text-ink'}`}
+                    >
+                        Yearly
+                        <span className="rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">Save 30%</span>
+                    </button>
+                </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-5 items-start mb-6">
+                {/* Free plan */}
+                <Card className="p-7 flex flex-col h-full border-2 border-transparent hover:border-hairline-strong transition-colors">
+                    <h3 className="text-xl font-bold text-ink mb-1">Free</h3>
+                    <p className="text-sm text-ink-subtle mb-5 min-h-[40px]">
+                        For small dhabas and kiosks. No IRD invoice or digital payments.
+                    </p>
+                    <div className="mb-5">
+                        <span className="text-3xl font-extrabold text-ink">{CURRENCY_SYMBOL} 0</span>
+                        <span className="text-ink-subtle text-sm"> / forever</span>
                     </div>
-                    <div className="mb-6">
-                        <span className="text-4xl font-extrabold text-ink">NPR 0</span>
-                        <span className="text-ink-subtle"> / forever</span>
-                    </div>
-                    <ul className="space-y-4 mb-8 flex-1">
-                        {[
-                            'Up to 1 Staff Member (Owner)',
-                            'Max 20 Menu Items',
-                            'Basic POS Features',
-                            'Standard Email Support',
-                            'No Kitchen Display System'
-                        ].map((feature, i) => (
-                            <li key={i} className="flex items-start gap-3">
-                                <CheckCircle2 className="w-5 h-5 text-ink-subtle shrink-0 mt-0.5" />
-                                <span className="text-ink-muted">{feature}</span>
+                    <ul className="space-y-3 mb-7 flex-1 text-sm">
+                        {['50 dishes, 5 tables, 2 staff', 'QR menu & dine-in ordering', 'KOT printing', 'Cash receipt only'].map(f => (
+                            <li key={f} className="flex items-start gap-2">
+                                <CheckCircle2 size={15} className="text-ink-subtle shrink-0 mt-0.5" />
+                                <span className="text-ink-muted">{f}</span>
                             </li>
                         ))}
                     </ul>
-                    <Button 
-                        block 
-                        variant="secondary" 
-                        size="lg" 
-                        className="bg-surface-muted hover:bg-surface-muted text-ink border-none"
-                        loading={loadingPlan === 'free'}
-                        onClick={handleSelectFree}
-                    >
+                    <Button block variant="secondary" loading={loadingPlan === 'free'} onClick={handleSelectFree}>
                         Continue with Free
                     </Button>
                 </Card>
 
-                {/* Premium Plan (Highlighted) */}
-                <Card className="relative overflow-hidden border-2 border-brand-500 shadow-xl p-8 flex flex-col h-full bg-surface transform md:-translate-y-4">
-                    <div className="absolute top-0 inset-x-0 h-1.5 bg-brand-500" />
-                    <div className="absolute top-4 right-4">
-                        <Badge tone="brand" className="bg-brand-100 text-brand-700 border-none">Most Popular</Badge>
-                    </div>
-                    
-                    <div className="mb-6">
-                        <h3 className="text-2xl font-bold text-ink mb-2 flex items-center gap-2">
-                            <Zap className="w-6 h-6 text-brand-500" />
-                            Premium
-                        </h3>
-                        <p className="text-ink-subtle min-h-[48px]">Everything you need to run and scale a growing restaurant.</p>
-                    </div>
+                {/* Paid plans */}
+                {paidPlans.map(plan => {
+                    const price = plan.price
+                    if (price.kind !== 'yearly') return null
+                    const isPopular = plan.popular
+                    const displayPrice = cycle === 'monthly' && price.monthly
+                        ? price.monthly
+                        : price.firstYear
+                    const suffix = cycle === 'monthly' ? '/mo' : '/yr'
+                    const perDay = cycle === 'monthly' && price.monthly
+                        ? Math.round(price.monthly / 30)
+                        : Math.round(price.firstYear / 365)
 
-                    {/* Billing Cycle Toggle */}
-                    <div className="bg-surface-muted p-1.5 rounded-xl flex gap-1 mb-6">
-                        {(['3_months', '6_months', '1_year'] as const).map(c => (
-                            <button
-                                key={c}
-                                onClick={() => setCycle(c)}
-                                className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all duration-200 ${
-                                    cycle === c 
-                                    ? 'bg-surface text-ink shadow-sm ring-1 ring-hairline'
-                                    : 'text-ink-subtle hover:text-ink-muted hover:bg-surface-muted'
-                                }`}
+                    return (
+                        <Card
+                            key={plan.tier}
+                            className={`p-7 flex flex-col h-full transition-all ${
+                                isPopular
+                                    ? 'border-2 border-brand-500 shadow-xl relative'
+                                    : 'border-2 border-transparent hover:border-hairline-strong'
+                            }`}
+                        >
+                            {isPopular && (
+                                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                                    <span className="bg-brand-500 text-white text-[11px] font-bold uppercase tracking-wider rounded-full px-3 py-1">
+                                        Most Popular
+                                    </span>
+                                </div>
+                            )}
+
+                            <div className="flex items-center gap-2 mb-1">
+                                {plan.tier === 'premium' && <Zap size={16} className="text-brand-500" />}
+                                {plan.tier === 'platinum' && <Star size={16} className="text-amber-500" />}
+                                <h3 className="text-xl font-bold text-ink">{plan.name}</h3>
+                            </div>
+                            <p className="text-sm text-ink-subtle mb-5 min-h-[40px]">{plan.tagline}</p>
+
+                            <div className="mb-1">
+                                {cycle === 'yearly' && price.firstYear !== price.list && (
+                                    <span className="text-sm font-semibold text-ink-subtle line-through mr-2">
+                                        {CURRENCY_SYMBOL} {formatPrice(price.list)}
+                                    </span>
+                                )}
+                                <span className="text-3xl font-extrabold text-ink">
+                                    {CURRENCY_SYMBOL} {formatPrice(displayPrice)}
+                                </span>
+                                <span className="text-ink-subtle text-sm">{suffix}</span>
+                            </div>
+                            <p className="text-xs font-semibold text-[var(--color-primary)] mb-1">
+                                Only {CURRENCY_SYMBOL} {perDay}/day
+                            </p>
+                            {cycle === 'yearly' && price.renewsAtHalfList && (
+                                <p className="text-xs text-ink-subtle mb-4">
+                                    Renews at {CURRENCY_SYMBOL} {formatPrice(price.list / 2)}/yr after year 1
+                                </p>
+                            )}
+                            {cycle === 'monthly' && <div className="mb-4" />}
+
+                            <ul className="space-y-2.5 mb-7 flex-1 text-sm">
+                                {plan.headline.items.map(item => (
+                                    <li key={item.label} className="flex items-start gap-2">
+                                        <CheckCircle2 size={15} className={`shrink-0 mt-0.5 ${isPopular ? 'text-brand-500' : 'text-[var(--color-primary)]'}`} />
+                                        <span className="text-ink font-medium">{item.label}</span>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            <Button
+                                block
+                                variant={isPopular ? 'primary' : 'secondary'}
+                                loading={loadingPlan === plan.tier}
+                                onClick={() => handleSelectPaid(plan.tier)}
+                                className={isPopular ? 'bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-500/25' : ''}
                             >
-                                {c.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                            </button>
-                        ))}
-                    </div>
+                                Upgrade to {plan.name}
+                            </Button>
+                        </Card>
+                    )
+                })}
 
-                    <div className="mb-6 flex flex-col">
-                        <div className="flex items-end gap-2">
-                            <span className="text-4xl font-extrabold text-ink">NPR {premiumMonthlyEquiv[cycle].toLocaleString()}</span>
-                            <span className="text-ink-subtle mb-1">/ month</span>
+                {/* Enterprise */}
+                {enterprise && (
+                    <Card className="p-7 flex flex-col h-full border-2 border-transparent hover:border-hairline-strong transition-colors bg-surface-muted">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Building2 size={16} className="text-ink-muted" />
+                            <h3 className="text-xl font-bold text-ink">{enterprise.name}</h3>
                         </div>
-                        <div className="text-sm text-brand-600 font-medium mt-1">
-                            Billed as NPR {premiumPrices[cycle].toLocaleString()} every {cycle.replace('_', ' ')}
+                        <p className="text-sm text-ink-subtle mb-5 min-h-[40px]">{enterprise.tagline}</p>
+                        <div className="mb-5">
+                            <span className="text-3xl font-extrabold text-ink">Custom</span>
                         </div>
-                    </div>
-
-                    <ul className="space-y-4 mb-8 flex-1">
-                        {[
-                            'Unlimited Staff & Roles',
-                            'Unlimited Menu Items',
-                            'Advanced POS & Waiter App',
-                            'Kitchen Display System (KDS)',
-                            'Advanced Analytics & Reports',
-                            'Priority 24/7 Support'
-                        ].map((feature, i) => (
-                            <li key={i} className="flex items-start gap-3">
-                                <CheckCircle2 className="w-5 h-5 text-brand-500 shrink-0 mt-0.5" />
-                                <span className="text-ink font-medium">{feature}</span>
-                            </li>
-                        ))}
-                    </ul>
-                    <Button 
-                        block 
-                        variant="primary" 
-                        size="lg" 
-                        className="bg-brand-600 hover:bg-brand-700 shadow-brand-500/25 shadow-lg"
-                        loading={loadingPlan === 'premium'}
-                        onClick={handleSelectPaid}
-                    >
-                        Upgrade to Premium
-                    </Button>
-                </Card>
-
-                {/* Custom Plan */}
-                <Card className="relative overflow-hidden border-2 border-transparent hover:border-hairline-strong transition-colors p-8 flex flex-col h-full bg-surface-muted shadow-sm">
-                    <div className="mb-6">
-                        <h3 className="text-2xl font-bold text-ink mb-2 flex items-center gap-2">
-                            <Shield className="w-6 h-6 text-ink-muted" />
-                            Enterprise
-                        </h3>
-                        <p className="text-ink-subtle min-h-[48px]">Tailored solutions for franchises and large chains.</p>
-                    </div>
-                    <div className="mb-6">
-                        <span className="text-4xl font-extrabold text-ink">Custom</span>
-                    </div>
-                    <ul className="space-y-4 mb-8 flex-1">
-                        {[
-                            'Multi-Location Management',
-                            'Custom POS Hardware Integrations',
-                            'Dedicated Account Manager',
-                            'On-site Training & Setup',
-                            'Custom Feature Development'
-                        ].map((feature, i) => (
-                            <li key={i} className="flex items-start gap-3">
-                                <CheckCircle2 className="w-5 h-5 text-ink-muted shrink-0 mt-0.5" />
-                                <span className="text-ink-muted">{feature}</span>
-                            </li>
-                        ))}
-                    </ul>
-                    <Button
-                        block
-                        variant="secondary"
-                        size="lg"
-                        onClick={() => window.location.href = 'mailto:info.kkkhane@gmail.com?subject=Enterprise%20Plan%20Inquiry'}
-                    >
-                        Contact Sales
-                    </Button>
-                </Card>
+                        <ul className="space-y-2.5 mb-7 flex-1 text-sm">
+                            {enterprise.headline.items.map(item => (
+                                <li key={item.label} className="flex items-start gap-2">
+                                    <CheckCircle2 size={15} className="text-ink-muted shrink-0 mt-0.5" />
+                                    <span className="text-ink-muted">{item.label}</span>
+                                </li>
+                            ))}
+                        </ul>
+                        <Button block variant="secondary" onClick={() => window.location.href = 'mailto:info.kkkhane@gmail.com?subject=Enterprise%20Plan%20Inquiry'}>
+                            Contact Sales
+                        </Button>
+                    </Card>
+                )}
             </div>
 
-            <div className="mt-16 bg-blue-50 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="mt-10 bg-blue-50 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
-                        <HelpCircle className="w-6 h-6 text-blue-600" />
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                        <HelpCircle size={20} className="text-blue-600" />
                     </div>
                     <div>
-                        <h4 className="text-lg font-semibold text-ink">Have questions about our plans?</h4>
-                        <p className="text-blue-800/80">Our team is here to help you choose the right package.</p>
+                        <p className="font-semibold text-ink">Not sure which plan?</p>
+                        <p className="text-sm text-blue-800/80">Our team will help you pick the right fit. No pressure.</p>
                     </div>
                 </div>
-                <Button variant="secondary" className="bg-surface text-blue-700 hover:bg-blue-50 border-blue-200 whitespace-nowrap" onClick={() => window.location.href = 'mailto:info.kkkhane@gmail.com'}>
-                    Talk to an Expert
+                <Button variant="secondary" className="whitespace-nowrap" onClick={() => window.location.href = 'mailto:info.kkkhane@gmail.com'}>
+                    Talk to us
                 </Button>
             </div>
         </div>

@@ -1,6 +1,8 @@
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import CombosManager from './CombosManager'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Package } from 'lucide-react'
 
 export const revalidate = 0
 
@@ -53,10 +55,7 @@ export default async function AdminCombosPage() {
 
     return (
         <div className="space-y-6">
-            <div className="bg-surface p-6 rounded-xl border border-hairline-strong shadow-sm">
-                <h1 className="text-2xl font-bold text-ink">Combo Offers</h1>
-                <p className="text-ink-subtle mt-1">Bundle multiple menu items together and sell them at a special package price.</p>
-            </div>
+            <PremiumPageHeader title="Combo Offers" description="Bundle multiple menu items together and sell them at a special package price." icon={<Package size={18} />} color="orange" />
 
             <CombosManager
                 initialCombos={combos}

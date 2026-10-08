@@ -2,6 +2,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import ReportsViewer from './ReportsViewer'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { FileText } from 'lucide-react'
 
 export const revalidate = 0
 
@@ -25,12 +27,7 @@ export default async function AdminReportsPage() {
 
     return (
         <div className="space-y-6">
-            <header className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h1 className="text-h2 font-extrabold text-ink">End-of-Day Reports</h1>
-                    <p className="text-ink-subtle font-medium mt-1">Generate and view daily operational summaries</p>
-                </div>
-            </header>
+            <PremiumPageHeader title="End-of-Day Reports" description="Generate and view daily operational summaries." icon={<FileText size={18} />} color="orange" />
             <ReportsViewer initialReports={reports || []} restaurantId={rid} />
         </div>
     )

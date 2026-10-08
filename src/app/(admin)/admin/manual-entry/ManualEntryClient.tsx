@@ -1171,16 +1171,6 @@ export default function ManualEntryClient({
         <div className="space-y-6 pb-16">
             {/* Header */}
             <div>
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
-                        <PenLine size={20} className="text-brand-500" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-extrabold text-ink tracking-tight">Manual Entry</h1>
-                        <p className="text-sm text-ink-subtle mt-0.5">All entry types in one place — no need to navigate between sections</p>
-                    </div>
-                </div>
-
                 {/* Session warning */}
                 {!hasOpenSession && (
                     <div className="mt-5 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3.5">

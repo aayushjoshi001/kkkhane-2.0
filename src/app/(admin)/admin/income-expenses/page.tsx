@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Receipt } from 'lucide-react'
 import IncomeExpensesManager from './IncomeExpensesManager'
 
 import { getRestaurantFeatures } from '@/lib/features'
@@ -74,14 +76,17 @@ export default async function IncomeExpensesPage() {
     ])
 
     return (
-        <IncomeExpensesManager
-            initialIncomeCategories={incomeCategories || []}
-            initialExpenseCategories={expenseCategories || []}
-            initialIncomeEntries={namedIncomeEntries}
-            initialExpenses={namedExpenses}
-            suppliers={suppliers || []}
-            bankAccounts={bankAccounts || []}
-            qrCodes={qrCodes || []}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Income & Expenses" description="Log income sources and track expense categories across your business." icon={<Receipt size={18} />} color="orange" />
+            <IncomeExpensesManager
+                initialIncomeCategories={incomeCategories || []}
+                initialExpenseCategories={expenseCategories || []}
+                initialIncomeEntries={namedIncomeEntries}
+                initialExpenses={namedExpenses}
+                suppliers={suppliers || []}
+                bankAccounts={bankAccounts || []}
+                qrCodes={qrCodes || []}
+            />
+        </div>
     )
 }

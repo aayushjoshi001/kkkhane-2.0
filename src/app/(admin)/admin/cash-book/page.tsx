@@ -7,6 +7,8 @@ import { getNstDateString } from '@/lib/timezone'
 import { resolveActiveDayBookSession, attachCreatorNames } from '@/lib/ledger'
 
 import { getRestaurantFeatures } from '@/lib/features'
+import PremiumPageHeader from '@/components/admin/PremiumPageHeader'
+import { Wallet } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,19 +95,22 @@ export default async function CashBookPage() {
     const previousClosingBankBalance: number = 0
 
     return (
-        <CashBookClient
-            initialSession={session ?? null}
-            initialEntries={entries}
-            initialTotals={initialTotals}
-            todayDate={todayDate}
-            userRole={currentUser.role}
-            currentUserName={currentUserName}
-            previousClosingBalance={previousClosingBalance}
-            previousClosingBankBalance={previousClosingBankBalance}
-            expenseCategories={(expenseCategories as ExpenseCategory[]) || []}
-            bankAccounts={(bankAccounts as BankAccount[]) || []}
-            staffList={staff || []}
-            suppliers={(suppliers as Supplier[]) || []}
-        />
+        <div className="space-y-6">
+            <PremiumPageHeader title="Cash Book" description="Record and review cash register movements and daily cash flow." icon={<Wallet size={18} />} color="orange" />
+            <CashBookClient
+                initialSession={session ?? null}
+                initialEntries={entries}
+                initialTotals={initialTotals}
+                todayDate={todayDate}
+                userRole={currentUser.role}
+                currentUserName={currentUserName}
+                previousClosingBalance={previousClosingBalance}
+                previousClosingBankBalance={previousClosingBankBalance}
+                expenseCategories={(expenseCategories as ExpenseCategory[]) || []}
+                bankAccounts={(bankAccounts as BankAccount[]) || []}
+                staffList={staff || []}
+                suppliers={(suppliers as Supplier[]) || []}
+            />
+        </div>
     )
 }

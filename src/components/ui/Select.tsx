@@ -52,6 +52,7 @@ export default function Select({
     disabled = false,
     id,
     searchable = false,
+    compact = false,
     'aria-label': ariaLabel,
 }: {
     value: string
@@ -68,6 +69,8 @@ export default function Select({
      *  dropdowns with enough options that scanning them all isn't practical
      *  (e.g. a category picker with 50+ entries). */
     searchable?: boolean
+    /** Compact filter-bar size: smaller padding and text than the default form size. */
+    compact?: boolean
     'aria-label'?: string
 }) {
     const [open, setOpen] = useState(false)
@@ -111,7 +114,11 @@ export default function Select({
                 aria-haspopup="listbox"
                 aria-expanded={open}
                 onClick={() => setOpen(o => !o)}
-                className="w-full flex items-center justify-between gap-2 border-hairline rounded-[var(--r-md)] shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm p-3 border bg-surface text-ink transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full flex items-center justify-between gap-2 border-hairline rounded-[var(--r-md)] focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 border bg-surface text-ink transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                    compact
+                        ? 'px-2.5 py-1.5 text-[11px] font-bold shadow-none'
+                        : 'p-3 sm:text-sm font-semibold shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]'
+                }`}
             >
                 <span className={`truncate text-left ${selected && selected.value ? 'font-semibold text-ink' : 'text-ink-subtle'}`}>
                     {selected ? selected.label : ''}

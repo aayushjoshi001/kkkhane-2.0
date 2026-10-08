@@ -242,19 +242,6 @@ export default function CriticalClient({
 
     return (
         <div className="p-4 md:p-8 space-y-6 md:space-y-8 max-w-7xl mx-auto">
-            {/* Header */}
-            <div className="flex items-center gap-4 border-b border-hairline pb-6">
-                <div className="w-12 h-12 rounded-[var(--r-xl)] bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100 shadow-[inset_0_2px_4px_rgba(225,29,72,0.05)]">
-                    <AlertTriangle size={24} className="animate-pulse" />
-                </div>
-                <div>
-                    <h1 className="text-2xl md:text-3xl font-black text-ink tracking-tight">Critical Alerts & Operations</h1>
-                    <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mt-1">
-                        Handle low stocks, approve pending vouchers, and view unpaid dues
-                    </p>
-                </div>
-            </div>
-
             {/* Summary Cards */}
             <div className={`grid gap-4 md:gap-6 ${financeEnabled ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1'}`}>
                 {/* Stock Card */}

@@ -43,7 +43,7 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
     const [statusFilter, setStatusFilter] = useState('all')
     const [showQr, setShowQr] = useState(false)
 
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
     const takeoutUrl = restaurantSlug ? `${baseUrl}/takeout/${restaurantSlug}` : ''
 
     const downloadSvg = () => {
@@ -221,7 +221,8 @@ export default function TakeoutDashboard({ initialOrders, restaurantId, restaura
                 <Select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="rounded-[var(--r-md)] border border-hairline bg-surface px-4 py-2.5 text-sm font-bold text-ink outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 w-full sm:w-48 capitalize shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all"
+                    compact
+                    className="w-full sm:w-48"
                 >
                     <option value="all">All Statuses</option>
                     {Object.keys(STATUS_COLORS).map(s => (

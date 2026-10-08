@@ -98,7 +98,7 @@ export default async function KitchenPage() {
     }
 
     return (
-        <div className="h-full flex flex-col overflow-hidden bg-[#FBF7F3]">
+        <div className="h-full flex flex-col overflow-hidden bg-canvas">
             <RealtimeCatchUp restaurantId={restaurantId} />
             {/* Order Queue */}
             <div className="flex-1 overflow-hidden">

@@ -12,17 +12,22 @@ export function openCommandPalette() {
 }
 
 /** Subtle "Press ⌘K" affordance; also opens the palette on click (touch). */
-export function CommandHint({ className }: { className?: string }) {
+export function CommandHint({ className, iconOnly = false, hideKbd = false }: { className?: string; iconOnly?: boolean; hideKbd?: boolean }) {
     return (
         <button
             type="button"
             onClick={openCommandPalette}
             className={`hidden sm:flex items-center gap-1.5 text-caption text-ink-subtle hover:text-ink transition-colors ${className ?? ''}`}
             aria-label="Open command palette"
+            title={iconOnly ? 'Search (⌘K)' : undefined}
         >
-            <Search size={13} />
-            <span>Search</span>
-            <kbd className="px-1.5 py-0.5 rounded border border-hairline-strong bg-surface-muted font-sans tabular font-medium">⌘K</kbd>
+            <Search size={iconOnly ? 12 : 12} />
+            {!iconOnly && (
+                <>
+                    <span>Search</span>
+                    {!hideKbd && <kbd className="px-1.5 py-0.5 rounded border border-hairline-strong bg-surface-muted font-sans tabular font-medium">⌘K</kbd>}
+                </>
+            )}
         </button>
     )
 }

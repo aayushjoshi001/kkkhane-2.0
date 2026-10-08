@@ -3,9 +3,7 @@ import { ReactNode } from 'react'
 import AdminSidebar from '@/components/admin/AdminSidebar'
 import SuperAdminSidebar from '@/components/admin/SuperAdminSidebar'
 import AdminOrderNotifier from '@/components/admin/AdminOrderNotifier'
-import SoundEnableButton from '@/components/shared/SoundEnableButton'
 import SessionSync from '@/components/shared/SessionSync'
-import { CommandHint } from '@/components/ui/CommandHint'
 import CommandPaletteMount from '@/components/ui/CommandPaletteMount'
 import { requireRoleWithOptions } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
@@ -14,8 +12,6 @@ import { FeatureProvider, BusinessModeProvider } from '@/lib/contexts/FeatureCon
 import type { BusinessMode } from '@/lib/businessMode'
 import { SidebarProvider } from '@/lib/contexts/SidebarContext'
 import SidebarToggle from '@/components/admin/SidebarToggle'
-import CalendarToggle from '@/components/shared/CalendarToggle'
-import BusinessSessionControl from '@/components/shared/BusinessSessionControl'
 import { getNstDateString } from '@/lib/timezone'
 
 import { BusinessSessionProvider } from '@/lib/contexts/BusinessSessionContext'
@@ -45,6 +41,19 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     const adminSupabase = await createAdminClient()
     const { data: dbUser } = await adminSupabase.from('users').select('avatar_url').eq('id', currentUser.id).single()
     const userAvatar = dbUser?.avatar_url || undefined
+
+    // Pending subscription payments — shown as a badge on the Payments nav item
+    // for super_admin only; a global count across all tenants (admin client, no
+    // restaurant_id filter needed — this is intentional).
+    let pendingPaymentsCount = 0
+    if (isSuperAdmin) {
+        // tenant-scope-exempt: super_admin global pending count across all tenants — intentional cross-tenant query
+        const { count } = await adminSupabase
+            .from('subscription_payments')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+        pendingPaymentsCount = count || 0
+    }
 
     // Fetch restaurant name + currency features for the manager sidebar/app —
     // only needed for manager role (super_admin operates across tenants).
@@ -137,7 +146,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
                         not opened yet where the lock screen isn't already saying so.
                         Super admins have no till of their own to open or close. */}
                     {!isSuperAdmin && <BusinessDayReminder />}
-                    {isSuperAdmin ? <SuperAdminSidebar userRole={roleNameRaw} userAvatar={userAvatar} /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} userAvatar={userAvatar} />}
+                    {isSuperAdmin ? <SuperAdminSidebar userRole={roleNameRaw} userAvatar={userAvatar} pendingPaymentsCount={pendingPaymentsCount} /> : <AdminSidebar userRole={roleNameRaw} restaurantName={restaurantName} userAvatar={userAvatar} />}
                     {!isSuperAdmin && currentUser.restaurantId && (
                         <>
                             <AdminOrderNotifier restaurantId={currentUser.restaurantId} />
@@ -147,24 +156,10 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
                     {/* Main Content */}
                     <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-                        <header className="print:hidden bg-surface border-b border-hairline px-5 md:px-8 h-16 flex items-center justify-between shrink-0 z-10">
+                        {/* Mobile-only bar: just the hamburger to open the drawer */}
+                        <div className="print:hidden md:hidden shrink-0 h-12 flex items-center px-3 border-b border-hairline bg-[#fff8f5]">
                             <SidebarToggle isSuperAdmin={isSuperAdmin} />
-                            <div className="flex items-center gap-3">
-                                {!isSuperAdmin && (
-                                    <BusinessSessionControl variant="compact" />
-                                )}
-                                <CalendarToggle />
-                                <CommandHint />
-                                {!isSuperAdmin && <SoundEnableButton variant="light" />}
-                                <span className={`text-caption font-semibold px-2.5 py-1 rounded-full ${
-                                    isSuperAdmin
-                                        ? 'bg-brand-50 text-brand-700'
-                                        : 'bg-[var(--neutral-badge-bg)] text-[var(--neutral-badge-fg)]'
-                                }`}>
-                                    {roleDisplay}
-                                </span>
-                            </div>
-                        </header>
+                        </div>
                         <CommandPaletteMount role={roleNameRaw} theme="light" />
                         <div className="flex-1 overflow-auto p-5 md:p-8">
                             <div className="max-w-6xl mx-auto">

@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
  * flip it and look. Labels carry the live year — "2083 BS" / "2026 AD" — which
  * makes the difference concrete rather than an abstract acronym.
  */
-export default function CalendarToggle({ className }: { className?: string }) {
+export default function CalendarToggle({ className, compact = false }: { className?: string; compact?: boolean }) {
     const { calendar, setCalendar } = useCalendar()
 
     return (
@@ -20,7 +20,8 @@ export default function CalendarToggle({ className }: { className?: string }) {
             role="radiogroup"
             aria-label="Date calendar"
             className={cn(
-                'inline-flex items-center gap-0.5 p-0.5 rounded-full border border-hairline bg-surface-muted/60',
+                'inline-flex items-center gap-0.5 rounded-full border border-hairline bg-surface-muted/60 shrink-0',
+                compact ? 'p-0.5' : 'p-0.5',
                 className,
             )}
         >
@@ -35,18 +36,22 @@ export default function CalendarToggle({ className }: { className?: string }) {
                         onClick={() => setCalendar(option)}
                         title={option === 'bs' ? 'Show Bikram Sambat dates first' : 'Show Gregorian dates first'}
                         className={cn(
-                            'px-2.5 h-7 rounded-full text-[11px] font-bold tracking-wide transition-colors focus-ring whitespace-nowrap',
+                            'rounded-full font-bold tracking-wide transition-colors focus-ring whitespace-nowrap',
+                            compact
+                                ? 'px-1.5 h-5 text-[10px]'
+                                : 'px-2.5 h-7 text-[11px]',
                             active
                                 ? 'bg-surface text-ink shadow-sm'
                                 : 'text-ink-subtle hover:text-ink',
                         )}
                     >
-                        {/* The year makes the choice concrete, but "2083 BS / 2026 AD"
-                            is ~120px — too wide for the cashier header on a phone,
-                            which is where this control used to be dropped entirely.
-                            Narrow screens get the era alone so it always fits. */}
-                        <span className="hidden sm:inline">{calendarLabel(option)}</span>
-                        <span className="sm:hidden">{option.toUpperCase()}</span>
+                        {/* compact forces the short label regardless of viewport */}
+                        {compact ? option.toUpperCase() : (
+                            <>
+                                <span className="hidden sm:inline">{calendarLabel(option)}</span>
+                                <span className="sm:hidden">{option.toUpperCase()}</span>
+                            </>
+                        )}
                     </button>
                 )
             })}

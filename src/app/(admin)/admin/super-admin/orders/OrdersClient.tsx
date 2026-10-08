@@ -60,7 +60,7 @@ export default function OrdersClient({ orders, restaurants }: {
                 <Select
                     value={filterRestaurant}
                     onChange={e => setFilterRestaurant(e.target.value)}
-                    className="rounded-lg border border-hairline-strong px-3 py-2 text-sm bg-surface outline-none focus:ring-2 focus:ring-indigo-200"
+                    compact
                 >
                     <option value="all">All Restaurants</option>
                     {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -68,7 +68,7 @@ export default function OrdersClient({ orders, restaurants }: {
                 <Select
                     value={filterStatus}
                     onChange={e => setFilterStatus(e.target.value)}
-                    className="rounded-lg border border-hairline-strong px-3 py-2 text-sm bg-surface outline-none focus:ring-2 focus:ring-indigo-200"
+                    compact
                 >
                     <option value="all">All Statuses</option>
                     {['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'].map(s => (
@@ -78,7 +78,7 @@ export default function OrdersClient({ orders, restaurants }: {
                 <Select
                     value={filterDate}
                     onChange={e => setFilterDate(e.target.value)}
-                    className="rounded-lg border border-hairline-strong px-3 py-2 text-sm bg-surface outline-none focus:ring-2 focus:ring-indigo-200"
+                    compact
                 >
                     <option value="all">All Time</option>
                     <option value="today">Today</option>

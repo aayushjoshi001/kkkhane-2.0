@@ -83,6 +83,8 @@ export default function VouchersManager({
     const { confirm } = useConfirmStore()
     const [entriesList, setEntriesList] = useState<RawVoucherEntry[]>(initialEntries)
     const formatDate = useDateFormatter()
+    const vouchersEnabled = useFeatureEnabled('vouchersEnabled')
+    const chequeApprovalEnabled = useFeatureEnabled('chequeApprovalEnabled')
 
     // Session opening states
     const [openingSession, setOpeningSession] = useState(false)
@@ -168,8 +170,11 @@ export default function VouchersManager({
     // Print Modal states
     const [printVoucher, setPrintVoucher] = useState<ParsedVoucher | null>(null)
 
-    // View tab state
-    const [activeTab, setActiveTab] = useState<'vouchers' | 'approvals'>('vouchers')
+    // View tab state — default to whichever tab is enabled; if vouchers is off,
+    // land on cheque approvals instead of an empty view.
+    const [activeTab, setActiveTab] = useState<'vouchers' | 'approvals'>(
+        () => (vouchersEnabled ? 'vouchers' : 'approvals')
+    )
 
     // Filters state
     const [searchQuery, setSearchQuery] = useState('')
@@ -524,21 +529,7 @@ export default function VouchersManager({
             )}
 
             {/* Header section */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100">
-                            <FileText size={20} />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-extrabold text-ink tracking-tight">Receipt & Payment Vouchers</h1>
-                            <p className="text-sm text-ink-subtle mt-0.5">
-                                Log cash, bank QR, or cheques to auto-update books with manager approvals.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
+            <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4">
                 <div className="flex gap-2 shrink-0">
                     <button
                         onClick={() => {
@@ -615,26 +606,40 @@ export default function VouchersManager({
                 </div>
             </div>
 
-            {/* Directory Navigation Tabs */}
-            <div className="flex border-b border-hairline gap-6">
-                <button
-                    onClick={() => setActiveTab('vouchers')}
-                    className={`pb-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all relative ${activeTab === 'vouchers' ? 'border-brand-500 text-brand-600 font-extrabold' : 'border-transparent text-ink-subtle hover:text-ink-subtle'}`}
-                >
-                    Active Vouchers
-                </button>
-                <button
-                    onClick={() => setActiveTab('approvals')}
-                    className={`pb-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all relative flex items-center gap-1.5 ${activeTab === 'approvals' ? 'border-amber-500 text-amber-600 font-extrabold' : 'border-transparent text-ink-subtle hover:text-ink-subtle'}`}
-                >
-                    Pending Cheque Approvals
-                    {stats.pendingCount > 0 && (
-                        <span className="px-1.5 py-0.5 bg-amber-500 text-white rounded-full text-[9px] font-bold">
-                            {stats.pendingCount}
-                        </span>
+            {/* Toggle pill switcher */}
+            {(vouchersEnabled || chequeApprovalEnabled) && (
+                <div className="flex bg-surface-muted border border-hairline rounded-xl p-1 gap-1">
+                    {vouchersEnabled && (
+                        <button
+                            onClick={() => setActiveTab('vouchers')}
+                            className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+                                activeTab === 'vouchers'
+                                    ? 'bg-brand-500 text-white shadow-sm'
+                                    : 'text-ink-subtle hover:text-ink hover:bg-surface'
+                            }`}
+                        >
+                            Active Vouchers
+                        </button>
                     )}
-                </button>
-            </div>
+                    {chequeApprovalEnabled && (
+                        <button
+                            onClick={() => setActiveTab('approvals')}
+                            className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+                                activeTab === 'approvals'
+                                    ? 'bg-amber-500 text-white shadow-sm'
+                                    : 'text-ink-subtle hover:text-ink hover:bg-surface'
+                            }`}
+                        >
+                            Pending Cheque Approvals
+                            {stats.pendingCount > 0 && (
+                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${activeTab === 'approvals' ? 'bg-white/25 text-white' : 'bg-amber-500 text-white'}`}>
+                                    {stats.pendingCount}
+                                </span>
+                            )}
+                        </button>
+                    )}
+                </div>
+            )}
 
             {/* List and Filter controls */}
             <div className="bg-surface border border-hairline rounded-2xl shadow-sm overflow-hidden">
@@ -650,11 +655,11 @@ export default function VouchersManager({
                         </p>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                    <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
                         <Select
                             value={filterType}
                             onChange={e => setFilterType(e.target.value as typeof filterType)}
-                            className="px-3 py-2 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                            compact
                         >
                             <option value="all">All Types</option>
                             <option value="receipt">Receipts (RV)</option>
@@ -664,7 +669,7 @@ export default function VouchersManager({
                         <Select
                             value={filterMode}
                             onChange={e => setFilterMode(e.target.value as typeof filterMode)}
-                            className="px-3 py-2 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                            compact
                         >
                             <option value="all">All Modes</option>
                             <option value="cash">Cash Only</option>
@@ -672,16 +677,14 @@ export default function VouchersManager({
                             <option value="cheque">Cheque Only</option>
                         </Select>
 
-                        <div className="relative w-full sm:w-60">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle">
-                                <Search size={14} />
-                            </span>
+                        <div className="relative flex-1 min-w-40">
+                            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" />
                             <input
                                 type="text"
                                 placeholder="Search party, voucher no..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-surface border border-hairline rounded-xl text-xs font-bold text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500"
+                                className="w-full pl-8 pr-3 py-1.5 bg-surface border border-hairline rounded-lg text-[11px] font-bold text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                             />
                         </div>
 

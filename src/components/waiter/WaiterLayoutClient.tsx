@@ -89,7 +89,9 @@ export default function WaiterLayoutClient({
 
     return (
         <div className="min-h-screen bg-canvas flex flex-col">
-            <header className="bg-surface border-b border-hairline sticky top-0 z-30 shadow-sm">
+            <header className="bg-canvas border-b border-hairline sticky top-0 z-30 shadow-sm relative overflow-hidden">
+                {/* Orange top accent strip — matches AdminSidebar and PremiumPageHeader design language */}
+                <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-gradient-to-r from-transparent via-brand-500/80 to-transparent pointer-events-none" />
                 {/* Three columns rather than a flex row with an absolutely
                     positioned middle. The clock used to be `absolute left-1/2`,
                     which takes it out of flow entirely, so the layout had no way
