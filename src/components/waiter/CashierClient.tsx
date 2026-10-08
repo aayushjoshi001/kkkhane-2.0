@@ -2505,42 +2505,49 @@ export default function CashierClient({
 
     return (
         <div className="space-y-5">
-            {/* Header Actions Bar */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface rounded-2xl border border-hairline p-4 shadow-sm">
-                <div>
-                    <h2 className="text-lg font-black text-ink">Cashier POS Dashboard</h2>
-                    <p className="text-caption text-ink-subtle">Manage table orders, room stays, billing, and settlements.</p>
-                </div>
+            {/* ── Cashier POS Hero Banner ───────────────────────────────────── */}
+            <div className="relative overflow-hidden rounded-[2rem] bg-brand-500 text-white p-8 sm:p-10 shadow-2xl min-h-[200px] flex flex-col justify-center">
+                {/* Herringbone texture */}
+                <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20'%3E%3Cpath d='M0 20 L10 10 L20 20' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3Cpath d='M20 20 L30 10 L40 20' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3Cpath d='M0 0 L10 10 L20 0' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3Cpath d='M20 0 L30 10 L40 0' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.5'/%3E%3C/svg%3E")`, backgroundSize: '40px 20px' }} />
+                {/* Depth glow blobs */}
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white opacity-5 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-black opacity-10 blur-[100px] rounded-full -translate-x-1/3 translate-y-1/4 pointer-events-none" />
 
-                <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                    <BusinessSessionControl
-                        initialSession={openSession ? {
-                            id: openSession.id,
-                            date: openSession.date,
-                            status: openSession.status,
-                            opening_balance: Number(openSession.opening_balance),
-                            opening_bank_balance: Number(openSession.opening_bank_balance)
-                        } : null}
-                        userRole={userRole}
-                        todayDate={getNstDateString()}
-                        variant="compact"
-                    />
-                    <button
-                        onClick={() => setShowTakeoutQuickOrder(true)}
-                        className="flex items-center gap-2 text-sm font-bold text-ink-muted bg-surface border border-hairline hover:bg-surface-muted px-4 py-2.5 rounded-xl transition-colors shadow-sm"
-                    >
-                        <ShoppingBag size={15} />
-                        Manual Takeaway/Delivery
-                    </button>
-                    {financeEnabled && manualEntryEnabled && (
+                <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">Cashier POS Dashboard</h2>
+                        <p className="text-white/70 text-sm mt-0.5">Manage table orders, room stays, billing, and settlements.</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                        <BusinessSessionControl
+                            initialSession={openSession ? {
+                                id: openSession.id,
+                                date: openSession.date,
+                                status: openSession.status,
+                                opening_balance: Number(openSession.opening_balance),
+                                opening_bank_balance: Number(openSession.opening_bank_balance)
+                            } : null}
+                            userRole={userRole}
+                            todayDate={getNstDateString()}
+                            variant="compact"
+                        />
                         <button
-                            onClick={() => setShowManualEntry(true)}
-                            className="flex items-center gap-2 text-sm font-bold text-white bg-brand-500 hover:bg-brand-600 px-4 py-2.5 rounded-xl transition-colors shadow-sm"
+                            onClick={() => setShowTakeoutQuickOrder(true)}
+                            className="flex items-center gap-2 text-sm font-bold text-white bg-white/20 hover:bg-white/30 border border-white/25 px-4 py-2.5 rounded-xl transition-colors"
                         >
-                            <PenLine size={15} />
-                            Manual Entry
+                            <ShoppingBag size={15} />
+                            Manual Takeaway/Delivery
                         </button>
-                    )}
+                        {financeEnabled && manualEntryEnabled && (
+                            <button
+                                onClick={() => setShowManualEntry(true)}
+                                className="flex items-center gap-2 text-sm font-bold text-white bg-white/10 hover:bg-white/20 border border-white/15 px-4 py-2.5 rounded-xl transition-colors"
+                            >
+                                <PenLine size={15} />
+                                Manual Entry
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
