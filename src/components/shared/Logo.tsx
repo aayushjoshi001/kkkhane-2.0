@@ -6,8 +6,9 @@ interface LogoProps {
     /**
      * - `default`: full "kkkhane" wordmark (use on light surfaces)
      * - `dark`: round K icon only (legible on dark surfaces)
+     * - `white`: round K icon rendered all-white (use on brand-orange banners)
      */
-    variant?: 'default' | 'dark'
+    variant?: 'default' | 'dark' | 'white'
 }
 
 /**
@@ -15,7 +16,7 @@ interface LogoProps {
  * standalone K icon on dark surfaces. Height is driven by `className`.
  */
 export default function Logo({ className = 'h-8', variant = 'default' }: LogoProps) {
-    const isIcon = variant === 'dark'
+    const isIcon = variant === 'dark' || variant === 'white'
     return (
         <Image
             src={isIcon ? '/brand/icon.png' : '/brand/full-logo.png'}
@@ -24,7 +25,7 @@ export default function Logo({ className = 'h-8', variant = 'default' }: LogoPro
             height={96}
             priority
             className={`${className} w-auto object-contain select-none`}
-            style={{ width: 'auto' }}
+            style={{ width: 'auto', filter: variant === 'white' ? 'brightness(0) invert(1)' : undefined }}
         />
     )
 }

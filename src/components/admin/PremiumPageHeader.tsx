@@ -1,4 +1,5 @@
 import React from 'react'
+import MobileMenuButton from '@/components/admin/MobileMenuButton'
 
 interface PremiumPageHeaderProps {
     title: string
@@ -24,6 +25,10 @@ export default function PremiumPageHeader({ title, description, icon, actions, c
             <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white opacity-5 blur-[120px] rounded-full translate-x-1/3 -translate-y-1/4 pointer-events-none" />
             <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-black opacity-10 blur-[100px] rounded-full -translate-x-1/3 translate-y-1/4 pointer-events-none" />
 
+            {/* Mobile hamburger in top-right of the orange box */}
+            <div className="absolute top-4 right-4 z-20">
+                <MobileMenuButton />
+            </div>
             <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
                 <div>
                     {icon && (

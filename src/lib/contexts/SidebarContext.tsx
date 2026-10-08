@@ -12,9 +12,10 @@ interface SidebarContextType {
     toggleMobile: () => void
     toggleDesktop: () => void
     closeMobile: () => void
+    __hasProvider?: boolean
 }
 
-const defaultContext: SidebarContextType = {
+const defaultContext: SidebarContextType & { __hasProvider?: boolean } = {
     isOpen: false,
     isCollapsed: false,
     toggleMobile: () => {},
@@ -76,7 +77,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     )
 
     return (
-        <SidebarContext.Provider value={value}>
+        <SidebarContext.Provider value={{ ...value, __hasProvider: true }}>
             {children}
         </SidebarContext.Provider>
     )
