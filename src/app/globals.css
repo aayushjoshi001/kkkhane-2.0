@@ -21,10 +21,10 @@
     --brand-900: #752A00;
 
     /* NEUTRALS — soft cream + coffee brown palette */
-    --bg:            #FBF5EE;   /* warm parchment canvas */
-    --surface:       #FFFCF8;   /* near-white cream card */
-    --surface-muted: #F3E9DD;   /* light coffee — muted surfaces, hover states */
-    --border:        #E6D8C8;   /* warm tan hairline */
+    --bg:            #fde8bb;   /* warm golden canvas */
+    --surface:       #fef0cc;   /* card surface */
+    --surface-muted: #fad9a0;   /* muted hover surface */
+    --border:        #f2c878;   /* warm golden hairline */
     --border-strong: #CEBCA8;   /* deeper coffee brown border */
     --text:          #2B1A0E;   /* dark espresso — primary text */
     --text-muted:    #7A5F4A;   /* medium coffee brown — secondary text */
