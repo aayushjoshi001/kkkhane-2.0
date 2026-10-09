@@ -15,26 +15,30 @@ const GENERIC_ERROR = 'This invite link is no longer valid.'
 
 export async function acceptInvitationAction(
     token: string,
-    input: { fullName: string; password: string }
+    input: { phone: string; password: string }
 ) {
     const rateLimitError = await checkRateLimit('INVITE_ACCEPT', 10, 900)
     if (rateLimitError) return { error: rateLimitError }
 
-    const fullName = input.fullName.trim()
-    if (fullName.length < 2) return { error: 'Full name is required (2+ characters)' }
+    const phone = input.phone.trim()
+    if (!/^\+?[0-9()\s-]{7,20}$/.test(phone)) return { error: 'Enter a valid phone number' }
     if (input.password.length < 8) return { error: 'Password must be at least 8 characters' }
 
     const supabase = await createAdminClient()
     const tokenHash = hashToken(token)
 
+    // tenant-scope-exempt: the unguessable pre-auth token is what resolves the tenant
     const { data: invitation } = await supabase
         .from('invitations')
-        .select('id, restaurant_id, email, role_id, department_id, status, expires_at')
+        .select('id, restaurant_id, full_name, email, role_id, department_id, status, expires_at')
         .eq('token_hash', tokenHash)
         .maybeSingle()
 
     if (!invitation || invitation.status !== 'pending' || new Date(invitation.expires_at) < new Date()) {
         return { error: GENERIC_ERROR }
+    }
+    if (!invitation.full_name) {
+        return { error: 'This invitation is missing the staff name. Ask your manager to send a new invitation.' }
     }
 
     // Re-check the seat limit at accept-time (an invite can sit pending for
@@ -75,7 +79,7 @@ export async function acceptInvitationAction(
         email: invitation.email,
         password: input.password,
         email_confirm: true,
-        user_metadata: { full_name: fullName },
+        user_metadata: { full_name: invitation.full_name, phone },
     })
 
     if (authError || !createdUser.user) {
@@ -89,7 +93,9 @@ export async function acceptInvitationAction(
         .upsert({
             id: userId,
             restaurant_id: invitation.restaurant_id,
-            full_name: fullName,
+            full_name: invitation.full_name,
+            email: invitation.email,
+            phone,
             role_id: invitation.role_id,
             department_id: invitation.department_id,
             is_active: true,
@@ -103,6 +109,7 @@ export async function acceptInvitationAction(
     await supabase
         .from('invitations')
         .update({ status: 'accepted', accepted_at: new Date().toISOString() })
+        .eq('restaurant_id', invitation.restaurant_id)
         .eq('id', invitation.id)
 
     const { data: roleRow } = await supabase.from('roles').select('name').eq('id', invitation.role_id).single()
@@ -113,7 +120,7 @@ export async function acceptInvitationAction(
         action: 'staff_invite_accepted',
         entityType: 'invitation',
         entityId: invitation.id,
-        newValue: { accepted: true },
+        newValue: { accepted: true, role_id: invitation.role_id },
     })
 
     // We already have the plaintext password the user just chose — sign in

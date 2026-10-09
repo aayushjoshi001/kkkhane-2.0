@@ -8,16 +8,17 @@ function hashToken(token: string) {
 }
 
 type InviteLookup =
-    | { valid: true; restaurantName: string; roleName: string; email: string }
+    | { valid: true; restaurantName: string; roleName: string; fullName: string; email: string }
     | { valid: false; reason: string }
 
 async function lookupInvitation(token: string): Promise<InviteLookup> {
     const supabase = await createAdminClient()
     const tokenHash = hashToken(token)
 
+    // tenant-scope-exempt: the unguessable pre-auth token is what resolves the tenant
     const { data: invitation } = await supabase
         .from('invitations')
-        .select('email, status, expires_at, restaurant_id, role_id, roles(name), restaurants(name)')
+        .select('full_name, email, status, expires_at, restaurant_id, role_id, roles(name), restaurants(name)')
         .eq('token_hash', tokenHash)
         .maybeSingle()
 
@@ -25,6 +26,7 @@ async function lookupInvitation(token: string): Promise<InviteLookup> {
     if (invitation.status === 'revoked') return { valid: false, reason: 'This invite has been revoked. Ask your manager to resend it.' }
     if (invitation.status === 'accepted') return { valid: false, reason: 'This invite has already been accepted. Please log in instead.' }
     if (new Date(invitation.expires_at) < new Date()) return { valid: false, reason: 'This invite link has expired. Ask your manager to resend it.' }
+    if (!invitation.full_name) return { valid: false, reason: 'This invitation is incomplete. Ask your manager to send a new invitation.' }
 
     const roleObj = Array.isArray(invitation.roles) ? invitation.roles[0] : invitation.roles
     const restaurantObj = Array.isArray(invitation.restaurants) ? invitation.restaurants[0] : invitation.restaurants
@@ -33,6 +35,7 @@ async function lookupInvitation(token: string): Promise<InviteLookup> {
         valid: true,
         restaurantName: restaurantObj?.name || 'your restaurant',
         roleName: roleObj?.name || 'staff',
+        fullName: invitation.full_name,
         email: invitation.email,
     }
 }

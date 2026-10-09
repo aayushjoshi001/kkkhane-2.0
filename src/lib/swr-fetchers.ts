@@ -63,7 +63,7 @@ export const fetchStaffData = async (restaurantId: string) => {
         supabase.from('departments').select('*').eq('restaurant_id', restaurantId).order('name', { ascending: true }),
         // Invitations, not `staff_invitations` — matches app/(admin)/admin/staff/page.tsx.
         supabase.from('invitations')
-            .select('id, email, role_id, department_id, status, expires_at, created_at, roles(id, name, description), departments(id, name), invited_by(id, full_name)')
+            .select('id, full_name, email, role_id, department_id, status, expires_at, created_at, roles(id, name, description), departments(id, name), invited_by(id, full_name)')
             .eq('restaurant_id', restaurantId)
             .order('created_at', { ascending: false })
     ])
