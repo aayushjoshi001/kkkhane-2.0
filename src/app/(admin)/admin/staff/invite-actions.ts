@@ -22,15 +22,17 @@ function hashToken(token: string) {
     return createHash('sha256').update(token).digest('hex')
 }
 
-const INVITATION_SELECT = 'id, email, role_id, department_id, status, expires_at, created_at, roles(id, name, description), departments(id, name), invited_by(id, full_name)'
+const INVITATION_SELECT = 'id, full_name, email, role_id, department_id, status, expires_at, created_at, roles(id, name, description), departments(id, name), invited_by(id, full_name)'
 
-export async function createInvitationAction(input: { email: string; roleId: number; departmentId?: string | null }) {
+export async function createInvitationAction(input: { fullName: string; email: string; roleId: number }) {
     const currentUser = await getCurrentUser()
     if (!['manager', 'super_admin'].includes(currentUser.role)) {
         return { error: 'You do not have permission to invite staff' }
     }
 
+    const fullName = input.fullName.trim()
     const email = input.email.trim().toLowerCase()
+    if (fullName.length < 2) return { error: 'Staff name must be at least 2 characters' }
     if (!EMAIL_RE.test(email)) return { error: 'Invalid email address' }
 
     // Only super_admin can grant super_admin — same rule as updateStaffRoleAction.
@@ -55,18 +57,6 @@ export async function createInvitationAction(input: { email: string; roleId: num
         if (!features?.financeEnabled) {
             return { error: 'This role requires the Enterprise Finance plan' }
         }
-    }
-
-    // A department, if picked, must belong to this same restaurant
-    if (input.departmentId) {
-        const { data: department } = await supabase
-            .from('departments')
-            .select('id')
-            .eq('id', input.departmentId)
-            .eq('restaurant_id', currentUser.restaurantId)
-            .maybeSingle()
-
-        if (!department) return { error: 'Invalid department' }
     }
 
     // Reject if this email is already a staff/customer account in this restaurant.
@@ -118,13 +108,12 @@ export async function createInvitationAction(input: { email: string; roleId: num
         .eq('status', 'pending')
         .maybeSingle()
 
-    const departmentId = input.departmentId || null
-
     let invitationId: string
     if (pendingInvite) {
         const { error } = await supabase
             .from('invitations')
-            .update({ role_id: input.roleId, department_id: departmentId, token_hash: tokenHash, expires_at: expiresAt })
+            .update({ full_name: fullName, role_id: input.roleId, department_id: null, token_hash: tokenHash, expires_at: expiresAt })
+            .eq('restaurant_id', currentUser.restaurantId)
             .eq('id', pendingInvite.id)
         if (error) return { error: error.message }
         invitationId = pendingInvite.id
@@ -133,9 +122,10 @@ export async function createInvitationAction(input: { email: string; roleId: num
             .from('invitations')
             .insert({
                 restaurant_id: currentUser.restaurantId,
+                full_name: fullName,
                 email,
                 role_id: input.roleId,
-                department_id: departmentId,
+                department_id: null,
                 token_hash: tokenHash,
                 invited_by: currentUser.id,
                 expires_at: expiresAt,
@@ -150,8 +140,9 @@ export async function createInvitationAction(input: { email: string; roleId: num
     const { data: restaurantRow } = await supabase.from('restaurants').select('name').eq('id', currentUser.restaurantId).single()
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://kkkhane.com'
-    await sendStaffInviteEmail(
+    const delivery = await sendStaffInviteEmail(
         email,
+        fullName,
         restaurantRow?.name || 'your restaurant',
         roleRow?.name || 'staff',
         `${appUrl}/invite/${token}`,
@@ -164,17 +155,22 @@ export async function createInvitationAction(input: { email: string; roleId: num
         action: 'staff_invited',
         entityType: 'invitation',
         entityId: invitationId,
-        newValue: { email, role_id: input.roleId, department_id: departmentId },
+        newValue: { full_name: fullName, email, role_id: input.roleId },
     })
 
     const { data: invitation } = await supabase
         .from('invitations')
         .select(INVITATION_SELECT)
+        .eq('restaurant_id', currentUser.restaurantId)
         .eq('id', invitationId)
         .single()
 
     revalidatePath('/admin/staff')
-    return { success: true, invitation }
+    return {
+        success: true,
+        invitation,
+        warning: delivery.success ? undefined : 'Invitation saved, but the email could not be sent. Configure Brevo, then use Resend.',
+    }
 }
 
 export async function revokeInvitationAction(invitationId: string) {
@@ -188,12 +184,17 @@ export async function revokeInvitationAction(invitationId: string) {
     const { data: invitation } = await supabase
         .from('invitations')
         .select('restaurant_id')
+        .eq('restaurant_id', currentUser.restaurantId)
         .eq('id', invitationId)
         .single()
 
     if (invitation?.restaurant_id !== currentUser.restaurantId) return { error: 'Unauthorized' }
 
-    const { error } = await supabase.from('invitations').update({ status: 'revoked' }).eq('id', invitationId)
+    const { error } = await supabase
+        .from('invitations')
+        .update({ status: 'revoked' })
+        .eq('restaurant_id', currentUser.restaurantId)
+        .eq('id', invitationId)
     if (error) return { error: error.message }
 
     revalidatePath('/admin/staff')
@@ -213,11 +214,15 @@ export async function resendInvitationAction(invitationId: string) {
 
     const { data: invitation } = await supabase
         .from('invitations')
-        .select('restaurant_id, email, role_id')
+        .select('restaurant_id, full_name, email, role_id')
+        .eq('restaurant_id', currentUser.restaurantId)
         .eq('id', invitationId)
         .single()
 
     if (invitation?.restaurant_id !== currentUser.restaurantId) return { error: 'Unauthorized' }
+    if (!invitation.full_name) {
+        return { error: 'This older invitation has no staff name. Revoke it and create a new invitation.' }
+    }
 
     const token = newToken()
     const tokenHash = hashToken(token)
@@ -226,6 +231,7 @@ export async function resendInvitationAction(invitationId: string) {
     const { error } = await supabase
         .from('invitations')
         .update({ status: 'pending', token_hash: tokenHash, expires_at: expiresAt })
+        .eq('restaurant_id', currentUser.restaurantId)
         .eq('id', invitationId)
 
     if (error) return { error: error.message }
@@ -234,8 +240,9 @@ export async function resendInvitationAction(invitationId: string) {
     const { data: restaurantRow } = await supabase.from('restaurants').select('name').eq('id', invitation.restaurant_id).single()
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://kkkhane.com'
-    await sendStaffInviteEmail(
+    const delivery = await sendStaffInviteEmail(
         invitation.email,
+        invitation.full_name,
         restaurantRow?.name || 'your restaurant',
         roleRow?.name || 'staff',
         `${appUrl}/invite/${token}`,
@@ -245,9 +252,14 @@ export async function resendInvitationAction(invitationId: string) {
     const { data: updatedInvitation } = await supabase
         .from('invitations')
         .select(INVITATION_SELECT)
+        .eq('restaurant_id', currentUser.restaurantId)
         .eq('id', invitationId)
         .single()
 
     revalidatePath('/admin/staff')
-    return { success: true, invitation: updatedInvitation }
+    return {
+        success: true,
+        invitation: updatedInvitation,
+        warning: delivery.success ? undefined : 'Invitation refreshed, but the email could not be sent. Check the Brevo configuration.',
+    }
 }

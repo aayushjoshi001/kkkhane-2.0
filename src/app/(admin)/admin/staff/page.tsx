@@ -22,6 +22,7 @@ export default async function StaffManagementPage() {
     const { data: currentUserData } = await adminSupabase
         .from('users')
         .select('role_id, roles(name)')
+        .eq('restaurant_id', restaurantId)
         .eq('id', userId)
         .single()
 
@@ -72,7 +73,7 @@ export default async function StaffManagementPage() {
     // 5. Fetch invitations (pending + recent history)
     const { data: invitations } = await adminSupabase
         .from('invitations')
-        .select('id, email, role_id, department_id, status, expires_at, created_at, roles(id, name, description), departments(id, name), invited_by(id, full_name)')
+        .select('id, full_name, email, role_id, department_id, status, expires_at, created_at, roles(id, name, description), departments(id, name), invited_by(id, full_name)')
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false })
 

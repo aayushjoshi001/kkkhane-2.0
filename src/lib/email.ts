@@ -1,6 +1,9 @@
 /**
- * Email Service Integration
- * Supports: Resend (default), SendGrid, or custom SMTP
+ * Transactional email delivery.
+ *
+ * Brevo is preferred when configured because it is also the production SMTP
+ * provider for Supabase Auth. Resend remains a fallback for existing
+ * deployments while they migrate.
  */
 
 import { Resend } from 'resend'
@@ -15,40 +18,85 @@ export interface EmailOptions {
   from?: string
 }
 
-/**
- * Send email via Resend
- * Requires RESEND_API_KEY environment variable
- */
 export async function sendEmail(options: EmailOptions) {
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY not set — email will not be sent')
-    return { success: false, error: 'Email service not configured' }
-  }
-
-  if (!resendInstance) {
-    resendInstance = new Resend(process.env.RESEND_API_KEY)
-  }
-
-  try {
-    const response = await resendInstance.emails.send({
-      from: options.from || process.env.RESEND_FROM_EMAIL || 'noreply@khane.com',
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
-      text: options.text,
-    })
-
-    if (response.error) {
-      console.error('Resend email error:', response.error)
-      return { success: false, error: response.error.message }
+  if (process.env.BREVO_API_KEY) {
+    const senderEmail = options.from || process.env.BREVO_FROM_EMAIL || process.env.RESEND_FROM_EMAIL
+    if (!senderEmail) {
+      console.warn('BREVO_FROM_EMAIL not set — email will not be sent')
+      return { success: false, error: 'Email sender is not configured' }
     }
 
-    console.log('Email sent:', response.data?.id)
-    return { success: true, messageId: response.data?.id }
-  } catch (error) {
-    console.error('Failed to send email:', error)
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    try {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'api-key': process.env.BREVO_API_KEY,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: {
+            email: senderEmail,
+            name: process.env.BREVO_FROM_NAME || 'KKKhane',
+          },
+          to: [{ email: options.to }],
+          subject: options.subject,
+          htmlContent: options.html,
+          textContent: options.text,
+        }),
+      })
+
+      const payload = await response.json().catch(() => null) as { messageId?: string; message?: string } | null
+      if (!response.ok) {
+        console.error('Brevo email error:', payload?.message || response.statusText)
+        return { success: false, error: payload?.message || 'Brevo rejected the email' }
+      }
+
+      return { success: true, messageId: payload?.messageId }
+    } catch (error) {
+      console.error('Failed to send email through Brevo:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown email error' }
+    }
   }
+
+  if (process.env.RESEND_API_KEY) {
+    if (!resendInstance) {
+      resendInstance = new Resend(process.env.RESEND_API_KEY)
+    }
+
+    try {
+      const response = await resendInstance.emails.send({
+        from: options.from || process.env.RESEND_FROM_EMAIL || 'noreply@khane.com',
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        text: options.text,
+      })
+
+      if (response.error) {
+        console.error('Resend email error:', response.error)
+        return { success: false, error: response.error.message }
+      }
+
+      return { success: true, messageId: response.data?.id }
+    } catch (error) {
+      console.error('Failed to send email through Resend:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown email error' }
+    }
+  }
+
+  console.warn('Neither BREVO_API_KEY nor RESEND_API_KEY is set — email will not be sent')
+  return { success: false, error: 'Email service not configured' }
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>'"]/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;',
+  })[character] || character)
 }
 
 /**
@@ -292,24 +340,28 @@ export async function sendPaymentReceiptEmail(
 
 export async function sendStaffInviteEmail(
     staffEmail: string,
+    staffName: string,
     restaurantName: string,
     roleName: string,
     inviteUrl: string,
     expiresInDays: number
 ) {
-    const formattedRole = roleName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    const formattedRole = escapeHtml(roleName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '))
+    const safeStaffName = escapeHtml(staffName)
+    const safeRestaurantName = escapeHtml(restaurantName)
+    const safeInviteUrl = escapeHtml(inviteUrl)
 
     const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:24px">
 <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden">
   <div style="background:#1B263B;padding:20px 24px">
-    <h1 style="margin:0;color:#fff;font-size:18px">You've been invited to ${restaurantName}</h1>
+    <h1 style="margin:0;color:#fff;font-size:18px">You've been invited to ${safeRestaurantName}</h1>
   </div>
   <div style="padding:24px">
-    <p style="margin:0 0 16px;color:#374151">Hi there,</p>
+    <p style="margin:0 0 16px;color:#374151">Hi ${safeStaffName},</p>
     <p style="margin:0 0 16px;color:#374151;font-size:14px">
-      You've been invited to join <strong>${restaurantName}</strong> as <strong>${formattedRole}</strong>. Click below to set your password and get started.
+      You've been invited to join <strong>${safeRestaurantName}</strong> as <strong>${formattedRole}</strong>. Click below to complete your profile and join the team.
     </p>
-    <a href="${inviteUrl}" style="display:inline-block;background:#FB6303;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Accept Invitation &amp; Set Password →</a>
+    <a href="${safeInviteUrl}" style="display:inline-block;background:#FB6303;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Join Team →</a>
     <p style="margin:20px 0 0;font-size:13px;color:#6b7280">This invite link expires in ${expiresInDays} day${expiresInDays !== 1 ? 's' : ''}.</p>
     <p style="margin:8px 0 0;font-size:12px;color:#9ca3af">If you did not expect this invitation, please ignore this email.</p>
   </div>
@@ -320,6 +372,53 @@ export async function sendStaffInviteEmail(
         subject: `You've been invited to ${restaurantName}`,
         html,
     })
+}
+
+export async function sendPasswordResetCodeEmail(email: string, code: string) {
+  const safeCode = escapeHtml(code)
+  const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:24px">
+<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden">
+  <div style="background:#1B263B;padding:20px 24px">
+    <h1 style="margin:0;color:#fff;font-size:18px">Reset your KKKhane password</h1>
+  </div>
+  <div style="padding:24px">
+    <p style="margin:0 0 16px;color:#374151;font-size:14px">Enter this verification code on the password reset screen:</p>
+    <div style="margin:20px 0;padding:16px;border-radius:10px;background:#fff7ed;color:#c2410c;font-size:30px;font-weight:700;letter-spacing:8px;text-align:center">${safeCode}</div>
+    <p style="margin:0;font-size:13px;color:#6b7280">This code expires in 1 hour and can be used only once.</p>
+    <p style="margin:8px 0 0;font-size:12px;color:#9ca3af">If you did not request a password reset, you can safely ignore this email.</p>
+  </div>
+</div></body></html>`
+
+  return sendEmail({
+    to: email,
+    subject: `${code} is your KKKhane password reset code`,
+    html,
+    text: `Your KKKhane password reset code is ${code}. It expires in 1 hour.`,
+  })
+}
+
+export async function sendSignupVerificationCodeEmail(email: string, code: string, recipientName: string) {
+  const safeCode = escapeHtml(code)
+  const safeName = escapeHtml(recipientName)
+  const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9fafb;margin:0;padding:24px">
+<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden">
+  <div style="background:#1B263B;padding:20px 24px">
+    <h1 style="margin:0;color:#fff;font-size:18px">Verify your KKKhane email</h1>
+  </div>
+  <div style="padding:24px">
+    <p style="margin:0 0 16px;color:#374151;font-size:14px">Hi ${safeName}, enter this code to verify your email and continue setting up your business:</p>
+    <div style="margin:20px 0;padding:16px;border-radius:10px;background:#fff7ed;color:#c2410c;font-size:30px;font-weight:700;letter-spacing:8px;text-align:center">${safeCode}</div>
+    <p style="margin:0;font-size:13px;color:#6b7280">This code expires in 1 hour and can be used only once.</p>
+    <p style="margin:8px 0 0;font-size:12px;color:#9ca3af">If you did not create a KKKhane account, you can safely ignore this email.</p>
+  </div>
+</div></body></html>`
+
+  return sendEmail({
+    to: email,
+    subject: `${code} is your KKKhane verification code`,
+    html,
+    text: `Hi ${recipientName}, your KKKhane verification code is ${code}. It expires in 1 hour.`,
+  })
 }
 
 export async function sendLowStockAlertEmail(

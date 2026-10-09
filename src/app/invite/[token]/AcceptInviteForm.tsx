@@ -2,11 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Lock, User, ArrowRight, AlertTriangle } from 'lucide-react'
+import { Eye, EyeOff, Lock, User, Phone, ArrowRight, AlertTriangle } from 'lucide-react'
 import { acceptInvitationAction } from './actions'
 
 type InviteLookup =
-    | { valid: true; restaurantName: string; roleName: string; email: string }
+    | { valid: true; restaurantName: string; roleName: string; fullName: string; email: string }
     | { valid: false; reason: string }
 
 function formatRoleName(name: string) {
@@ -15,7 +15,7 @@ function formatRoleName(name: string) {
 
 export default function AcceptInviteForm({ token, result }: { token: string; result: InviteLookup }) {
     const router = useRouter()
-    const [fullName, setFullName] = useState('')
+    const [phone, setPhone] = useState('')
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
@@ -39,8 +39,8 @@ export default function AcceptInviteForm({ token, result }: { token: string; res
         e.preventDefault()
         setError(null)
 
-        if (fullName.trim().length < 2) {
-            setError('Please enter your full name')
+        if (!/^\+?[0-9()\s-]{7,20}$/.test(phone.trim())) {
+            setError('Please enter a valid phone number')
             return
         }
         if (password.length < 8) {
@@ -53,7 +53,7 @@ export default function AcceptInviteForm({ token, result }: { token: string; res
         }
 
         setIsSubmitting(true)
-        const res = await acceptInvitationAction(token, { fullName, password })
+        const res = await acceptInvitationAction(token, { phone, password })
         setIsSubmitting(false)
 
         if (!res.success) {
@@ -71,7 +71,7 @@ export default function AcceptInviteForm({ token, result }: { token: string; res
             <div className="w-full text-center md:text-left mb-10">
                 <h1 className="text-3xl md:text-4xl font-extrabold text-ink tracking-tight mb-3">Join {result.restaurantName}</h1>
                 <p className="text-base text-ink-subtle font-medium">
-                    You&apos;ve been invited as <strong className="text-ink">{formatRoleName(result.roleName)}</strong>. Set your password to get started.
+                    You&apos;ve been invited as <strong className="text-ink">{formatRoleName(result.roleName)}</strong>. Complete your profile to join the team.
                 </p>
             </div>
 
@@ -83,30 +83,47 @@ export default function AcceptInviteForm({ token, result }: { token: string; res
                 )}
 
                 <div className="flex flex-col gap-2 group">
+                    <label htmlFor="fullName" className="text-sm font-bold text-ink-subtle uppercase tracking-wider">Full Name</label>
+                    <div className="relative">
+                        <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-muted" />
+                        <input
+                            id="fullName"
+                            value={result.fullName}
+                            readOnly
+                            aria-readonly="true"
+                            className="h-14 w-full rounded-2xl border border-hairline bg-surface-muted/50 pl-12 pr-4 text-[15px] font-semibold text-ink-subtle cursor-not-allowed"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-2 group">
                     <label htmlFor="email" className="text-sm font-bold text-ink-subtle uppercase tracking-wider">Email Address</label>
                     <input
                         id="email"
                         type="email"
                         value={result.email}
-                        disabled
-                        className="h-14 w-full rounded-2xl border border-hairline bg-surface-muted/50 px-4 text-[15px] font-semibold text-ink-subtle"
+                        readOnly
+                        aria-readonly="true"
+                        className="h-14 w-full rounded-2xl border border-hairline bg-surface-muted/50 px-4 text-[15px] font-semibold text-ink-subtle cursor-not-allowed"
                     />
                 </div>
 
                 <div className="flex flex-col gap-2 group">
-                    <label htmlFor="fullName" className="text-sm font-bold text-ink-subtle uppercase tracking-wider flex gap-1 transition-colors group-focus-within:text-brand-600">
-                        Full Name <span className="text-danger-fg">*</span>
+                    <label htmlFor="phone" className="text-sm font-bold text-ink-subtle uppercase tracking-wider flex gap-1 transition-colors group-focus-within:text-brand-600">
+                        Phone Number <span className="text-danger-fg">*</span>
                     </label>
                     <div className="relative">
-                        <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-muted group-focus-within:text-brand-500 transition-colors" />
+                        <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-muted group-focus-within:text-brand-500 transition-colors" />
                         <input
-                            id="fullName"
-                            value={fullName}
-                            onChange={e => setFullName(e.target.value)}
+                            id="phone"
+                            type="tel"
+                            value={phone}
+                            onChange={e => setPhone(e.target.value)}
                             required
+                            autoComplete="tel"
                             disabled={isSubmitting}
                             className="h-14 w-full rounded-2xl border border-hairline bg-surface-muted/30 hover:bg-surface focus:bg-surface pl-12 pr-4 text-[15px] font-semibold outline-none text-ink placeholder:text-ink-muted focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 transition-all shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] disabled:opacity-50"
-                            placeholder="Your full name"
+                            placeholder="98XXXXXXXX"
                         />
                     </div>
                 </div>
@@ -163,7 +180,7 @@ export default function AcceptInviteForm({ token, result }: { token: string; res
                         <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
                         <>
-                            Accept & Get Started <ArrowRight size={20} className="ml-1" />
+                            Join Team <ArrowRight size={20} className="ml-1" />
                         </>
                     )}
                 </button>

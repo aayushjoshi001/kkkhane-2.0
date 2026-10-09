@@ -12,7 +12,7 @@ import { createInvitationAction, revokeInvitationAction, resendInvitationAction 
 import { toast } from 'react-hot-toast'
 import { useConfirmStore } from '@/lib/stores/confirm'
 import { fetchStaffData } from '@/lib/swr-fetchers'
-import { useFeatures, useFeatureEnabled } from '@/lib/contexts/FeatureContext'
+import { useFeatures } from '@/lib/contexts/FeatureContext'
 import { FINANCE_GATED_ROLES } from '@/types/database'
 import { formatCurrency } from '@/lib/utils'
 import PayPartyModal from '@/components/admin/PayPartyModal'
@@ -23,35 +23,6 @@ import StaffActivityPanel from '@/components/admin/StaffActivityPanel'
 // Ledger entry types that represent money actually paid out to staff (as opposed
 // to 'accrual', which only increases what's owed, or 'deduction', which reduces it)
 const PAY_ENTRY_TYPES = ['salary_payout', 'advance_payment', 'bonus']
-
-function PasswordToggleInput({ value, onChange, placeholder, disabled, show, onToggleShow }: {
-    value: string
-    onChange: (value: string) => void
-    placeholder: string
-    disabled: boolean
-    show: boolean
-    onToggleShow: () => void
-}) {
-    return (
-        <div className="relative">
-            <input
-                type={show ? 'text' : 'password'}
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                placeholder={placeholder}
-                disabled={disabled}
-                className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50 pr-12"
-            />
-            <button
-                type="button"
-                onClick={onToggleShow}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle hover:text-ink transition-colors p-1"
-            >
-                {show ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-        </div>
-    )
-}
 
 type StaffMember = {
     id: string
@@ -86,6 +57,7 @@ export type Department = {
 
 export type Invitation = {
     id: string
+    full_name: string | null
     email: string
     role_id: number
     department_id: string | null
@@ -288,25 +260,11 @@ export default function StaffManager({
         newRoleId: 0
     })
 
-    const [createModal, setCreateModal] = useState({
+    const [inviteModal, setInviteModal] = useState({
         isOpen: false,
         fullName: '',
         email: '',
-        password: '',
-        confirmPassword: '',
-        showPassword: false,
-        showConfirmPassword: false,
-        phone: '',
         roleId: 4, // Default to waiter
-        departmentId: '' as string,
-        isCreating: false
-    })
-
-    const [inviteModal, setInviteModal] = useState({
-        isOpen: false,
-        email: '',
-        roleId: 4, // Default to waiter
-        departmentId: '' as string,
         isInviting: false
     })
 
@@ -647,78 +605,11 @@ export default function StaffManager({
         }
     }
 
-    const handleCreateStaff = async () => {
-        if (!createModal.fullName || !createModal.email || !createModal.password) {
-            toast.error('Please fill in all required fields')
-            return
-        }
-
-        if (createModal.password.length < 8) {
-            toast.error('Password must be at least 8 characters')
-            return
-        }
-
-        if (createModal.password !== createModal.confirmPassword) {
-            toast.error('Passwords do not match')
-            return
-        }
-
-        setCreateModal(prev => ({ ...prev, isCreating: true }))
-
-        try {
-            const response = await fetch('/api/staff/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    full_name: createModal.fullName,
-                    email: createModal.email,
-                    password: createModal.password,
-                    phone: createModal.phone || undefined,
-                    role_id: createModal.roleId,
-                    department_id: createModal.departmentId || undefined,
-                    restaurant_id: restaurantId,
-                }),
-            })
-
-            const data = await response.json()
-
-            if (!response.ok) {
-                toast.error(data.error || 'Failed to create staff member')
-                return
-            }
-
-            // Add new staff to list
-            if (data.staff) {
-                mutate()
-            }
-
-            toast.success(data.message || 'Staff member created successfully')
-            setCreateModal({
-                isOpen: false,
-                fullName: '',
-                email: '',
-                password: '',
-                confirmPassword: '',
-                showPassword: false,
-                showConfirmPassword: false,
-                phone: '',
-                roleId: 4,
-                departmentId: '',
-                isCreating: false
-            })
-        } catch (error) {
-            console.error('Staff creation error:', error)
-            toast.error('An error occurred while creating staff')
-        } finally {
-            setCreateModal(prev => ({ ...prev, isCreating: false }))
-        }
-    }
-
-    const closeCreateModal = () => {
-        setCreateModal({ isOpen: false, fullName: '', email: '', password: '', confirmPassword: '', showPassword: false, showConfirmPassword: false, phone: '', roleId: 4, departmentId: '', isCreating: false })
-    }
-
     const handleSendInvite = async () => {
+        if (inviteModal.fullName.trim().length < 2) {
+            toast.error('Please enter the staff member\'s name')
+            return
+        }
         if (!inviteModal.email.trim()) {
             toast.error('Please enter an email address')
             return
@@ -726,9 +617,9 @@ export default function StaffManager({
 
         setInviteModal(prev => ({ ...prev, isInviting: true }))
         const res = await createInvitationAction({
+            fullName: inviteModal.fullName.trim(),
             email: inviteModal.email.trim(),
             roleId: inviteModal.roleId,
-            departmentId: inviteModal.departmentId || null,
         })
         setInviteModal(prev => ({ ...prev, isInviting: false }))
 
@@ -740,8 +631,9 @@ export default function StaffManager({
         if (res.invitation) {
             mutate()
         }
-        toast.success(`Invitation sent to ${inviteModal.email.trim()}`)
-        setInviteModal({ isOpen: false, email: '', roleId: 4, departmentId: '', isInviting: false })
+        if (res.warning) toast.error(res.warning)
+        else toast.success(`Invitation sent to ${inviteModal.email.trim()}`)
+        setInviteModal({ isOpen: false, fullName: '', email: '', roleId: 4, isInviting: false })
     }
 
     const handleRevokeInvite = async (invitation: Invitation) => {
@@ -769,7 +661,8 @@ export default function StaffManager({
         const res = await resendInvitationAction(invitation.id)
         if (res.success && res.invitation) {
             mutate()
-            toast.success(`Invitation resent to ${invitation.email}`)
+            if (res.warning) toast.error(res.warning)
+            else toast.success(`Invitation resent to ${invitation.email}`)
         } else {
             toast.error(res.error || 'Failed to resend invitation')
         }
@@ -938,17 +831,10 @@ export default function StaffManager({
                         <>
                             <button
                                 onClick={() => setInviteModal(prev => ({ ...prev, isOpen: true }))}
-                                className="px-4 py-2.5 text-xs font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors flex items-center gap-2 shrink-0 focus-ring"
-                            >
-                                <Mail size={16} />
-                                <span className="hidden sm:inline">Invite via Email</span>
-                            </button>
-                            <button
-                                onClick={() => setCreateModal(prev => ({ ...prev, isOpen: true }))}
                                 className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 shrink-0 focus-ring"
                             >
-                                <Users size={16} />
-                                Add Staff
+                                <Mail size={16} />
+                                Invite Staff
                             </button>
                         </>
                     )}
@@ -1352,7 +1238,7 @@ export default function StaffManager({
                                 onClick={() => setInviteModal(prev => ({ ...prev, isOpen: true }))}
                                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] transition-all"
                             >
-                                <Mail size={16} /> Invite via Email
+                                <Mail size={16} /> Invite Staff
                             </button>
                         </div>
                     ) : (
@@ -1360,9 +1246,8 @@ export default function StaffManager({
                             <table className="w-full text-left whitespace-nowrap">
                                 <thead>
                                     <tr className="bg-surface-muted border-b border-hairline text-[11px] font-bold text-ink-subtle uppercase tracking-wider">
-                                        <th className="px-6 py-4">Email</th>
+                                        <th className="px-6 py-4">Staff Member</th>
                                         <th className="px-6 py-4">Role</th>
-                                        <th className="px-6 py-4">Department</th>
                                         <th className="px-6 py-4">Status</th>
                                         <th className="px-6 py-4">Expires</th>
                                         <th className="px-6 py-4 text-right">Actions</th>
@@ -1372,7 +1257,6 @@ export default function StaffManager({
                                     {invitations.map(invitation => {
                                         const status = formatInviteStatus(invitation)
                                         const roleObj = Array.isArray(invitation.roles) ? invitation.roles[0] : invitation.roles
-                                        const deptObj = Array.isArray(invitation.departments) ? invitation.departments[0] : invitation.departments
                                         const statusStyle = status === 'pending'
                                             ? 'bg-brand-50 text-brand-700 border-brand-100'
                                             : status === 'accepted'
@@ -1381,19 +1265,15 @@ export default function StaffManager({
 
                                         return (
                                             <tr key={invitation.id} className="hover:bg-surface-muted/30 transition-colors">
-                                                <td className="px-6 py-4 font-extrabold text-ink">{invitation.email}</td>
+                                                <td className="px-6 py-4">
+                                                    <div className="font-extrabold text-ink">{invitation.full_name || 'Unnamed staff'}</div>
+                                                    <div className="text-xs font-medium text-ink-subtle mt-0.5">{invitation.email}</div>
+                                                </td>
                                                 <td className="px-6 py-4">
                                                     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface border border-hairline text-xs font-bold text-ink shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
                                                         {getRoleIcon(roleObj?.name || '')}
                                                         {formatRoleName(roleObj?.name || 'Unknown')}
                                                     </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    {deptObj ? (
-                                                        <span className="text-sm font-bold text-ink">{deptObj.name}</span>
-                                                    ) : (
-                                                        <span className="text-sm font-bold text-ink-muted italic">Unassigned</span>
-                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${statusStyle}`}>
@@ -1726,12 +1606,12 @@ export default function StaffManager({
                 </Modal>
             )}
 
-            {/* Create Staff Modal */}
-            {createModal.isOpen && (
-                <Modal open onClose={() => setCreateModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Create Staff Account">
+            {/* Invite Staff Modal */}
+            {inviteModal.isOpen && (
+                <Modal open onClose={() => setInviteModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Invite Staff">
                         <div className="p-6 pb-0">
-                            <h3 className="text-h3 font-extrabold text-ink mb-1.5">Create Staff Account</h3>
-                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">Add a new staff member to your restaurant</p>
+                            <h3 className="text-h3 font-extrabold text-ink mb-1.5">Invite Staff</h3>
+                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">They&apos;ll receive a secure link to join your team</p>
                         </div>
 
                         <div className="px-6 pb-6 space-y-5">
@@ -1739,138 +1619,30 @@ export default function StaffManager({
                                 <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Full Name *</label>
                                 <input
                                     type="text"
-                                    value={createModal.fullName}
-                                    onChange={(e) => setCreateModal(prev => ({ ...prev, fullName: e.target.value }))}
+                                    value={inviteModal.fullName}
+                                    onChange={(e) => setInviteModal(prev => ({ ...prev, fullName: e.target.value }))}
                                     placeholder="John Doe"
-                                    disabled={createModal.isCreating}
-                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Email Address *</label>
-                                <input
-                                    type="email"
-                                    value={createModal.email}
-                                    onChange={(e) => setCreateModal(prev => ({ ...prev, email: e.target.value }))}
-                                    placeholder="john@example.com"
-                                    disabled={createModal.isCreating}
-                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Password *</label>
-                                <PasswordToggleInput
-                                    value={createModal.password}
-                                    onChange={(value) => setCreateModal(prev => ({ ...prev, password: value }))}
-                                    placeholder="At least 8 characters"
-                                    disabled={createModal.isCreating}
-                                    show={createModal.showPassword}
-                                    onToggleShow={() => setCreateModal(prev => ({ ...prev, showPassword: !prev.showPassword }))}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Confirm Password *</label>
-                                <PasswordToggleInput
-                                    value={createModal.confirmPassword}
-                                    onChange={(value) => setCreateModal(prev => ({ ...prev, confirmPassword: value }))}
-                                    placeholder="Re-enter password"
-                                    disabled={createModal.isCreating}
-                                    show={createModal.showConfirmPassword}
-                                    onToggleShow={() => setCreateModal(prev => ({ ...prev, showConfirmPassword: !prev.showConfirmPassword }))}
-                                />
-                                {createModal.confirmPassword && createModal.password !== createModal.confirmPassword && (
-                                    <p className="mt-1.5 text-[11px] font-bold text-danger-fg uppercase tracking-wider">Passwords do not match</p>
-                                )}
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Phone Number</label>
-                                <input
-                                    type="tel"
-                                    value={createModal.phone}
-                                    onChange={(e) => setCreateModal(prev => ({ ...prev, phone: e.target.value }))}
-                                    placeholder="123-456-7890"
-                                    disabled={createModal.isCreating}
-                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Initial Role</label>
-                                <Select
-                                    value={String(createModal.roleId)}
-                                    onChange={(e) => setCreateModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
-                                    disabled={createModal.isCreating}
-                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                >
-                                    {availableRoles.map(role => (
-                                        <option key={role.id} value={role.id}>{formatRoleName(role.name)}</option>
-                                    ))}
-                                </Select>
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-ink-subtle font-normal normal-case">(optional)</span></label>
-                                <Select
-                                    value={createModal.departmentId}
-                                    onChange={(e) => setCreateModal(prev => ({ ...prev, departmentId: e.target.value }))}
-                                    disabled={createModal.isCreating}
-                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                >
-                                    <option value="">No Department</option>
-                                    {departments.map(dept => (
-                                        <option key={dept.id} value={dept.id}>{dept.name}</option>
-                                    ))}
-                                </Select>
-                            </div>
-                        </div>
-
-                        <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
-                            <button
-                                onClick={closeCreateModal}
-                                disabled={createModal.isCreating}
-                                className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors disabled:opacity-50 focus-ring"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleCreateStaff}
-                                disabled={createModal.isCreating || !createModal.password || createModal.password !== createModal.confirmPassword}
-                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 flex items-center gap-2 focus-ring"
-                            >
-                                {createModal.isCreating ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                                Create Staff
-                            </button>
-                        </div>
-                </Modal>
-            )}
-
-            {/* Invite Staff Modal */}
-            {inviteModal.isOpen && (
-                <Modal open onClose={() => setInviteModal(prev => ({ ...prev, isOpen: false }))} size="md" ariaLabel="Invite via Email">
-                        <div className="p-6 pb-0">
-                            <h3 className="text-h3 font-extrabold text-ink mb-1.5">Invite via Email</h3>
-                            <p className="text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-6">They&apos;ll get a link to set their own password</p>
-                        </div>
-
-                        <div className="px-6 pb-6 space-y-5">
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Email Address *</label>
-                                <input
-                                    type="email"
-                                    value={inviteModal.email}
-                                    onChange={(e) => setInviteModal(prev => ({ ...prev, email: e.target.value }))}
-                                    placeholder="john@example.com"
+                                    autoComplete="name"
                                     disabled={inviteModal.isInviting}
                                     className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Role</label>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Email Address *</label>
+                                <input
+                                    type="email"
+                                    value={inviteModal.email}
+                                    onChange={(e) => setInviteModal(prev => ({ ...prev, email: e.target.value }))}
+                                    placeholder="john@gmail.com"
+                                    autoComplete="email"
+                                    disabled={inviteModal.isInviting}
+                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink placeholder:text-ink-muted focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Role *</label>
                                 <Select
                                     value={String(inviteModal.roleId)}
                                     onChange={(e) => setInviteModal(prev => ({ ...prev, roleId: parseInt(e.target.value) }))}
@@ -1883,26 +1655,12 @@ export default function StaffManager({
                                 </Select>
                             </div>
 
-                            <div>
-                                <label className="block text-[11px] font-bold text-ink-subtle uppercase tracking-wider mb-2">Department <span className="text-ink-subtle font-normal normal-case">(optional)</span></label>
-                                <Select
-                                    value={inviteModal.departmentId}
-                                    onChange={(e) => setInviteModal(prev => ({ ...prev, departmentId: e.target.value }))}
-                                    disabled={inviteModal.isInviting}
-                                    className="w-full px-4 py-2.5 bg-surface border border-hairline rounded-[var(--r-md)] text-sm font-bold text-ink focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all disabled:opacity-50"
-                                >
-                                    <option value="">No Department</option>
-                                    {departments.map(dept => (
-                                        <option key={dept.id} value={dept.id}>{dept.name}</option>
-                                    ))}
-                                </Select>
-                            </div>
                         </div>
 
                         <div className="px-6 py-5 bg-surface-muted/30 border-t border-hairline flex justify-end gap-3">
                             <button
-                                onClick={() => setInviteModal({ isOpen: false, email: '', roleId: 4, departmentId: '', isInviting: false })}
-                                disabled={inviteModal.isInviting}
+                                onClick={() => setInviteModal({ isOpen: false, fullName: '', email: '', roleId: 4, isInviting: false })}
+                                disabled={inviteModal.isInviting || inviteModal.fullName.trim().length < 2 || !inviteModal.email.trim()}
                                 className="px-5 py-2.5 text-sm font-bold text-ink-subtle hover:text-ink bg-surface border border-hairline rounded-[var(--r-md)] shadow-sm hover:bg-surface-muted transition-colors disabled:opacity-50 focus-ring"
                             >
                                 Cancel
@@ -1913,7 +1671,7 @@ export default function StaffManager({
                                 className="px-5 py-2.5 text-sm font-bold text-white bg-brand-500 rounded-[var(--r-md)] shadow-[0_4px_12px_rgba(251,99,3,0.25)] hover:shadow-[0_6px_16px_rgba(251,99,3,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 flex items-center gap-2 focus-ring"
                             >
                                 {inviteModal.isInviting ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
-                                Send Invite
+                                Send Invitation
                             </button>
                         </div>
                 </Modal>

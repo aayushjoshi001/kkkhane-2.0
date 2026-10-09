@@ -1,13 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { registerUserAction } from './actions'
-import { Eye, EyeOff, Lock, Mail, ArrowRight, User } from 'lucide-react'
+import { registerUserAction, verifySignupCodeAction } from './actions'
+import { Eye, EyeOff, Lock, Mail, ArrowRight, User, KeyRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Turnstile } from '@marsidev/react-turnstile'
 import { useTurnstile, TURNSTILE_SITE_KEY } from '@/lib/hooks/useTurnstile'
+
+const PENDING_SIGNUP_EMAIL_KEY = 'kkkhane:pending-signup-email'
 
 export default function SignupForm() {
     const router = useRouter()
@@ -15,7 +17,31 @@ export default function SignupForm() {
     const [error, setError] = useState<string | null>(null)
     const [showPassword, setShowPassword] = useState(false)
     const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+    const [verificationEmail, setVerificationEmail] = useState('')
+    const [verificationCode, setVerificationCode] = useState('')
+    const [isVerifying, setIsVerifying] = useState(false)
     const turnstile = useTurnstile()
+
+    useEffect(() => {
+        const frame = requestAnimationFrame(() => {
+            try {
+                const pendingEmail = sessionStorage.getItem(PENDING_SIGNUP_EMAIL_KEY)
+                if (pendingEmail) setVerificationEmail(pendingEmail)
+            } catch {
+                // Signup still works when browser storage is unavailable.
+            }
+        })
+        return () => cancelAnimationFrame(frame)
+    }, [])
+
+    useEffect(() => {
+        if (!verificationEmail) return
+        try {
+            sessionStorage.setItem(PENDING_SIGNUP_EMAIL_KEY, verificationEmail)
+        } catch {
+            // The current page can still complete verification.
+        }
+    }, [verificationEmail])
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -36,10 +62,17 @@ export default function SignupForm() {
             const result = await registerUserAction(formData)
             if (result.error) {
                 setError(result.error)
+            } else if (result.requiresVerification && result.email) {
+                try {
+                    sessionStorage.setItem(PENDING_SIGNUP_EMAIL_KEY, result.email)
+                } catch {
+                    // The current page can still complete verification.
+                }
+                setVerificationEmail(result.email)
             } else {
-                router.push('/onboarding')
+                setError('Unable to start email verification. Please try again.')
             }
-        } catch (err) {
+        } catch {
             setError('An unexpected error occurred.')
         } finally {
             setIsPending(false)
@@ -63,8 +96,97 @@ export default function SignupForm() {
     const inputClasses = "h-[52px] w-full pl-12 pr-4 border border-hairline-strong rounded-[14px] text-[15px] focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all bg-surface placeholder:text-ink-subtle text-ink"
     const labelClasses = "text-[14px] font-semibold text-ink flex gap-1 mb-2"
 
+    const handleVerifyEmail = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault()
+        setError(null)
+
+        if (!/^\d{6,8}$/.test(verificationCode)) {
+            setError('Enter the full verification code from your email.')
+            return
+        }
+
+        setIsVerifying(true)
+        const result = await verifySignupCodeAction(verificationEmail, verificationCode)
+        setIsVerifying(false)
+
+        if (result.error) {
+            setError(result.error)
+            return
+        }
+
+        try {
+            sessionStorage.removeItem(PENDING_SIGNUP_EMAIL_KEY)
+        } catch {
+            // The verified session is already established.
+        }
+        router.push('/onboarding')
+        router.refresh()
+    }
+
+    const useDifferentEmail = () => {
+        try {
+            sessionStorage.removeItem(PENDING_SIGNUP_EMAIL_KEY)
+        } catch {
+            // Clearing component state is enough for this page.
+        }
+        setVerificationEmail('')
+        setVerificationCode('')
+        setError(null)
+    }
+
+    if (verificationEmail) {
+        return (
+            <div key="verify-email" className="flex flex-col items-center justify-start md:justify-center w-full max-w-[420px] mx-auto pb-10">
+                <div className="w-12 h-1.5 rounded-full bg-[#ff6b00] mb-8 md:hidden shrink-0" />
+                <div className="w-full text-left mb-8">
+                    <h1 className="text-[1.75rem] font-bold text-ink mb-2">Verify Your Email</h1>
+                    <p className="text-[15px] text-ink-subtle font-normal">
+                        Enter the code sent to <strong className="text-ink">{verificationEmail}</strong>.
+                    </p>
+                    <p className="text-[13px] text-ink-subtle mt-2">If you received more than one email, only the newest code will work.</p>
+                </div>
+
+                {error && (
+                    <div className="w-full bg-red-50 text-red-700 px-4 py-3 rounded-[14px] text-[14px] border border-red-100 font-medium mb-6 text-center">
+                        {error}
+                    </div>
+                )}
+
+                <form onSubmit={handleVerifyEmail} className="w-full flex flex-col gap-5">
+                    <div>
+                        <label htmlFor="verificationCode" className={labelClasses}>Verification Code <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                            <KeyRound size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-500" />
+                            <input
+                                id="verificationCode"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                pattern="[0-9]{6,8}"
+                                maxLength={8}
+                                required
+                                autoFocus
+                                value={verificationCode}
+                                onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                                className={`${inputClasses} tracking-[0.35em] font-bold`}
+                                placeholder="Enter your code"
+                            />
+                        </div>
+                    </div>
+
+                    <button type="submit" disabled={isVerifying} className="w-full bg-brand-500 hover:bg-brand-600 text-white h-[52px] rounded-[14px] text-[16px] font-semibold shadow-lg shadow-[#ff5a00]/25 transition-all hover:scale-[1.01] flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                        {isVerifying ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>Verify & Continue <ArrowRight size={20} /></>}
+                    </button>
+                </form>
+
+                <button type="button" onClick={useDifferentEmail} className="mt-8 text-[15px] font-semibold text-ink-subtle hover:text-ink transition">
+                    Use a different email
+                </button>
+            </div>
+        )
+    }
+
     return (
-        <div className="flex flex-col items-center justify-start md:justify-center w-full max-w-[420px] mx-auto pb-10">
+        <div key="create-account" className="flex flex-col items-center justify-start md:justify-center w-full max-w-[420px] mx-auto pb-10">
             {/* Mobile Sheet Handle */}
             <div className="w-12 h-1.5 rounded-full bg-[#ff6b00] mb-8 md:hidden shrink-0" />
 
